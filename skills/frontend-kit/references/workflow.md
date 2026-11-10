@@ -130,7 +130,12 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   exactly:** (a) the files are saved under `design/` in the project, AND
   (b) the lock is recorded in the run log (`node scripts/run-log.mjs
   --project <dir> lock --tokens design/tokens.css --refs <chosen DESIGN.md
-  + reference screenshots>`). If the project is a git repo, ALSO `git add
+  + reference screenshots> [--version N] [--approved-by "<approval basis>"]`).
+  `--version` defaults to the existing lock count + 1; a re-pick records a NEW
+  version, and re-using an existing version is rejected (exit 2). The lock
+  entry also records the sha256 of the tokens file automatically.
+  `--approved-by` carries the step-1.7 approval basis on human-less runs;
+  omit it on solo runs (human approval lives in PLAN.md). If the project is a git repo, ALSO `git add
   design/ && git commit -m "Taste lock: <direction>"`; if it is not a git
   repo, (a) + (b) alone ARE the commit — never create a repo just for this,
   and never treat "saved the file" without the run-log lock as committed.
@@ -376,8 +381,23 @@ scoped here is the GATE checks, not the lens.
   now — merge the rounds' lessons into TASTE.md (what the rounds
   learned about the direction, in one short section). Nothing merges
   into TASTE.md mid-loop, ever.
-- **6.5 Record in the run log:** scores per round, grader identity + independence
-  basis per round, the converge result per round, the plan's approval
-  basis (human approval or "approved-by: converge-check + round-1 grade
-  (no human present)"), feedback → token change → new score (so the dictionary
-  grows and rejected directions are never re-proposed).
+- **6.5 Record in the run log (P7 run state, in the append-only log — no
+  separate run file):** per round — scores, grader identity + independence
+  basis, converge result, gate findings (`--gate-findings`, `;`-separated),
+  fix class (`--fix-class`), outcome (`--outcome kept | discarded | re-pick |
+  stopped | escalated | pending`, default `pending`), and the built page
+  graded (`--page`); `tokensHash` is recorded automatically as the sha256
+  of `design/tokens.css` when present, else null. The plan's approval basis
+  (human approval, or "approved-by: converge-check + round-1 grade (no human
+  present)") and feedback → token change → new score are recorded the same
+  way, so the dictionary grows and rejected directions are never re-proposed.
+  The lock is a run-log entry too: `lock --version N` (default: existing lock
+  count + 1; a re-pick records a NEW version; re-using an existing version is
+  rejected, exit 2) with `--approved-by` carrying the step-1.7 approval basis
+  on human-less runs (omit on solo runs — approval lives in PLAN.md).
+  **Round brief (fresh context per round):** each round after round 1 starts
+  from the minimal brief assembled by `node scripts/run-log.mjs --project
+  <dir> brief [--round N]` (or `node scripts/round-brief.mjs` directly) —
+  lock + best HTML + gate findings + grader evidence lines + one-line-per-round
+  run state, and nothing else; all axes start "ungraded", the lock is restated
+  at the end. Never paste the full run log into a builder/fixer prompt.
