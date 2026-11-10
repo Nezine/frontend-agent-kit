@@ -1,6 +1,6 @@
 ---
 name: frontend-kit
-description: "Build or redesign a frontend from a vague brief through a taste-locked loop: lock tokens against references, generate 5 CSS-only variants, then build, run the deterministic gate, grade 1–5 on Type/Layout/Colour/Space, fix the top 2, and stop at the human gate. Use for landing pages, dashboards, and redesigns when the user wants a verified result, not a first draft."
+description: "Build or redesign a frontend from a vague brief through a taste-locked loop: lock tokens against references, generate 5 structurally divergent variants, then build, run the deterministic gate, grade 1–5 on Type/Layout/Colour/Space, fix the top 2, and stop at the human gate. Use for landing pages, dashboards, and redesigns when the user wants a verified result, not a first draft."
 license: MIT
 compatibility: Claude Code, Codex CLI, OpenCode, Gemini CLI, GitHub Copilot, Hermes Agent, Muse Code, CommandCode, Cursor. Full loop needs a shell, Node 22+, and system Chrome; without them it degrades per references/stop-rules.md, never by faking a grade.
 metadata:
@@ -20,7 +20,9 @@ The full loop spec lives in `references/workflow.md`. The grade rubric lives in
 in `references/stop-rules.md`. The expert pack (10 independent domain
 specialists + call rules) lives in `references/expert-pack.md` and
 `experts/<domain>.md`. The 5 variants as concrete token directions live in
-`references/variant-briefs.md`; the human-gate question bank lives in
+`references/variant-briefs.md`; the variant scoring procedure
+(blind, random order, play first) lives in
+`references/variant-scoring.md`. The human-gate question bank lives in
 `references/human-gate-pack.md`. The converge checklist lives in
 `references/converge-checklist.md`; the anti-cliché blocklist in
 `references/anti-cliche.md`; the anchored style recipes in
@@ -172,7 +174,13 @@ prompt for discussion.
    (by content, not order), EARS acceptance criteria (5–8 WHEN / THE
    SYSTEM SHALL lines, including the 390px no-overflow rule and the
    three-width rule), the screen × state matrix, the Design Read dials
-   (copied from step 1.2), and the design-system pointer section. Then
+   (copied from step 1.2), and the design-system pointer section. Record
+   the plan's preferred structure for the variant auto-pick tie-break as
+   one line in the plan: `Preferred structure: <variant name>` (e.g.
+   `Preferred structure: glassy`); `variant-picker.mjs pick --auto`
+   reads it — it breaks ties among the top token-match scorers only,
+   never outranks a higher match, and its absence falls back to
+   alphabetical. Then
    the approval gate:
    - **Solo run:** the human approves `design/PLAN.md` before ANY build.
      No build starts on an unapproved plan. Record the approval in
@@ -279,30 +287,47 @@ assembled from it.
    brief-type scoping table in step 3 — it governs both the build shape and
    the gate). No inline style drift: every visual value comes from
    `design/tokens.css`. A new token is added to the file first, then used.
-2. If the brief is vague on direction, generate the 5 CSS-only variants
-   before building further: same content, same copy, same semantic HTML —
-   only CSS changes. The five are Editorial, Dark, Warm brutalist, Glassy,
-   Minimal — each as a concrete token direction in
-   `references/variant-briefs.md` (do not invent five directions from
-   priors). Each gets its own tokens and its own screenshot at the same
-   width. **Variant folder layout (the picker requires this exact layout):**
+2. If the brief is vague on direction, generate the 5 structural variants
+   before building further: same content, same copy, same section
+   inventory — structure may differ; tokens stay locked. The five are
+   Editorial, Dark, Warm brutalist, Glassy, Minimal — each as a concrete
+   token + structural direction in `references/variant-briefs.md` (do not
+   invent five directions from priors) — plus one deliberately divergent
+   break-frame variant (`variant-briefs.md` §6), so the set is six.
+   Each variant MUST differ in structure (layout doctrine, section
+   order, hero form), not only in CSS: a set that shares one structure
+   is one direction worn five ways, not five directions. Each gets its
+   own tokens and its own screenshot at the same width. **Variant folder
+   layout (the picker requires this exact layout):**
    `design/variants/<name>/tokens.css`,
    `design/variants/<name>/screenshot-1440.png` (same width for every
    variant), `design/variants/<name>/index.html` (same content, same copy,
-   same semantic HTML — only the stylesheet link differs). A flat layout
+   same section inventory — structure may differ). A flat layout
    (`<name>.html` + `<name>-tokens.css` + `<name>-1440.png`) is rejected
-   by `variant-picker.mjs check`. Run `scripts/variant-picker.mjs` to list
-   them and record the pick.
+   by `variant-picker.mjs check`. The picker enforces the contract
+   mechanically: `check` verifies identical section inventory (a variant
+   that drops or adds a section FAILS) and identical copy (a variant
+   that changes, adds, or drops a line FAILS), and ACCEPTS structurally
+   different variants with identical inventory + copy. Run
+   `scripts/variant-picker.mjs` to list them and record the pick.
 3. **Step 2a — the human picks one variant.** The pick IS the feedback.
    Never re-argue direction in prose. Build on the picked variant only.
+   The pick is blind and in random order: screenshots are shown without
+   variant names, shuffled (never in canonical order) — see
+   `references/variant-scoring.md` for the procedure. Unpicked variants
+   are NOT deleted: the picker records them in the run-log entry and
+   they stay on disk under `design/variants/` as the round-1 re-pick
+   pool (P6).
    **Human-less runs (no human to pick):** use the deterministic pick —
    run `variant-picker.mjs pick --auto`, which picks the variant whose
    tokens match the LOCKED `design/tokens.css` most closely (count of
    locked `--name: value` declarations reproduced exactly; ties broken
-   alphabetically). State the rule before picking, record the pick with
-   its scores in the run log, and give no quality verdict: the auto-pick
-   says only which variant is closest to the locked direction.
-   **"Play first, critique later" governs variant generation:** all five
+   by the plan's preferred structure — the `Preferred structure:` line
+   in `design/PLAN.md`, step 1.7 — else alphabetically). State the rule
+   before picking, record the pick with its scores in the run log, and
+   give no quality verdict: the auto-pick says only which variant is
+   closest to the locked direction.
+   **"Play first, critique later" governs variant generation:** all
    variants are generated before any critique. The v0 checkpoint below
    governs the PICKED variant's build only — never mid-generation.
 4. **v0 draft checkpoint (inside step 2, on the picked variant only).**
@@ -621,7 +646,7 @@ repeated here: one copy, at the top, is the rule.
 | Motion | GSAP skills | Hand-roll animation advice |
 | Grading rubric, stop rules, ladder | `references/grader-rubric.md`, `references/stop-rules.md` | Grade by feel |
 | Domain expertise (specialist second opinion) | `references/expert-pack.md` + `experts/<domain>.md` (fresh sub-agent, never the builder) | Ask the builder or the judge to cover a domain outside its confidence |
-| Variant directions (concrete token briefs) | `references/variant-briefs.md` | Invent five directions from priors |
+| Variant directions (concrete token + structural briefs) | `references/variant-briefs.md` + `references/variant-scoring.md` (blind pick, random order, unpicked-variant retention) | Invent five directions from priors |
 | Human-gate questions + next commands | `references/human-gate-pack.md` | Ask open-ended "what do you think?" |
 | Plan, Design Read, design-system declaration | `templates/design/PLAN.md`, `DESIGN-READ.md`, `DESIGN-SYSTEM.md` (filled in at step 1) | Build on an unapproved plan; put token values in DESIGN-SYSTEM.md |
 | Converge check (section/state presence) | `references/converge-checklist.md` + `scripts/gate/converge-check.mjs` | Present a human gate on a red converge; silently pass an uncheckable item |
