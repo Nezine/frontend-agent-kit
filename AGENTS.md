@@ -18,7 +18,7 @@ installed taste tree), `frontend-design`
 
 **Built for daily use.** The flow first: drop the repo link → the agent
 installs the kit for itself → vague brief → build → your feedback. Acceptance test:
-vague brief → 70–80% slop-free output → your feedback. Host breadth matters, but
+vague brief → 60% slop-free output → your feedback. Host breadth matters, but
 where a trade-off appears, usability wins over a marginal host's compatibility.
 
 ## Decisions (recorded 2026-11-10, v2 fix round R3)
@@ -150,6 +150,17 @@ sentence is marked SUPERSEDED here.
     wins is the unresolved §5 discrepancy.
   - Hermes, CommandCode, Muse Code, Cursor: CHƯA ĐỌC — no precedence
     statement found in this round.
+- **(i) Human-eye acceptance bar is 60% slop-free (user-ordered 2026-11-10
+  19:23).** The old 70–80% figure is SUPERSEDED everywhere it appeared as
+  the acceptance figure (this file §0 + §5, README, muse-app-pack, plugin
+  manifests, clean-env test). The ≥4-on-every-axis loop stop is UNCHANGED:
+  the % is the human-eye bar for the vague-brief acceptance test, the
+  4-axis scores are the per-round gate. The bar is stated in the rubric
+  (`skills/frontend-kit/references/grader-rubric.md`), the stop rules
+  (`stop-rules.md`), the orchestrator SKILL.md step 6, `workflow.md` §6,
+  and the probe briefs (`tests/clean-env/probe-briefs.md`). The phase-1
+  SYNTHESIS.md is a historical record and is NOT edited for this change;
+  this decision governs where it disagrees.
 
 ## 1. Install contract
 
@@ -373,7 +384,7 @@ build the gate already fails.
   third-party sources (aiagentslibrary.com, builtwithmuse.com, openaimaster.com,
   metaflow.life, ai-supremacy.com); **Meta primary not read**. The only Muse-app path
   is the paste packet in `templates/install/muse-app-pack.md`, which is per-conversation
-  and non-persistent. Do not promise 70–80% slop-free output for the Muse app.
+  and non-persistent. Do not promise 60% slop-free output for the Muse app.
   (This is the chat app with no workspace/file access — not the `muse` host below.)
 - **The `muse` host ≠ Muse Code ≠ Muse app (see Decisions (g)).** `install.sh`
   `--hosts=muse` installs ONLY to `~/workspace/custom-skills/` — the working install

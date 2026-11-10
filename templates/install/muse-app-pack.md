@@ -9,12 +9,12 @@
 > metaflow.life, ai-supremacy.com) all agree Meta documents no user-installable skill
 > path for the app; **Meta primary not read**.
 >
-> **Do NOT expect the 70–80% slop-free target from this packet.** The full kit reaches
+> **Do NOT expect the 60% slop-free target from this packet.** The full kit reaches
 > for that target with a deterministic detector (`impeccable detect`, 62 rules), a
 > screenshot loop, gate scripts, and a fresh-context grader — none of which run inside
 > the Muse app. What this packet plausibly supports: a competent first draft that
 > follows the taste-locked loop in prose, with explicit anti-slop rules and a
-> hand-run checklist in place of the gate. Expect a useful draft, not a verified 70–80% build.
+> hand-run checklist in place of the gate. Expect a useful draft, not a verified 60% build.
 > If you need the full loop, use Muse Code or a CLI host (see `README.md`).
 >
 > **What was cut to make this slim (and why):** the full taste SKILL.md is 381 lines —

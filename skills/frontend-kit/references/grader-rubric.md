@@ -46,6 +46,16 @@ is exactly **"gate green, vision not available"** and the HUMAN gate carries
 the full taste judgement. Never fake a 4/5, never present a gate result as a
 design grade.
 
+## Human-eye acceptance bar: 60% slop-free (user-ordered 2026-11-10 19:23)
+
+The human-eye acceptance bar for a vague brief is **60% slop-free**,
+superseding the old 70–80% figure everywhere it appeared as the acceptance
+figure (README, AGENTS.md, muse-app-pack, plugin manifests, clean-env
+test). The ≥4-on-every-axis stop rule is UNCHANGED: the % is the human-eye
+bar for the acceptance test, the 4-axis scores are the per-round gate. A
+build passes the human eye when it reads ≥60% slop-free; the probe loop
+still stops at ≥4 on every axis AND gate green, or after 3 rounds.
+
 Why: intrinsic self-correction degrades reasoning (Huang et al. 2024,
 VERIFIED from the primary PDF Tables 2–6: GPT-4 GSM8K 95.5 → 91.5 → 89.0
 across self-correction rounds). "Fresh context" alone does not change the

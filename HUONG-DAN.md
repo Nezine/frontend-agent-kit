@@ -19,6 +19,8 @@ Bạn vẫn có thể gọi `taste-reference` trực tiếp khi muốn một ph�
 
 **Pro Max là nguồn tra cứu.** Khi đã chọn một hướng, để Impeccable dẫn phần xây dựng. Không cần gọi tất cả skill trong một prompt.
 
+**Gói chuyên gia (expert pack):** 10 chuyên gia độc lập theo domain — typography, colour, layout, motion, accessibility, copy, imagery, design-systems, performance, responsive — ở `skills/frontend-kit/experts/`, luật gọi ở `skills/frontend-kit/references/expert-pack.md`. Judge hoặc orchestrator gọi khi lượt chấm cần second opinion chuyên môn; verdict là tư vấn cho judge, judge giữ điểm 4 trục cuối cùng.
+
 ## Thứ tự mặc định: orchestrator-first
 
 Từ v2, đừng gọi skill lẻ trước. Thứ tự mặc định cho mọi brief — kể cả brief mơ hồ:

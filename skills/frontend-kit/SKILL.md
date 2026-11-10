@@ -17,9 +17,13 @@ names another skill, read that skill and follow it.
 
 The full loop spec lives in `references/workflow.md`. The grade rubric lives in
 `references/grader-rubric.md`. The stop rules and the degradation ladder live
-in `references/stop-rules.md`. Read all three before starting step 0. If they
-disagree with this file, they win — they are the detailed record; this file is
-the route map.
+in `references/stop-rules.md`. The expert pack (10 independent domain
+specialists + call rules) lives in `references/expert-pack.md` and
+`experts/<domain>.md`. The 5 variants as concrete token directions live in
+`references/variant-briefs.md`; the human-gate question bank lives in
+`references/human-gate-pack.md`. Read workflow, rubric, and stop-rules
+before starting step 0. If they disagree with this file, they win — they are
+the detailed record; this file is the route map.
 
 ## Precedence — READ THIS FIRST (before step 1.4 delegates anything)
 
@@ -144,7 +148,9 @@ prompt for discussion.
 2. If the brief is vague on direction, generate the 5 CSS-only variants
    before building further: same content, same copy, same semantic HTML —
    only CSS changes. The five are Editorial, Dark, Warm brutalist, Glassy,
-   Minimal. Each gets its own tokens and its own screenshot at the same
+   Minimal — each as a concrete token direction in
+   `references/variant-briefs.md` (do not invent five directions from
+   priors). Each gets its own tokens and its own screenshot at the same
    width. **Variant folder layout (the picker requires this exact layout):**
    `design/variants/<name>/tokens.css`,
    `design/variants/<name>/screenshot-1440.png` (same width for every
@@ -303,6 +309,16 @@ to step 4 with a red gate.
    `taste-reference` is the default taste layer: the orchestrator uses it on
    every build as a lens for the grade (it is a lens, not the judge — the
    independent judge still scores).
+   **Specialist second opinion (expert pack):** when the judge's grade is
+   uncertain on a domain, or the brief carries a domain risk (motion-heavy,
+   copy-heavy, dashboard), the judge or the orchestrator may spawn the
+   matching expert from `references/expert-pack.md` /
+   `experts/<domain>.md` as a fresh sub-agent — same fresh-context /
+   no-production-history spawn pattern as the judge, never before the gate
+   is green, max 2 experts per round. The expert verdict is ADVISORY to
+   the judge: the judge keeps the final Type/Layout/Colour/Space scores;
+   the expert's top defects enter the fix list. An accessibility REWORK
+   (1–2) blocks shipping even when the 4 axes are ≥4.
 5. Record the round with `scripts/run-log.mjs`: scores per round, grader
    identity + independence basis per round, gate result. The run-log script
    REJECTS any entry whose grader is the builder. The log is the memory
@@ -335,8 +351,13 @@ to step 4 with a red gate.
    scratch but never discards the previous best — if no later round beats
    it, the earlier best is what the human gate sees.
 2. Present the human gate: the score table, the 3-width screenshots, 2–4
-   targeted questions with concrete options, and the recommended next
-   command, ending with `polish`. The human's pick or adjective maps through
+   targeted questions with concrete options (pick them from
+   `references/human-gate-pack.md` — never an open-ended "what do you
+   think?"), and the recommended next command, ending with `polish`. The
+   human-eye acceptance bar is **60% slop-free** (user-ordered 2026-11-10;
+   the ≥4-on-every-axis stop above is unchanged — the % is the human-eye
+   bar for the vague-brief acceptance test, the 4-axis scores are the
+   per-round gate). The human's pick or adjective maps through
    the token dictionary (`scripts/token-dictionary.mjs`) and re-enters at
    step 5 — never as a rebuild.
 3. After human approval: save the 3-width screenshots as the pixel-diff
@@ -361,6 +382,9 @@ repeated here: one copy, at the top, is the rule.
 | Component/system lookup | `ui-ux-pro-max-reference`, `threeui`, GSAP skills | Paste a catalog into this file |
 | Motion | GSAP skills | Hand-roll animation advice |
 | Grading rubric, stop rules, ladder | `references/grader-rubric.md`, `references/stop-rules.md` | Grade by feel |
+| Domain expertise (specialist second opinion) | `references/expert-pack.md` + `experts/<domain>.md` (fresh sub-agent, never the builder) | Ask the builder or the judge to cover a domain outside its confidence |
+| Variant directions (concrete token briefs) | `references/variant-briefs.md` | Invent five directions from priors |
+| Human-gate questions + next commands | `references/human-gate-pack.md` | Ask open-ended "what do you think?" |
 
 ## Rules that are never optional
 

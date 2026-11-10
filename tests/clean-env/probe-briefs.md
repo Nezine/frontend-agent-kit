@@ -8,7 +8,11 @@ fix → human gate.
 
 Record per brief: whether the taste lock happened before HTML, whether `detect`
 fired, whether screenshots were taken at 1440/768/390, whether the hook fired at
-least once unprompted, and the final scores with evidence.
+least once unprompted, and the final scores with evidence. Also record whether
+the final output reads **≥60% slop-free** to the human eye — the human-eye
+acceptance bar (user-ordered 2026-11-10 19:23, superseding the old 70–80%).
+The probe loop itself still stops at ≥4 on every axis AND gate green, or
+after 3 rounds.
 
 **Grader rule:** every score recorded here must carry its named independent grader
 label (independent judge sub-agent / Muse-manager / a different model from the

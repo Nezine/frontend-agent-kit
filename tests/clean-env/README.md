@@ -140,4 +140,4 @@ first failure; the most-likely-first-failure pick is re-made at run time.)
   a run is added for them.
 - No Muse-app install test: there is no install path to test. The Muse-app paste packet
   gets its own end-to-end test in the app (paste packet → probe build → human rating);
-  if it cannot reach 70–80%, the Muse app is dropped from the headline claim.
+  if it cannot reach 60%, the Muse app is dropped from the headline claim.

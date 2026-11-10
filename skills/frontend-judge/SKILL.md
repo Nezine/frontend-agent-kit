@@ -108,6 +108,25 @@ and name the missing evidence.
   re-label your scores as another grader's, and never re-label another
   judge's scores as yours.
 
+## Specialist second opinion (expert pack)
+
+You may call a specialist second opinion when your 4-axis grade is
+uncertain on a domain, or when you suspect a domain defect outside your
+confidence. Spawn the matching expert from
+`skills/frontend-kit/experts/<domain>.md` as a fresh sub-agent, using the
+spawn pattern in `skills/frontend-kit/references/expert-pack.md` (fresh
+context, no production history, same blind inputs as yours — never the
+builder's reasoning, never your scores). Never before the gate is green;
+max 2 experts per round.
+
+The expert's verdict is ADVISORY to you: you keep the final
+Type/Layout/Colour/Space scores. An expert domain FAIL you missed becomes
+a fix in your fix order; an expert domain PASS you doubted confirms your
+score. If you and an expert disagree, your 4-axis score stands for the
+stop condition, but the expert's defects still enter the fix list — record
+the disagreement in the run log. An accessibility REWORK (1–2) blocks
+shipping even when your 4 axes are ≥4: say so in your output.
+
 ## Stop rules
 
 - You score ONE round and stop. You do not fix, iterate, or re-grade your

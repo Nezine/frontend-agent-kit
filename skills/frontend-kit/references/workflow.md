@@ -76,7 +76,8 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   the gate).
 - If the brief is vague on direction: generate the 5 CSS-only variants (same
   content, same copy, same semantic HTML — only CSS changes; Editorial /
-  Dark / Warm brutalist / Glassy / Minimal), each with its own tokens,
+  Dark / Warm brutalist / Glassy / Minimal — each as a concrete token
+  direction in `references/variant-briefs.md`), each with its own tokens,
   screenshot each at the same width. **Variant folder layout** (the picker
   requires it): `design/variants/<name>/tokens.css`,
   `design/variants/<name>/screenshot-1440.png`,
@@ -175,6 +176,14 @@ scoped here is the GATE checks, not the lens.
   `skills/frontend-judge/`, dispatched by name as a fresh sub-agent
   (fallback order: fresh judge sub-agent → `other-model` judge →
   `muse-manager` judge → no grade, "gate green, vision not available").
+  **Specialist second opinion (expert pack):** the judge or the
+  orchestrator may spawn a matching expert from
+  `references/expert-pack.md` / `experts/<domain>.md` as a fresh sub-agent
+  when the grade is uncertain on a domain or the brief carries a domain
+  risk — same spawn pattern as the judge, never before the gate is green,
+  max 2 experts per round. The expert verdict is ADVISORY: the judge keeps
+  the final 4-axis scores; the expert's top defects enter the fix list. An
+  accessibility REWORK (1–2) blocks shipping even when the 4 axes are ≥4.
 
 ## 5. Fix top 2, as token diffs (or top 1 if the evidence is thin)
 
@@ -198,7 +207,12 @@ scoped here is the GATE checks, not the lens.
   version that ships; a re-pick starts a new direction from scratch but
   never discards the previous best.
 - Human gate: score table + the 3-width screenshots + 2–4 targeted questions
-  with concrete options + recommended next command, ending with `polish`.
+  with concrete options (pick them from `references/human-gate-pack.md` —
+  never open-ended "what do you think?") + recommended next command,
+  ending with `polish`. The human-eye acceptance bar is **60% slop-free**
+  (user-ordered 2026-11-10; the ≥4-on-every-axis stop above is unchanged —
+  the % is the human-eye bar for the vague-brief acceptance test, the
+  4-axis scores are the per-round gate).
   The human's pick or adjective maps through the token dictionary and
   re-enters at step 5 — never as a rebuild.
 - After human approval: save the 3-width screenshots as the pixel-diff

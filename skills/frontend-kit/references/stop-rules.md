@@ -22,6 +22,11 @@ ships; a re-pick starts a new direction from scratch but never discards
 the previous best. The run log records which version is best and why, so
 a regression is visible, not silently kept.
 
+**Human-eye acceptance bar: 60% slop-free** (user-ordered 2026-11-10 19:23,
+superseding the old 70–80%). The ≥4-on-every-axis stop above is unchanged —
+the % is the human-eye bar for the vague-brief acceptance test, the 4-axis
+scores are the per-round gate.
+
 ## Human gate
 
 Present all of these together, then wait:
