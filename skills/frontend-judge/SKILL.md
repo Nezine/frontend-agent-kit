@@ -248,7 +248,8 @@ Fix order: Layout (pricing peek — cheapest precise fix), then Type.
 - **Motion (non-scoring):** if you consulted a motion expert this round,
   add one paragraph after the `Gate: green` line, surfacing the expert's
   existing 1–5 domain score (`skills/frontend-kit/experts/motion.md`):
-  `Motion: <score> (motion-expert) — <the expert's one-line evidence>`.
+  `Motion: <score> (motion-expert) — <the expert's one-line evidence>`,
+  plus one line per named pattern used: `Pattern N: PASS/FAIL — <one line>`.
   It never changes any axis score and never affects the stop rule. If no
   motion expert was consulted, omit the paragraph — never invent a motion
   score.

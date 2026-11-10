@@ -395,9 +395,9 @@ easing.
   Motion docs. This file names the pattern and its restraint, and
   points at the implementation.
 - It does not set the grade. Motion has no axis (see the grading
-  proposal in `build-notes/w-motion.md`); until the coordinator
-  decides, motion is graded as evidence under Layout/Space by the
-  judge, with the motion expert as second opinion.
+  proposal in `build-notes/w-motion.md`); motion is graded as evidence
+  under Layout by the judge, with the motion expert as second opinion
+  (see `skills/frontend-kit/references/grader-rubric.md`).
 
 ## Values
 

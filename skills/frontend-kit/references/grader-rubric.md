@@ -213,7 +213,8 @@ Gate: green
 **Motion (non-scoring):** if a motion expert was consulted this round, the
 report adds one paragraph after the `Gate: green` line, surfacing the
 expert's existing 1–5 domain score (`skills/frontend-kit/experts/motion.md`)
-— `Motion: <score> (motion-expert) — <the expert's one-line evidence>`.
+— `Motion: <score> (motion-expert) — <the expert's one-line evidence>`,
+plus one line per named pattern used: `Pattern N: PASS/FAIL — <one line>`.
 It never changes any axis score and never affects the stop rule. If no
 motion expert was consulted this round, the paragraph is omitted — never
 invent a motion score.
