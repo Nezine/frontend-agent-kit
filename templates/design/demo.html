@@ -1,0 +1,159 @@
+<!doctype html>
+<!-- demo.html — the frontend-kit 1-page taste-lock demo (step 1.3).
+ *
+ * SAME content every time, so tokens stay comparable across briefs. This file
+ * is copied into the project as design/demo.html alongside the LOCKED
+ * design/tokens.css; it proves the locked tokens work BEFORE any page HTML
+ * is written. It is NOT the deliverable and is NOT part of the build gate
+ * (gate.sh excludes design/demo.html from project-dir scans — gate it
+ * explicitly: gate.sh --target design/demo.html).
+ *
+ * EXPECTED TOKENS (every one must be visibly exercised below):
+ *   --font-display / --font-body / --font-mono (type roles)
+ *   --text-hero (64px hero) / --text-h2 / --text-lg (lede) / --text-body
+ *   --color-canvas / --color-surface / --color-ink / --color-mute /
+ *     --color-accent (colour roles; accent on ONE element only)
+ *   --space-section (section gaps) / --space-card (card padding)
+ *   --radius-card (cards) / --radius-pill (CTA)
+ *   --motion-base / --motion-ease (the one hover transition)
+ *   --max-width / --measure / --tap-min (layout + tap target)
+ *
+ * PASS CRITERION: the demo renders every listed token visibly AND passes
+ * the step-3 gate when gated on its own (detect 0 findings, static checks
+ * pass). The every-listed-token half is SCRIPTED: gate.sh §1b reads this
+ * EXPECTED TOKENS block and fails the gate when any listed token is
+ * undefined in tokens.css or unreferenced below the header comment.
+ * A demo that fails the gate proves the TOKENS are wrong — fix the
+ * tokens, never this file. The demo content is fixed; only tokens change.
+ *
+ * GATE-CLEAN RULES (same as the build): Newsreader roman display (never
+ * italic serif hero), IBM Plex Sans body, IBM Plex Mono labels; every text
+ * element whose size differs from body gets its OWN explicit line-height
+ * on its class (never inherit, never set line-height on a bare element
+ * selector); all visual values come from tokens.css via var(--*).
+ -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo — Steel widgets</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-body);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+  }
+  .demo-wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-5); }
+  .demo-hero {
+    font-family: var(--font-display);
+    font-size: var(--text-hero);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-hero);
+    color: var(--color-ink);
+    margin: var(--space-section) 0 var(--space-4);
+    max-width: var(--measure);
+  }
+  .demo-lede {
+    font-size: var(--text-lg);
+    line-height: var(--leading-lg);
+    letter-spacing: var(--tracking-body);
+    color: var(--color-mute);
+    max-width: var(--measure);
+    margin: 0 0 var(--space-6);
+  }
+  .demo-cta {
+    display: inline-block;
+    min-height: var(--tap-min);
+    line-height: var(--tap-min);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-pill);
+    background: var(--color-accent);
+    color: var(--color-canvas);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    text-decoration: none;
+    transition: opacity var(--motion-base) var(--motion-ease);
+  }
+  .demo-cta:hover { opacity: 0.85; }
+  .demo-section { padding: var(--space-section) 0; border-top: var(--border-width) solid var(--color-hairline); }
+  .demo-h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-h2);
+    line-height: var(--leading-heading);
+    letter-spacing: var(--tracking-heading);
+    color: var(--color-ink);
+    margin: 0 0 var(--space-5);
+  }
+  .demo-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
+  .demo-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-card);
+    padding: var(--space-card);
+  }
+  .demo-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+    letter-spacing: var(--tracking-body);
+    color: var(--color-mute);
+    margin: 0 0 var(--space-3);
+  }
+  .demo-card-text {
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    margin: 0;
+  }
+  .demo-stat {
+    font-family: var(--font-display);
+    font-size: var(--text-h1);
+    line-height: var(--leading-heading);
+    color: var(--color-ink);
+    margin: 0 0 var(--space-2);
+  }
+  .demo-foot {
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+    color: var(--color-mute);
+    padding: var(--space-6) 0 var(--space-section);
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+<main class="demo-wrap">
+  <h1 class="demo-hero">Steel widgets</h1>
+  <p class="demo-lede">One honest sentence about what this product does, for whom, and why it matters — no superlatives, no filler.</p>
+  <a class="demo-cta" href="#cards">See how it works</a>
+
+  <section class="demo-section" id="cards">
+    <h2 class="demo-h2">Three things it does</h2>
+    <div class="demo-cards">
+      <article class="demo-card">
+        <p class="demo-label">01 — FIRST</p>
+        <p class="demo-card-text">The first thing, described in one plain sentence a busy reader can scan.</p>
+      </article>
+      <article class="demo-card">
+        <p class="demo-label">02 — SECOND</p>
+        <p class="demo-card-text">The second thing, described in one plain sentence a busy reader can scan.</p>
+      </article>
+      <article class="demo-card">
+        <p class="demo-label">03 — THIRD</p>
+        <p class="demo-card-text">The third thing, described in one plain sentence a busy reader can scan.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="demo-section">
+    <h2 class="demo-h2">One number that matters</h2>
+    <p class="demo-stat">12,400</p>
+    <p class="demo-lede">What the number counts, in one line, with no hype.</p>
+  </section>
+
+  <p class="demo-foot">Demo footer — one line, nothing more.</p>
+</main>
+</body>
+</html>

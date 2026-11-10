@@ -1,0 +1,166 @@
+/* tokens.css — frontend-kit base tokens (template)
+ *
+ * STARTING POINT, NOT A STANDARD. These values come from the JP seed
+ * ("Claude Design Stack", summarised 2026-11-09 — CLAIMED-via-local-summary;
+ * the Notion primary returns only its first 68 lines, so no value here is
+ * VERIFIED from JP). At step 1 (taste lock) the locked reference overrides
+ * them: replace the values below with the tokens of the chosen DESIGN.md /
+ * reference sites, and prove them with the 1-page demo before building.
+ *
+ * Rules: every visual value in the page comes from this file. A new token is
+ * added here FIRST, then used. No inline style drift. Feedback touches this
+ * file first — never the HTML.
+ *
+ * Fonts are named, not bundled: load Newsreader / IBM Plex Sans /
+ * IBM Plex Mono from your font source, or substitute faces that keep the same
+ * roles (serif display, neutral sans body, mono for data/labels). A
+ * substitution must keep the roles; do not swap a display serif for a
+ * default sans and call it the same system.
+ *
+ * GATE-CLEAN DEFAULTS (verified 2026-11-10 against `impeccable detect`,
+ * engine 0.1.21, pinned launcher — re-verified from the 0.1.19 check: all 12
+ * faces on the list below still flag as primary fonts, Newsreader / IBM Plex
+ * faces stay clean): the previous defaults — Instrument Serif /
+ * Instrument Sans / Geist Mono — are ALL on the detector's overused-font list,
+ * so any build from them started the gate with 3 findings. The faces below
+ * were each checked individually against the same engine and are clean.
+ * Do NOT default back to Inter, Roboto, Fraunces, Geist (any variant),
+ * Instrument Serif/Sans, Montserrat, Open Sans, Arial, Helvetica, Mona Sans,
+ * Plus Jakarta Sans or Space Grotesk — all flagged. (Matching is exact on the
+ * family name: "Instrumental Sans" is clean while "Instrument Sans" is not.)
+ * Display serif is ROMAN only: an italic serif hero headline trips the
+ * detector's italic-serif-display rule at any size (verified: Newsreader and
+ * Spectral italic h1 at 64px both flag; roman does not).
+ *
+ * LEADING RULE (detector quirk, verified 2026-11-10, engine 0.1.21 — re-verified
+ * from the 0.1.19 check: inherited unitless 1.55 on 20px text still measures
+ * 1.24x and flags tight-leading):
+ * set line-height EXPLICITLY on every text element whose font-size differs
+ * from --text-body — never rely on inheritance. The detector resolves an
+ * inherited unitless leading ONCE against the body size (16px x 1.55 =
+ * 24.8px) and reuses that pixel value for larger descendants, so a 20px
+ * element inheriting 1.55 measures as 24.8/20 = 1.24x and FAILS the gate
+ * (need >= 1.3) whenever its text wraps to 2+ lines. An explicit
+ * line-height on the element — literal or var(--leading-*) — resolves
+ * correctly per element and passes at every size. Display sizes (>= 24px)
+ * are exempt from the rule, so the 1.05/1.1 display/heading leading below
+ * is gate-clean — but only because it is explicit AND the sizes are >= 24px.
+ * --leading-lg exists for the 20px roles (lede, stat) precisely so they get
+ * an explicit value instead of inheriting.
+ * Second half of the same quirk (verified the same day): if a BARE element
+ * rule (e.g. `p { line-height: ... }`) AND a class rule both set line-height
+ * on one element, with the element rule FIRST in source order, the detector
+ * again measures the inherited body value (24.8px) — a 20px element fails
+ * at 1.24x even though both rules say 1.55. Class rule first, or only one
+ * of the two setting it, passes. So: NEVER set line-height on a bare
+ * element selector — put it only on classes (and body). A bare `p` rule may
+ * set max-width, margins, etc., but must not set line-height.
+ */
+
+:root {
+  /* --- Type --- */
+  --font-display: "Newsreader", Georgia, serif; /* ROMAN only — italic hero trips italic-serif-display */
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Type scale 12 → 64px (JP seed). Roles: display = hero only; h1–h3 =
+     section headings; body = running text; small = captions/labels. */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-body: 16px;
+  --text-lg: 20px;
+  --text-h3: 24px;
+  --text-h2: 32px;
+  --text-h1: 40px;
+  --text-display: 48px;
+  --text-hero: 64px;
+
+  --leading-body: 1.55;
+  --leading-lg: 1.55; /* explicit leading for the 20px roles (lede, stat) — see LEADING RULE above; never inherit */
+  --leading-heading: 1.1;
+  --leading-display: 1.05;
+
+  /* Tracking: hero -0.03em (JP seed). Tight on display, near-zero on body. */
+  --tracking-hero: -0.03em;
+  --tracking-heading: -0.02em;
+  --tracking-body: -0.011em;
+
+  /* --- Colour (light) --- */
+  --color-canvas: #ffffff;
+  --color-surface: #f6f6f4;
+  --color-ink: #0a0f1e;
+  --color-body: #0a0f1e;
+  --color-mute: #4a4f58; /* 8.23:1 on #ffffff, 7.61:1 on #f6f6f4 (WCAG-computed 2026-11-10). The old #5c6470 (5.98:1) passed WCAG AA 4.5:1 but FAILED this kit's own consistency checker, which demands 7:1 for body text. Do NOT relax below 7:1: the QC probe's locked #888888 measured 3.5:1 and failed the gate. */
+  --color-hairline: #e5e5e0;
+  --color-accent: #0a0f1e; /* no separate accent until the taste lock picks one. When it does: a bright accent (e.g. coral #d97757, white 3.12:1) stays DECORATIVE ONLY — never behind text; text-bearing surfaces use a darkened functional accent that passes WCAG AA (white >=4.5:1). A reference component that fails contrast is not shippable verbatim — see skills/frontend-kit/references/layout-doctrine.md §6. */
+
+  /* --- Space 4 → 96px --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-section: 96px; /* gap between sections */
+  --space-card: 32px; /* padding inside cards */
+
+  /* --- Radius 2 / 6 / 12 / 20px --- */
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-card: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* --- Borders --- */
+  --border-width: 1px; /* hairline rules between sections/header; every build needs it, so it lives here rather than being re-added per build */
+
+  /* --- Motion 120 / 220 / 420ms --- */
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --motion-slow: 420ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* --- Layout --- */
+  /* --max-width 1200px: at 1440px the container margins are exactly
+     120px — the checker's SR-6 band is 64–120px. The old 1120px gave
+     160px margins and FAILED container-edges (probe 2 fix round 1).
+     Layout doctrine (taught, not assumed): see
+     skills/frontend-kit/references/layout-doctrine.md — one .wrap with
+     NO horizontal padding at desktop widths, and 20px side MARGINS (not
+     padding) below the 1240px container breakpoint (F-2/F-9, probe 3:
+     without them text touches the screen edges below 1248px);
+     12-column splits on the shared k=5/6/7 line, overlay nav, section
+     fill >=55% or merge, section gaps 128-288px at desktop widths (a gap
+     over 288px at vw >= 1024 FAILs as a dead band), a visual >=25% per
+     feature section (a photograph, or a [data-ui] UI mock >=120x80px —
+     small inline SVG icons do not count; a text-only mock also needs a
+     small svg in its header bar or it FAILs as a band). */
+  --max-width: 1200px;
+  --measure: 68ch; /* max line length for body text */
+  --tap-min: 44px; /* minimum height/width of interactive elements (buttons, nav links) — the consistency checker FAILs tap targets under 44px; give every CTA at least this height via padding */
+}
+
+/* --- Dark: light canvas/ink swapped, plus placeholder dark values.
+   The placeholders below (#12172a, #9aa3b2, #232a3d) are STARTING-POINT
+   guesses, not verified brand values — the taste lock replaces them with
+   the real dark palette. Verify every dark contrast ratio before shipping. --- */
+[data-theme="dark"] {
+  --color-canvas: #0a0f1e;
+  --color-surface: #12172a;
+  --color-ink: #f6f6f4;
+  --color-body: #f6f6f4;
+  --color-mute: #9aa3b2; /* 7.51:1 on #0a0f1e — verified >= 4.5:1 (WCAG-computed 2026-11-10); still a placeholder palette, verify the whole dark set before shipping */
+  --color-hairline: #232a3d;
+  --color-accent: #f6f6f4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+  }
+}
