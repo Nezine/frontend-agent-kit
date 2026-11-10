@@ -130,7 +130,7 @@ prompt for discussion.
    variation, motion, content per viewport, real-asset effort,
    preservation strictness) or they are decorative labels. No dial value
    may be cited as evidence for any grade or stop decision, and the judge
-   NEVER receives the dials. Copy the dials into `design/PLAN.md`
+   NEVER receives the dials. If the brief wants scroll motion, name the motion patterns by number from `references/style-recipes/scroll-motion.md` (at most two, e.g. "Pattern 2 + Pattern 5") in the Design Read; no pattern named = no motion beyond the fixed header and hover states. Copy the dials into `design/PLAN.md`
    § Design Read. (Adapted from garden-skills `web-design-engineer`
    Step 2b — five dials, categorical here instead of its 1–10 numbers;
    see SOURCES.md for the no-vendoring note.)
@@ -871,7 +871,7 @@ repeated here: one copy, at the top, is the rule.
 | Slop rules, craft floor, `detect` | Impeccable skill + `scripts/gate/detect.mjs` | Re-list the 62 rules from memory |
 | Landing-page checker + finish gate | `taste-reference` (default taste layer, every build) + `scripts/gate/gate.mjs` | Re-implement the checker |
 | Component/system lookup | `ui-ux-pro-max-reference`, `threeui`, GSAP skills | Paste a catalog into this file |
-| Motion | GSAP skills | Hand-roll animation advice |
+| Motion | `references/style-recipes/scroll-motion.md` for patterns / tokens / restraint; GSAP skills for implementation | Hand-roll animation advice; invent a motion pattern from priors |
 | Grading rubric, stop rules, ladder | `references/grader-rubric.md`, `references/stop-rules.md` | Grade by feel |
 | Domain expertise (specialist second opinion) | `references/expert-pack.md` + `experts/<domain>.md` (fresh sub-agent, never the builder) | Ask the builder or the judge to cover a domain outside its confidence |
 | Variant directions (concrete token + structural briefs) | `references/variant-briefs.md` + `references/variant-scoring.md` (blind pick, random order, unpicked-variant retention) | Invent five directions from priors |

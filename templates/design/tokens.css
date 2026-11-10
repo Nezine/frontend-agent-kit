@@ -192,6 +192,31 @@
   --motion-slow: 420ms;
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
+  /* --- Motion: scroll (starter — the taste lock replaces these) ---
+     From references/style-recipes/scroll-motion.md (measured 2026-11-10).
+     Extends the motion tokens above; the values below are the starter. */
+  --motion-reveal-distance: 24px;   /* Pattern 5: max rise on reveal */
+  --motion-reveal-duration: var(--motion-slow); /* 420ms, once */
+  --motion-scroll-range: 300px;     /* Patterns 2–3: scroll distance
+                                       over which a scroll-linked
+                                       transform completes (Anthropic
+                                       hero: ~300px, measured) */
+  --motion-hero-scale: 1.08;        /* Pattern 3: max hero settle scale
+                                       (Scout measured 1.09; Victor's
+                                       1.69 is the outer bound, not the
+                                       default) */
+  --motion-clip-inset-x: 72px;      /* Pattern 2: hero card horizontal
+                                       inset at rest (Anthropic measured
+                                       78.5px at 1440px; 72px = the kit's
+                                       container margin) */
+  --motion-clip-inset-b: 48px;      /* Pattern 2: hero card bottom inset
+                                       at rest (Anthropic measured 47px) */
+  --motion-clip-radius: 4px;        /* Pattern 2: hero card radius at
+                                       rest (Anthropic measured 3.9px) */
+  --motion-parallax-bg: -100px;     /* Pattern 8: background travel per
+                                       viewport of scroll */
+  --motion-parallax-fg: -180px;     /* Pattern 8: foreground travel */
+
   /* --- Layout --- */
   /* --max-width 1200px: at 1440px the container margins are exactly
      120px — the checker's SR-6 band is 64–120px. The old 1120px gave
@@ -237,5 +262,9 @@
     --motion-fast: 0ms;
     --motion-base: 0ms;
     --motion-slow: 0ms;
+    /* Scroll patterns collapse too: builders must skip the
+       --scroll-grow update, hero scale, parallax and Lenis under
+       this query and render the final state — see
+       references/style-recipes/scroll-motion.md restraint rule 7. */
   }
 }

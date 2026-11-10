@@ -64,6 +64,18 @@ replace the lock.
 | `bloomberg-terminal.md` | Bloomberg Terminal | Information architecture | Trading dashboards, dense data screens |
 | `tufte-dataink.md` | Edward Tufte / data-ink | Information architecture | Data narratives, charts that let data speak |
 | `mid-century-modern.md` | Mid-century modern | Editorial poster / graphic | Poster homages, bold graphic landings |
+| `scroll-motion.md` | Scroll motion (Anthropic / Apple / SpaceX + award sites) | Restraint / motion | **Cross-cutting, not an anchor:** the motion direction for any brief — read alongside the anchor recipe, never instead of it |
+
+## The motion recipe is not an anchor
+
+`scroll-motion.md` supplies no visual direction (no palette, no faces,
+no layout) and therefore has no "best for" in the anchor sense. It
+supplies the motion system — 8 named scroll patterns with measured
+technique, motion tokens, and hard restraint rules — that any anchor
+recipe can pair with. Step 1 reads at most one anchor recipe AND the
+motion recipe; the brief names the motion patterns by number
+(e.g. "Pattern 2 + Pattern 5"). A build with no pattern named has no
+motion beyond the fixed header and hover states.
 
 ## How to use a recipe (step 1)
 
