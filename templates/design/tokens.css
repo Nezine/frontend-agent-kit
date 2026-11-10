@@ -57,7 +57,68 @@
  * set max-width, margins, etc., but must not set line-height.
  */
 
+/* TOKEN-NAMING CONTRACT (P19, 2026-11-10)
+ * Sources: Nathan Curtis, "Naming Tokens in Design Systems"
+ * (https://medium.com/eightshapes-llc/naming-tokens-in-design-systems-9e86c7444676,
+ * read 2026-11-10); Material Design 3, "Design tokens"
+ * (https://m3.material.io/foundations/design-tokens/overview/, read 2026-11-10).
+ * Full rules: skills/frontend-kit/SKILL.md, "Token-naming contract (P19)".
+ *
+ * TWO LAYERS (Material ref/sys/comp mapped onto this file):
+ * - Layer 1 — PRIMITIVES (--primitive-*): raw values, VALUE-named
+ *   (category + scale, e.g. --primitive-neutral-600). A rebrand touches
+ *   ONLY this layer. This is Material's `ref` class.
+ * - Layer 2 — SEMANTIC ROLES (--color-*, --text-*, --space-*, ...):
+ *   purpose-named (category/concept/property + modifiers). The ONLY thing
+ *   HTML/CSS references. A role aliases a primitive (var(--primitive-*)),
+ *   never a literal. This is Material's `sys` class.
+ * - Material's `comp` class (per-component tokens) is DELIBERATELY ABSENT:
+ *   components read semantic roles directly. A comp token is promoted only
+ *   when 3+ components share the decision (Curtis's rule of thumb) — never
+ *   for one component.
+ * - FORBIDDEN: component CSS referencing a primitive (var(--primitive-*))
+ *   anywhere outside this file. Enforced by scripts/gate/lint-tokens.mjs
+ *   (step-3 gate FAIL).
+ *
+ * CURTIS LEVELS, in order — namespace → object → base → modifiers:
+ * - Base (backbone): category (color/font/space/...) + concept (action,
+ *   feedback, heading, body) + property (background, text, size).
+ * - Modifiers (appended last, mode last): variant (primary, secondary),
+ *   state (hover, disabled), scale (1, 2, 100, ...), mode (on-dark).
+ * - Object (component / element / component group): only when the decision
+ *   belongs to components, and only promoted to the global file at 3+.
+ * - Namespace (system/theme/domain): this file has none — the `--` prefix
+ *   is the namespace slot. Do not invent one (no `--kit-*` prefix).
+ * - COMPLETENESS: include ONLY the levels needed to describe and
+ *   distinguish the intent. Never dogmatically include every level
+ *   (Curtis: "$esds-shape-tile-corner-radius", not
+ *   "$esds-shape-tile-corner-radius-default-on-light").
+ * - HOMONYMS: never use `type` as a category (typography vs data type)
+ *   and never coin a new `--text-*` name for anything but a font size —
+ *   the kit's --text-* scale is font sizes, locked since v1.
+ * - ON-* PAIRING: every surface role has an on-* text role defined beside
+ *   it (canvas/on-canvas, surface/on-surface, accent/on-accent). The
+ *   pre-contract text names (--color-ink, --color-body, --color-mute) keep
+ *   their locked names; the on-* roles alias them
+ *   (--color-on-canvas: var(--color-ink)). New surface roles get an on-*
+ *   role in the same edit.
+ */
+
 :root {
+  /* --- Layer 1 — Primitives (value-named raw values; Material `ref`) ---
+     A rebrand touches ONLY this block. Nothing outside this file may
+     reference these names (see the naming contract above). The neutral
+     scale is lightness-ordered (0 = white → 1000 = near-black); the
+     numbers are scale positions, not measured lightness values. */
+  --primitive-neutral-0: #ffffff;
+  --primitive-neutral-100: #f6f6f4;
+  --primitive-neutral-300: #e5e5e0;
+  --primitive-neutral-500: #9aa3b2;
+  --primitive-neutral-600: #4a4f58;
+  --primitive-neutral-800: #232a3d;
+  --primitive-neutral-900: #12172a;
+  --primitive-neutral-1000: #0a0f1e;
+
   /* --- Type --- */
   --font-display: "Newsreader", Georgia, serif; /* ROMAN only — italic hero trips italic-serif-display */
   --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -85,14 +146,22 @@
   --tracking-heading: -0.02em;
   --tracking-body: -0.011em;
 
-  /* --- Colour (light) --- */
-  --color-canvas: #ffffff;
-  --color-surface: #f6f6f4;
-  --color-ink: #0a0f1e;
-  --color-body: #0a0f1e;
-  --color-mute: #4a4f58; /* 8.23:1 on #ffffff, 7.61:1 on #f6f6f4 (WCAG-computed 2026-11-10). The old #5c6470 (5.98:1) passed WCAG AA 4.5:1 but FAILED this kit's own consistency checker, which demands 7:1 for body text. Do NOT relax below 7:1: the QC probe's locked #888888 measured 3.5:1 and failed the gate. */
-  --color-hairline: #e5e5e0;
-  --color-accent: #0a0f1e; /* no separate accent until the taste lock picks one. When it does: a bright accent (e.g. coral #d97757, white 3.12:1) stays DECORATIVE ONLY — never behind text; text-bearing surfaces use a darkened functional accent that passes WCAG AA (white >=4.5:1). A reference component that fails contrast is not shippable verbatim — see skills/frontend-kit/references/layout-doctrine.md §6. */
+  /* --- Layer 2 — Colour roles (light; semantic, Material `sys`) ---
+     Every role aliases a Layer 1 primitive — no literals here, so a
+     palette refresh touches primitives only. */
+  --color-canvas: var(--primitive-neutral-0);
+  --color-surface: var(--primitive-neutral-100);
+  --color-ink: var(--primitive-neutral-1000);
+  --color-body: var(--primitive-neutral-1000);
+  --color-mute: var(--primitive-neutral-600); /* 8.23:1 on #ffffff, 7.61:1 on #f6f6f4 (WCAG-computed 2026-11-10). The old #5c6470 (5.98:1) passed WCAG AA 4.5:1 but FAILED this kit's own consistency checker, which demands 7:1 for body text. Do NOT relax below 7:1: the QC probe's locked #888888 measured 3.5:1 and failed the gate. */
+  --color-hairline: var(--primitive-neutral-300);
+  --color-accent: var(--primitive-neutral-1000); /* no separate accent until the taste lock picks one. When it does: a bright accent (e.g. coral #d97757, white 3.12:1) stays DECORATIVE ONLY — never behind text; text-bearing surfaces use a darkened functional accent that passes WCAG AA (white >=4.5:1). A reference component that fails contrast is not shippable verbatim — see skills/frontend-kit/references/layout-doctrine.md §6. */
+  /* on-* text roles: the text colour for each surface above. on-canvas /
+     on-surface alias --color-ink (same value in this seed — split them
+     when the surface darkens); on-accent is the text on the accent fill. */
+  --color-on-canvas: var(--color-ink);
+  --color-on-surface: var(--color-ink);
+  --color-on-accent: var(--primitive-neutral-0);
 
   /* --- Space 4 → 96px --- */
   --space-1: 4px;
@@ -143,18 +212,24 @@
   --tap-min: 44px; /* minimum height/width of interactive elements (buttons, nav links) — the consistency checker FAILs tap targets under 44px; give every CTA at least this height via padding */
 }
 
-/* --- Dark: light canvas/ink swapped, plus placeholder dark values.
-   The placeholders below (#12172a, #9aa3b2, #232a3d) are STARTING-POINT
-   guesses, not verified brand values — the taste lock replaces them with
-   the real dark palette. Verify every dark contrast ratio before shipping. --- */
+/* Dark theme — sparse overrides (P17): ONLY the roles whose values change
+   from light are listed here (diffs, not a full copy — Primer's `overrides`
+   pattern). Every override still aliases a Layer 1 primitive, and the
+   on-* roles follow the same pairing as light. The dark values
+   (#12172a, #9aa3b2, #232a3d) are STARTING-POINT guesses, not verified
+   brand values — the taste lock replaces them with the real dark palette.
+   Verify every dark contrast ratio before shipping. */
 [data-theme="dark"] {
-  --color-canvas: #0a0f1e;
-  --color-surface: #12172a;
-  --color-ink: #f6f6f4;
-  --color-body: #f6f6f4;
-  --color-mute: #9aa3b2; /* 7.51:1 on #0a0f1e — verified >= 4.5:1 (WCAG-computed 2026-11-10); still a placeholder palette, verify the whole dark set before shipping */
-  --color-hairline: #232a3d;
-  --color-accent: #f6f6f4;
+  --color-canvas: var(--primitive-neutral-1000);
+  --color-surface: var(--primitive-neutral-900);
+  --color-ink: var(--primitive-neutral-100);
+  --color-body: var(--primitive-neutral-100);
+  --color-mute: var(--primitive-neutral-500); /* 7.51:1 on #0a0f1e — verified >= 4.5:1 (WCAG-computed 2026-11-10); still a placeholder palette, verify the whole dark set before shipping */
+  --color-hairline: var(--primitive-neutral-800);
+  --color-accent: var(--primitive-neutral-100);
+  --color-on-canvas: var(--color-ink);
+  --color-on-surface: var(--color-ink);
+  --color-on-accent: var(--primitive-neutral-1000);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -6,9 +6,10 @@
 |---|---|---|
 | `detect.mjs` | Kit-authored | Wrapper around `impeccable detect` (resolves `impeccable` on PATH, else the installed launcher under `~/.agents/skills/impeccable/scripts/`; NEVER downloads — no detector found exits 3 with the install command, probe G-9b); prints detector output unabridged, exits with the detector's exit code (0 clean, 2 findings, 1 unscannable). Warns up front on a directory target: directory mode is regex-only, findings undercount (N7) |
 | `gate.mjs` | Kit-authored | Runs `copy-lint.mjs` + `consistency.mjs --quick` on one LOCAL `.html` file and prints every finding in full; exit 0 green, 1 FAIL, 2 usage/checker error. URLs are rejected (copy-lint reads files only — N3); `--out <dir>` redirects the consistency crops/report (default: a fresh folder under the OS temp dir, never inside the project — probe G-7); `--profile` is the Chrome profile dir, not output. `--kind <software\|service\|product\|place>` is forwarded to consistency as `--page` and decides which checks fire (notably `product-shown`, physical products only) |
-| `gate.sh` | Kit-authored | The deterministic gate, LEG 1 of 2 (leg 2 is `gate.mjs`; a gate pass needs BOTH legs green — see "Gate scope" below). Taste lock + per-file `impeccable detect` + static checks (viewport, no file:// links, local refs resolve, per-section visual-marker proxy) + anti-cliché seed checks (§3c, P1) + converge check (§5, P2, when `design/PLAN.md` exists) + optional validators. Excludes `design/variants/`, `design/demo.html`, `design/v0.html`, and `.taste-skill/` from project-dir scans. Exit 0 pass, 2 findings/fail, 1 usage error |
+| `gate.sh` | Kit-authored | The deterministic gate, LEG 1 of 2 (leg 2 is `gate.mjs`; a gate pass needs BOTH legs green — see "Gate scope" below). Taste lock + per-file `impeccable detect` + static checks (viewport, no file:// links, local refs resolve, per-section visual-marker proxy) + anti-cliché seed checks (§3c, P1) + token-naming lint (§3d, P17) + converge check (§5, P2, when `design/PLAN.md` exists) + optional validators. Excludes `design/variants/`, `design/demo.html`, `design/v0.html`, and `.taste-skill/` from project-dir scans. Exit 0 pass, 2 findings/fail, 1 usage error |
 | `anti-cliche.mjs` | Kit-authored (P1) | Script-checkable anti-cliché seed checks: AC-1 (purple-pink-blue gradient) and AC-2 (emoji as icon) over the built pages + their local CSS. SEEDED from garden-skills, not observed failures; waived only by an explicit `Anti-cliche allow: AC-<n>` hard rule in `design/TASTE.md`. Exit 0 clean (or only waived), 1 findings, 2 usage error. Node, no deps |
-| `converge-check.mjs` | Kit-authored (P2) | Script half of the converge check: every id in PLAN.md's section inventory exists in the built HTML; every non-N/A cell of the screen × state matrix names a file that exists or an `#id` that exists. Uncheckable cells are listed, never silently passed. Exit 0 converged, 1 missing (FAIL — blocks the grade and the human gate), 2 usage error. Node, no deps |
+| `lint-tokens.mjs` | Kit-authored (P17) | Token-naming lint for the P19 naming contract: T1 kebab-case token names, T2 no primitive references in component CSS, T3 on-* text role for every `--color-*` used as a background, T4 colour roles alias primitives, never literals. Runs on the built pages + `design/tokens.css`. Exit 0 clean, 1 findings (gate FAIL), 2 usage error. Node, no deps |
+| `converge-check.mjs` | Kit-authored (P2) | Script half of the converge check: every id in PLAN.md's section inventory exists in the built HTML; every non-N/A cell of the screen × state matrix names a file that exists or an `#id` that exists. Uncheckable cells are listed, never silently passed. Findings carry their PLAN.md row as `<plan>:<line>:` (M3). Exit 0 converged, 1 missing (FAIL — blocks the grade and the human gate), 2 usage error. Node, no deps |
 | `consistency.mjs` | Vendored, taste-skill 2.5.1, + three documented kit patches | Headless-Chrome checker: overflow / collide / tap-size, section height, one-section-per-screen, rhythm, and more. 11,485 lines. Node 22+ (built-in WebSocket) + system Chrome, no npm deps |
 | `copy-lint.mjs` | Vendored verbatim, taste-skill 2.5.1 | Static copy linter: residue, old slop words, stock phrases, device budgets. 463 lines. Node, no browser, <1s. Exit 0 no FAIL, 1 FAIL, 2 usage/unreadable |
 
@@ -62,6 +63,31 @@ The kit's `gate.mjs` is a fresh, thin wrapper for the single-run gate the
 orchestrator needs. If a project installs the full taste-skill 2.5.1 tree,
 its `gate.mjs` remains the finish gate; this kit's `gate.mjs` is the
 portable equivalent for hosts that only have the kit.
+
+## Finding format (M3, 2026-11-10)
+
+Every gate finding that knows its location prints it as
+`<file>:<line>: <message>` — the line is read from the file, never
+guessed. A finding about a whole file (no single line) prints as
+`<file>: <message>`, with no invented line number.
+- `gate.sh` §3 (static checks): a missing local reference fails as
+  `<page>:<line>: referenced file missing: <ref>` — the line is the
+  line of the `src`/`href` attribute in the page.
+- `converge-check.mjs`: every FAIL carries its PLAN.md row as
+  `<plan>:<line>:` — the 1-based line of the inventory/matrix row the
+  finding is about (a dropped section points at its inventory row; a
+  bad matrix cell points at its matrix row).
+- `anti-cliche.mjs` (P1): already printed `<file>:<line>` — unchanged.
+- `lint-tokens.mjs` (P17): prints `<file>:<line>` for every finding
+  (token definition lines in `design/tokens.css`, declaration lines in
+  the built pages).
+- NOT converted, deliberately: `copy-lint.mjs` is vendored verbatim
+  (byte-identical to taste-skill 2.5.1 — editing it breaks provenance,
+  and its findings are computed on joined block text, so no line
+  numbers exist in its data); `consistency.mjs` is vendored + three
+  documented patches (a format change there is out of scope); `detect.mjs`
+  prints the upstream detector's output unabridged, which is not the
+  kit's to reformat.
 
 ## Gate scope (`gate.sh` — F6, F15, N7; fixed 2026-11-10)
 

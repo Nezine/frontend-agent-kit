@@ -42,7 +42,10 @@
 // Exit codes: 0 = converged; 1 = a planned section/state is missing
 // (FAIL — blocks the grade and the human gate); 2 = usage error (plan or
 // page missing/unreadable, or no section inventory found in the plan).
-// Findings are printed in full, never summarised. Node, no dependencies.
+// Findings are printed in full, never summarised. Every finding carries
+// its PLAN.md location as `<plan>:<line>:` (M3) — the line is the 1-based
+// line of the inventory/matrix row the finding is about, so the fix
+// starts at the named row, not at a grep. Node, no dependencies.
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -82,8 +85,10 @@ const planText = readFileSync(planAbs, 'utf8');
 const pageText = readFileSync(pageAbs, 'utf8');
 
 // --- parse: lines of the table under a heading --------------------------------
-// Returns the table rows (arrays of cell strings) under the first heading
-// whose text matches `headingRe`, or null when no such heading exists.
+// Returns the table rows under the first heading whose text matches
+// `headingRe`, or null when no such heading exists. Each row is
+// `{ cells, line }`: cells = array of cell strings, line = the row's
+// 1-based line number in PLAN.md (M3 — every finding names its row).
 function tableUnder(headingRe) {
   const lines = planText.split('\n');
   let start = -1;
@@ -101,7 +106,7 @@ function tableUnder(headingRe) {
     const cells = line.split('|').slice(1, -1).map((c) => c.trim().replace(/^`|`$/g, '').trim());
     if (cells.length === 0) continue;
     if (/^[\s:-]+$/.test(cells.join(''))) continue; // separator row
-    rows.push(cells);
+    rows.push({ cells, line: i + 1 });
   }
   return rows;
 }
@@ -112,9 +117,10 @@ if (!inventoryRows || inventoryRows.length === 0) {
 }
 // Drop the header row (first cell names the column, e.g. `id`).
 const inventory = inventoryRows
-  .map((cells) => cells[0])
-  .filter((id) => id && !/^(id|section(\s+id)?)$/i.test(id));
-const sectionIds = [...new Set(inventory)];
+  .map((r) => ({ id: r.cells[0], line: r.line }))
+  .filter((e) => e.id && !/^(id|section(\s+id)?)$/i.test(e.id));
+const sectionIds = [...new Set(inventory.map((e) => e.id))];
+const inventoryLine = new Map(inventory.map((e) => [e.id, e.line]));
 if (sectionIds.length === 0) {
   usage(`section inventory in ${planPath} has no ids — fill the table before the build`);
 }
@@ -130,7 +136,7 @@ const ok = (msg) => console.log(`CONVERGE OK: ${msg}`);
 // --- section presence -------------------------------------------------------
 for (const id of sectionIds) {
   if (htmlIds.has(id)) ok(`section '${id}' present in ${path.basename(pageAbs)}`);
-  else fail(`section '${id}' is in PLAN.md but has no matching id in ${pageAbs} — the build dropped a planned section`);
+  else fail(`${planPath}:${inventoryLine.get(id)}: section '${id}' is in PLAN.md but has no matching id in ${pageAbs} — the build dropped a planned section`);
 }
 
 // --- screen x state matrix ---------------------------------------------------
@@ -138,32 +144,32 @@ const matrixRows = tableUnder(/screen.*state.*matrix/i);
 if (!matrixRows || matrixRows.length === 0) {
   console.log(`CONVERGE NOTE: no '## Screen x state matrix' table in ${planPath} — state evidence is unchecked (add the matrix; P5 owns the state rules)`);
 } else {
-  const header = matrixRows[0];
+  const header = matrixRows[0].cells;
   const states = header.slice(1);
   for (const row of matrixRows.slice(1)) {
-    const section = row[0];
+    const section = row.cells[0];
     if (!section) continue;
     if (!sectionIds.includes(section)) {
-      fail(`matrix row '${section}' has no entry in the section inventory — the plan is self-inconsistent (add the section to the inventory or drop the row)`);
+      fail(`${planPath}:${row.line}: matrix row '${section}' has no entry in the section inventory — the plan is self-inconsistent (add the section to the inventory or drop the row)`);
       continue;
     }
-    for (let c = 1; c < row.length; c++) {
+    for (let c = 1; c < row.cells.length; c++) {
       const state = states[c - 1] || `column ${c}`;
-      const cell = (row[c] || '').trim();
+      const cell = (row.cells[c] || '').trim();
       if (!cell || /^n\/a$/i.test(cell) || cell === '—' || cell === '-') continue; // state does not apply
       if (cell.startsWith('#')) {
         const id = cell.slice(1);
         if (htmlIds.has(id)) ok(`state '${state}' for '${section}' present as #${id} in ${path.basename(pageAbs)}`);
-        else fail(`state '${state}' for '${section}' names #${id}, which has no matching id in ${pageAbs}`);
+        else fail(`${planPath}:${row.line}: state '${state}' for '${section}' names #${id}, which has no matching id in ${pageAbs}`);
       } else if (cell.includes('/') || /\.(png|jpe?g|webp|html|md)$/i.test(cell)) {
         const evidence = path.resolve(projectDir, cell);
         if (existsSync(evidence)) ok(`state '${state}' for '${section}' evidenced by ${cell}`);
-        else fail(`state '${state}' for '${section}' names evidence file ${cell}, which does not exist under ${projectDir}`);
+        else fail(`${planPath}:${row.line}: state '${state}' for '${section}' names evidence file ${cell}, which does not exist under ${projectDir}`);
       } else {
         // Free text (a story, a description): no mechanical check exists.
         // Listed, never silently passed; the judge decides in step 4.
         uncheckable += 1;
-        console.log(`CONVERGE UNCHECKABLE: state '${state}' for '${section}' — '${cell}' (no file or id to check; grader's call in step 4)`);
+        console.log(`CONVERGE UNCHECKABLE: ${planPath}:${row.line}: state '${state}' for '${section}' — '${cell}' (no file or id to check; grader's call in step 4)`);
       }
     }
   }

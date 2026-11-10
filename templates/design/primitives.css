@@ -1,0 +1,38 @@
+/* primitives.css — the primitive layer (Layer 1) as a standalone template.
+ *
+ * DO NOT link this file alongside templates/design/tokens.css: tokens.css
+ * already contains this exact layer inline (its "Layer 1 — Primitives"
+ * block). Use this file ONLY when the project splits the layers into
+ * separate files — link primitives.css BEFORE tokens.css, then DELETE the
+ * Layer 1 block from tokens.css. Exactly ONE definition per primitive per
+ * project, never two (a rebrand must touch one place, or the layers drift).
+ *
+ * WHAT A PRIMITIVE IS (P19): a raw value, VALUE-named — category + scale
+ * (e.g. --primitive-neutral-600). No purpose, no role, no component name.
+ * Primitives are Material's `ref` class; the semantic roles in tokens.css
+ * are the `sys` class and are the ONLY thing HTML/CSS references.
+ *
+ * NAMING (Nathan Curtis, "Naming Tokens in Design Systems",
+ * https://medium.com/eightshapes-llc/naming-tokens-in-design-systems-9e86c7444676,
+ * read 2026-11-10): the scale is lightness-ordered (0 = white → 1000 =
+ * near-black); the numbers are scale positions, not measured lightness.
+ * Add new primitives by extending the scale (e.g. --primitive-neutral-200),
+ * never by coining a purpose name (--primitive-header-blue is a role, not
+ * a primitive — it belongs in Layer 2 as --color-...).
+ *
+ * The values below are the kit's seed palette (light #ffffff / #f6f6f4 /
+ * #0a0f1e; see tokens.css for the WCAG notes on the muted roles). A
+ * rebrand replaces the VALUES here; the semantic roles in tokens.css keep
+ * working unchanged.
+ */
+
+:root {
+  --primitive-neutral-0: #ffffff;
+  --primitive-neutral-100: #f6f6f4;
+  --primitive-neutral-300: #e5e5e0;
+  --primitive-neutral-500: #9aa3b2;
+  --primitive-neutral-600: #4a4f58;
+  --primitive-neutral-800: #232a3d;
+  --primitive-neutral-900: #12172a;
+  --primitive-neutral-1000: #0a0f1e;
+}

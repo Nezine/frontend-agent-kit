@@ -48,7 +48,10 @@
 #      still has to resolve — see the F-1 note in gate.mjs's header).
 #      References are extracted in all three
 #      quoting forms — double-quoted, single-quoted, and unquoted
-#      (src='x.png', src=x.png) — not double-quoted only (H8). design/variants/
+#      (src='x.png', src=x.png) — not double-quoted only (H8). A missing
+#      reference fails with its exact line (`<file>:<line>: referenced
+#      file missing: <ref>`, M3) — the line is the line of the src/href
+#      attribute in the page. design/variants/
 #      is excluded from the build-output scan (same reason as step 2) — unless
 #      the target IS a variants dir (an explicit per-variant gate).
 #      design/demo.html is likewise excluded from project-dir scans (it is
@@ -79,6 +82,15 @@
 #      when node is available; skipped with a warning otherwise (same
 #      pattern as the optional validators below). Never on the demo or
 #      v0 single-file targets (a token proof / a skeleton, not a page).
+#   3d. Token-naming lint (P17, 2026-11-10): scripts/gate/
+#      lint-tokens.mjs on the built pages + design/tokens.css — T1
+#      kebab-case token names, T2 no primitive references in component
+#      CSS, T3 on-* text role for every --color-* used as a background,
+#      T4 colour roles alias primitives, never literals. A finding
+#      fails the gate. Runs when node is available and design/tokens.css
+#      exists; skipped with a note otherwise (the verify.sh fixture's
+#      tokens are not --color-* roles, so it stays green). Runs on the
+#      demo target too — the template must pass its own lint.
 #   4. Optional validators when installed: html-validate, pa11y
 #      (--standard WCAG2AA). Absent = skipped with a warning, never fatal.
 #   5. Converge check (P2, 2026-11-10): scripts/gate/converge-check.mjs
@@ -266,7 +278,7 @@ for f in "${html_files[@]}"; do
   grep -qi '<meta[^>]*name=["'"'"']viewport["'"'"']' "$f" || fail "$f: missing viewport meta"
   if grep -qi 'file://' "$f"; then fail "$f: contains file:// link (serve over http, never file://)"; fi
   dir="$(dirname -- "$f")"
-  while IFS= read -r ref; do
+  while IFS=: read -r lineno ref; do
     [[ -z "$ref" ]] && continue
     # Non-file schemes are NOT file references and are exempt from the
     # existence check (F-1, probe 3): mailto:, tel:, javascript:, data:,
@@ -274,8 +286,8 @@ for f in "${html_files[@]}"; do
     # scheme not in that list, e.g. a typo'd scheme) must resolve to a
     # file. The exemption is case-insensitive (MAILTO: is a scheme too).
     ref="${ref%%\?*}"; ref="${ref%%\#*}"
-    [[ -e "$dir/$ref" ]] || fail "$f: referenced file missing: $ref"
-  done < <(grep -ioE "(src|href)=('[^']*'|\"[^\"]*\"|[^'\"[:space:]>]+)" "$f" 2>/dev/null | sed -E -e 's/^[a-zA-Z]+=//' -e "s/^['\"]//" -e "s/['\"]$//" | grep -viE '^(https?:|data:|mailto:|tel:|javascript:|#)' || true)
+    [[ -e "$dir/$ref" ]] || fail "$f:$lineno: referenced file missing: $ref"
+  done < <(grep -ionE "(src|href)=('[^']*'|\"[^\"]*\"|[^'\"[:space:]>]+)" "$f" 2>/dev/null | sed -E -e 's/^([0-9]+):[a-zA-Z]+=/\1:/' -e "s/^([0-9]+):['\"]/\1:/" -e "s/['\"]$//" | grep -viE '^[0-9]+:(https?:|data:|mailto:|tel:|javascript:|#)' || true)
 done
 
 # --- 3b. visual-marker check (probe 2 tightening) ---------------------------
@@ -325,6 +337,39 @@ else
     fi
   else
     note "anti-cliché checks skipped: scripts/gate/anti-cliche.mjs missing from the kit install"
+  fi
+fi
+
+# --- 3d. token-naming lint (P17) --------------------------------------------
+# scripts/gate/lint-tokens.mjs — T1 kebab-case names, T2 no primitive
+# references in component CSS, T3 on-* pairing for backgrounds, T4
+# colour roles alias primitives (see the script header for the full
+# rule list). BLOCKING: a finding fails the gate. Runs when node is
+# available and design/tokens.css exists under the project dir;
+# absence skips with a note, never a failure (a build without tokens
+# cannot be linted — and the §1 taste-lock check already fails such a
+# build). Unlike 3c it also runs on the demo single-file target: the
+# demo is the token proof, and the template must pass its own lint.
+# Skipped with a warning when node is absent.
+if [[ ! -f "$project_dir/design/tokens.css" ]]; then
+  note "token-naming lint skipped: no design/tokens.css under $project_dir"
+elif [[ "${#html_files[@]}" -eq 0 ]]; then
+  note "token-naming lint skipped: no .html files under $target"
+elif ! command -v node >/dev/null 2>&1; then
+  note "token-naming lint skipped: node not found on PATH — run scripts/gate/lint-tokens.mjs by hand (a skipped check is a degradation, not a pass)"
+else
+  gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$gate_dir/lint-tokens.mjs" ]]; then
+    if node "$gate_dir/lint-tokens.mjs" "${html_files[@]}" --project "$project_dir" > "$detect_log" 2>&1; then
+      note "token-naming lint: clean ($(tail -1 "$detect_log"))"
+    else
+      code=$?
+      if [[ "$code" == 1 ]]; then fail "token-naming lint found a naming violation (see above — kebab-case, primitive use, missing on-* role, or literal colour role; fix in design/tokens.css first): $(grep -m1 'LINT-TOKENS FAIL' "$detect_log" | tr '\n' ' ')";
+      else fail "token-naming lint could not run (exit $code) — see $detect_log"; fi
+      cat "$detect_log"
+    fi
+  else
+    note "token-naming lint skipped: scripts/gate/lint-tokens.mjs missing from the kit install"
   fi
 fi
 

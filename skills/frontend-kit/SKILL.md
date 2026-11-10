@@ -71,7 +71,9 @@ prompt for discussion.
 1. Create the taste folder from the kit template. Copy
    `templates/design/` into the project as `design/`:
    `design/TASTE.md`, `design/tokens.css`, `design/demo.html` (the 1-page
-   taste-lock demo, step 1.3),
+   taste-lock demo, step 1.3), `design/primitives.css` (the primitive-layer
+   template — optional split-out, NOT linked by default; see the
+   token-naming contract below),
    `design/references/DESIGN.md/` (Vercel, Claude, Linear — each labelled
    third-party analysis, not official), plus empty `design/references/`,
    `design/screenshots/`, and `design/variants/` folders. The plan
@@ -131,8 +133,13 @@ prompt for discussion.
    Step 2b — five dials, categorical here instead of its 1–10 numbers;
    see SOURCES.md for the no-vendoring note.)
 3. Write `design/tokens.css`: type scale, colour roles, space scale, radius,
-   motion. Start from the template's values only as a starting point; the
-   locked reference overrides them.
+   motion. Name every token per the token-naming contract below (P19):
+   two layers, primitives value-named, semantic roles only in HTML/CSS,
+   on-* pairing for every surface. Start from the template's values only
+   as a starting point; the locked reference overrides them. If the
+   project has a Figma file with Variables, the export is an optional
+   step-1 input — see "Figma input" below; it replaces the handwriting
+   of the token values, not the taste judgement.
 4. Build a 1-page demo proving the tokens work. Use the demo file at
    `templates/design/demo.html` (copied into the project as
    `design/demo.html` by step 0) — the same content every time so tokens
@@ -212,6 +219,222 @@ prompt for discussion.
    summary at the top of `design/TASTE.md` is filled from the brief the
    generator emits (see "Round briefs + per-role context budgets"
    below), never hand-written.
+
+## Token-naming contract (P19 — read before writing tokens.css)
+
+Names survive palette refreshes; values don't. A token's name must say
+what the value is FOR, never what it IS — so a rebrand touches one layer
+and every role keeps working. Sources (read 2026-11-10): Nathan Curtis,
+"Naming Tokens in Design Systems"
+(https://medium.com/eightshapes-llc/naming-tokens-in-design-systems-9e86c7444676);
+Material Design 3, "Design tokens"
+(https://m3.material.io/foundations/design-tokens/overview/).
+
+**Two layers (Material ref/sys/comp mapped onto the kit).**
+- Layer 1 — primitives (`--primitive-*`): raw values, VALUE-named
+  (category + scale, e.g. `--primitive-neutral-600`). A rebrand touches
+  ONLY this layer. This is Material's `ref` class. Lives in
+  `design/tokens.css` (Layer 1 block) or, split out, in
+  `design/primitives.css` — exactly ONE definition per primitive per
+  project, never both.
+- Layer 2 — semantic roles (`--color-*`, `--text-*`, `--space-*`,
+  `--radius-*`, `--motion-*`, `--font-*`, `--leading-*`, `--tracking-*`,
+  `--border-*`): purpose-named, the ONLY thing HTML/CSS references. A
+  role aliases a primitive (`var(--primitive-...)`), never a literal.
+  This is Material's `sys` class.
+- Material's `comp` class (per-component tokens) is deliberately absent:
+  components read semantic roles directly. Promote a comp token only
+  when 3+ components share the decision (Curtis's rule of thumb) — never
+  for one component, never pre-emptively ("don't globalize decisions
+  prematurely").
+- FORBIDDEN: component CSS referencing a primitive (`var(--primitive-*)`)
+  anywhere outside `tokens.css`/`primitives.css`. Enforced by
+  `scripts/gate/lint-tokens.mjs` (step-3 gate FAIL).
+
+**Curtis levels, in order — namespace → object → base → modifiers.**
+- Base (backbone, always present): category (`color`, `font`, `space`,
+  `radius`, `motion`) + concept (`action`, `feedback`, `heading`,
+  `body`, `card`) + property (`background`, `text`, `size`, `radius`).
+- Modifiers (appended last, mode last): variant (`primary`, `secondary`),
+  state (`hover`, `disabled`), scale (`1`, `2`, `100`, `xs`, `lg`), mode
+  (`on-dark`).
+- Object (component / nested element / component group): only when the
+  decision belongs to components, subordinate to the namespace and
+  preceding base/modifiers (e.g. `--color-card-surface`).
+- Namespace (system/theme/domain): this kit has none — the `--` prefix is
+  the namespace slot. Do not invent one (no `--kit-*` prefix).
+- COMPLETENESS: include ONLY the levels needed to describe and
+  distinguish the intent. Never dogmatically include every level —
+  Curtis: `$esds-shape-tile-corner-radius`, not
+  `$esds-shape-tile-corner-radius-default-on-light`.
+- HOMONYMS: never use `type` as a category (typography vs data type).
+  Never coin a new `--text-*` name for anything but a font size — the
+  kit's `--text-*` scale is font sizes, locked since v1 (a `text` homonym:
+  content vs typography vs property).
+- MODE vs THEME: a mode is a context value (light/dark); a theme is the
+  whole set. Name modes explicitly (`on-dark`); never rely on an implied
+  light default — the dark block in `tokens.css` is sparse overrides
+  (diffs only, see the Figma input section).
+
+**On-* pairing.** Every surface role has an `on-*` text role defined
+beside it in the same edit (`--color-canvas` → `--color-on-canvas`,
+`--color-surface` → `--color-on-surface`, `--color-accent` →
+`--color-on-accent`). The template's pre-contract text names
+(`--color-ink`, `--color-body`, `--color-mute`) are the on-canvas roles
+under their locked names — the on-* roles alias them
+(`--color-on-canvas: var(--color-ink)`). A surface without its on-*
+role fails `lint-tokens.mjs`. Text on a surface always uses the paired
+on-* role, never a bare primitive and never another surface's text role.
+
+**Examples.** Good: `--color-feedback-error` (category color, concept
+feedback, property implied), `--color-button-primary-hover-background`
+(variant + state modifiers), `--space-section` (category + concept).
+Bad: `--color-red-500` as a role (that's a primitive's name, in the
+wrong layer), `--type-heading` (`type` homonym), `--color-button`
+(every level below the concept missing — which button, which property?),
+`--text-heading-color` (mixes the locked font-size scale with a colour
+role — use `--color-heading`).
+
+**What the linter enforces (mechanical) vs what you judge.** `lint-tokens.mjs`
+checks kebab-case names, the primitive/component-CSS separation, and the
+on-* pairing — the parts a regex can prove. Homonyms, completeness, and
+the 3-component promotion rule are judgement calls: apply them when you
+write the name, and say so in the round log when you coin a new one.
+
+## Figma input — optional step-1 module (P15/P17/P18)
+
+Applies when the brief's Figma file has Variables (a Tokens collection).
+The pull happens in step 1, between "pick the reference direction" and
+"write tokens.css" — it replaces the HANDWRITING of the token values,
+not the taste judgement. The agent still chooses which references and
+which tokens survive (a Figma file with 400 variables must not become a
+400-line tokens.css), and still builds the demo proving the tokens work.
+
+**Human-gated export.** Figma is human-gated only (AGENTS.md §4): the
+human exports from Variables view (Export mode(s) → DTCG JSON, one file
+per mode) and hands the files to the agent. The agent reads the files;
+it never calls the Variables REST API (Enterprise-only — 403 otherwise)
+and never promises MCP live pull (`get_variable_defs` is
+selection-scoped, remote-vs-desktop unresolved — experimental, test at
+build time, not in the kit).
+
+**Input contract — DTCG 2025.10 (P15).** Pin: SOURCES.md, "Design Tokens
+Format Module 2025.10", Final Community Group Report 2025-10-28,
+https://www.designtokens.org/TR/2025.10/format/ (read 2026-11-10).
+Never cite the `tr.designtokens.org` draft URL. The spec is "considered
+stable" and "intended for implementation"; it is NOT a W3C Standard and
+not on Standards Track.
+- Parse OBJECT-VALUED tokens: color (`{colorSpace, components, alpha,
+  hex}`), dimension (`{value, unit: px|rem}`), duration (`{value, unit:
+  ms|s}`), fontWeight (1–1000 or named alias), fontFamily (string or
+  array), cubicBezier ([P1x, P1y, P2x, P2y]), number (a JSON number).
+  `$value` is the only required property; a token's type is its `$type`,
+  or the closest parent group's `$type` (inherited).
+- REJECT type-less tokens — NEVER GUESS. A token with no `$type` and no
+  inherited group `$type` is a hard error ("Tools MUST NOT attempt to
+  guess the type"). No default, no inference from the value shape.
+- ERROR LOUDLY (fail the step, do not continue with a partial token set)
+  on: circular references (detect BEFORE resolution — "Tools MUST detect
+  and report this as an error affecting all tokens in the circular
+  chain"), dangling/unresolvable references, type mismatches (a reference
+  whose target type differs from the expected type), and post-normalisation
+  name collisions (two Figma names that normalise to the same token name —
+  Figma import silently drops duplicates; the converter must not).
+- WARN (continue, record in the round log) on `$deprecated` tokens —
+  include them, flagged, so the human can see what is dying; never
+  silently drop them.
+- STRICT/LEGACY SPLIT. The strict path above is the default. Legacy
+  string shapes (plain `"#ffffff"` / `"16px"` strings, Tokens Studio
+  legacy export) are accepted ONLY as an explicit fallback: the file must
+  be marked legacy (per file, noted in the round log), the converter
+  prints a warning per legacy token, and a legacy token is never silently
+  promoted to strict. If a file mixes strict and legacy shapes, the legacy
+  tokens are listed in the log and the strict tokens are unaffected. The
+  legacy path is explicit, warned, and opt-in per file — never silent.
+  That is how the never-guess rule and the legacy fallback coexist.
+- Output: `design/tokens.css` in the kit's two-layer shape (Layer 1
+  primitives from the Figma raw values, Layer 2 semantic roles from the
+  Figma roles/aliases, named per the token-naming contract above).
+  Aliases in the Figma file become `var(--...)` references in Layer 2.
+- Plan gate: Figma Starter has ONE variable mode; modes (light/dark)
+  need Pro+. Never tell a Starter user to "just add a Dark mode"
+  (verified 2026-11-10, see `research/figma-integration/SYNTHESIS.md`).
+
+**Converter status — honest.** The converter script
+(`scripts/figma-tokens-to-css.mjs`) is NOT built yet (recorded in
+`coord/BOARD.md` — do not claim it exists). Until it lands, the agent
+applies this contract BY HAND when reading an exported JSON file: same
+rules, same errors, same warnings, recorded in the round log. The
+contract is the spec the converter will implement; the spec is done, the
+script is not.
+
+**$extensions is the sanctioned channel for Figma metadata (P17).**
+DTCG's `$extensions` object is where tool- and vendor-specific data
+lives — the converter reads Figma metadata ONLY from there, never from
+a guessed field name. The pattern is Primer's (`org.primer.figma`
+carrying `collection` / `mode` / `scopes` — Primer primitives README,
+https://raw.githubusercontent.com/primer/primitives/main/README.md,
+read 2026-11-10): a token's `$extensions["org.primer.figma"]` (or the
+equivalent vendor key for the file at hand) records which Figma
+collection and mode it came from and which scopes it applies to. The
+converter MUST preserve `$extensions` through the parse (it is part of
+the token, not decoration) and MUST NOT invent an `$extensions` key
+that the file does not carry. Token names in the file must be camelCase
+or kebab-case and contain only letters, numbers and `-` (Primer's
+validation rule, enforced by their `npm run lint:tokens` — the same
+shape as this kit's T1 kebab-case check; the kit's T1 is stricter,
+kebab-case only).
+
+**Dark themes are sparse overrides (P17).** A dark theme lists ONLY the
+roles whose values change from light (diffs, not a full copy) —
+Primer's `overrides` pattern (a mode made "by only including the
+changes from the main mode", in `src/tokens/functional/color/[light|dark]/overrides/`).
+The template's `[data-theme="dark"]` block already follows it: every
+dark override still aliases a Layer 1 primitive, and the on-* roles
+follow the same pairing as light. When a Figma export brings a dark
+mode, the converter emits the dark-mode diffs only — a full second copy
+of the token set is a failure of the step, not a style choice.
+
+**What P17 did NOT build (council, unanimous): the per-mode contrast
+gate is DROPPED.** Primer's README carries an accessibility-contrast
+badge, but its contrast-check workflow was not read — do not claim
+Primer contrast CI exists, and do not add a contrast gate to step 3.
+Contrast is checked by the existing WCAG2AA pa11y validator (§4),
+not by a new per-mode gate.
+
+**Converter upgrade (P18) — Terrazzo first, Style Dictionary second.**
+The vendored converter (or the hand application of its contract, until
+the script is built) is the DEFAULT. Upgrade only when the project
+keeps tokens in a repo with many modes/themes. An upgrade never
+replaces the taste judgement — it only replaces the handwriting.
+- **Recommended: Terrazzo `@terrazzo/cli` 2.10.0, MIT** (VERIFIED — npm
+  registry, read 2026-11-10). DTCG-first: it speaks the DTCG format
+  natively. The CSS plugin maps modes → any selector via `permutations`
+  (default → `:root`; dark → `@media (prefers-color-scheme: dark)`
+  and/or `[data-theme="dark"]`; a `size: desktop` mode → `@media (width
+  >= 600px)`). Aliases must be redeclared inside each mode block
+  ("duplication is not a bug"). `include` / `exclude` token globs
+  per-plugin or per-permutation. Color Module 4: P3 / Rec2020 / OKLCH
+  auto-downconverted with Color.js gamut mapping, 30-bit color depth
+  default. The Tailwind plugin generates Tailwind v4 `@theme` from
+  DTCG; composite typography becomes paired `--text-xs--line-height`
+  tokens. Setup: `npm i -D @terrazzo/cli @terrazzo/plugin-css` +
+  `terrazzo.config.ts` + `npx tz build`. Sources:
+  https://terrazzo.app/docs/integrations/css/ and
+  https://terrazzo.app/docs/integrations/tailwind/ (read 2026-11-10).
+  No Node minimum is stated here — the Terrazzo docs say only
+  "Requires Node.js" and the registry entry carries no `engines` field;
+  the kit already requires Node 22+, which is the binding floor.
+- **Second: Style Dictionary 5.8.0, Apache-2.0, engines node >=
+  22.0.0** (VERIFIED — npm registry, read 2026-11-10).
+  `css/variables` + `outputReferences: true`, `options.selector`
+  overrides `:root`; a custom format via `registerFormat` emits the
+  kit's `tokens.css` shape. CAVEAT: DTCG first-class since v4, BUT the
+  latest format 2025.10 does not have full support yet in Style
+  Dictionary — a work in progress in v5
+  (https://styledictionary.com/info/dtcg/, read 2026-11-10). A project
+  whose tokens use 2025.10 features must not assume Style Dictionary
+  round-trips them — prefer Terrazzo until the v5 work lands.
 
 ## Round briefs + per-role context budgets (P7 — fresh context per round)
 
@@ -352,12 +575,17 @@ build is not green: fix the build, do not pick the greener leg, and never
 lower a gate to green a bad page.
 
 Run, in this order, and print every result in full — never summarise a gate
-result. Leg 1 (`gate.sh`) also runs two newer checks: the anti-cliché
+result. Leg 1 (`gate.sh`) also runs three newer checks: the anti-cliché
 seed checks (`scripts/gate/anti-cliche.mjs`, §3c — AC-1 gradient,
-AC-2 emoji) and, whenever `design/PLAN.md` exists, the converge check
-(`scripts/gate/converge-check.mjs`, §5 — every planned section/state
-exists in the build). Both fail the gate like any leg-1 finding; the
-converge check additionally blocks the human gate (step 6.1).
+AC-2 emoji), the token-naming lint (`scripts/gate/lint-tokens.mjs`, §3d
+— T1 kebab-case names, T2 no primitive references in component CSS, T3
+on-* text role for every `--color-*` used as a background, T4 colour
+roles alias primitives, never literals), and, whenever `design/PLAN.md`
+exists, the converge check (`scripts/gate/converge-check.mjs`, §5 —
+every planned section/state exists in the build). All three fail the
+gate like any leg-1 finding; the converge check additionally blocks
+the human gate (step 6.1). The token-naming lint runs on the demo
+target too — the template must pass its own lint.
 
 1. `node scripts/gate/detect.mjs <page or dir>` — the `impeccable detect`
    wrapper (62 deterministic rules: 31 slop / 31 quality). Exit codes:
