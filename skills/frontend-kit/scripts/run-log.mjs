@@ -247,6 +247,9 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const key = a.slice(2);
+      // Boolean flags take no value (currently only --allow-missing on
+      // `brief`); every other --flag consumes the next token.
+      if (key === 'allow-missing') { out[key] = true; continue; }
       // Value flags consume the next token unconditionally: a value may
       // legitimately start with '--' (e.g. a token diff "--color-accent: ...").
       const val = argv[i + 1];
@@ -505,7 +508,7 @@ if (cmd === 'record') {
     brief = buildBrief(args.project, {
       round,
       page: args.page,
-      allowMissing: args['allow-missing'] === 'true' || args['allow-missing'] === '1',
+      allowMissing: args['allow-missing'] === true,
     });
   } catch (e) {
     console.error(`run-log: brief failed — ${e.message}`);

@@ -180,9 +180,10 @@ prompt for discussion.
    - **Human-less / buffet run:** there is no human to approve, so the
      plan proceeds WITHOUT human approval. The approval substitute is
      the blocking converge check (step 3 / step 6) plus the
-     first-round independent grade; the run log labels the plan
-     "approved-by: converge-check + round-1 grade (no human present)".
-     Coordinator approval is NOT an approval and is never recorded as
+     first-round independent grade; record that basis as a field on the
+     lock entry — `run-log.mjs lock ... --approved-by "converge-check
+     + round-1 grade (no human present)"` (step 1.8). Coordinator
+     approval is NOT an approval and is never recorded as
      one — a coordinator approving a plan its own run wrote is
      self-approval, the same back door as builder self-grading.
    The plan never moves the lock: round deltas merge into PLAN.md
@@ -195,14 +196,81 @@ prompt for discussion.
    saved under `design/` in the project, AND (b) the lock is recorded in
    the run log with `node scripts/run-log.mjs --project <dir> lock
    --tokens design/tokens.css --refs <chosen DESIGN.md + reference
-   screenshots>`. If the project is a git repo, ALSO run `git add design/
+   screenshots> [--version N] [--approved-by "<approval basis>"]`. If
+   the project is a git repo, ALSO run `git add design/
    && git commit -m "Taste lock: <direction>"`; if it is not a git repo,
    (a) + (b) alone ARE the commit — never create a repo just for this, and
    never treat "saved the file" without the run-log lock as committed.
    The lock is immutable within a direction: a re-pick creates a NEW lock
-   version, recorded by a new `run-log.mjs lock` entry (the lock-version
-   field is added to the script with the P7 round-brief work — until
-   then, record the version number in the run log's notes by hand).
+   version, recorded by a new `run-log.mjs lock` entry. The version is a
+   script field, not a hand-written note: `--version N` records an
+   explicit version (default: existing lock count + 1); re-using an
+   existing version is rejected. The lock entry also records the sha256
+   of the tokens file automatically, and `--approved-by` carries the
+   step-1.7 approval basis on human-less runs (omit it on solo runs —
+   human approval lives in PLAN.md § Approval record). The 5-line lock
+   summary at the top of `design/TASTE.md` is filled from the brief the
+   generator emits (see "Round briefs + per-role context budgets"
+   below), never hand-written.
+
+## Round briefs + per-role context budgets (P7 — fresh context per round)
+
+Every round after round 1 starts from a FRESH context assembled by
+script — never from the previous round's context, and never from the
+full run log. The full log stays in a file, not in context: quality
+falls as input length grows, and the lock sits mid-context where
+attention sags. The judge is ALREADY fresh per round (a judge that
+graded round 1 must not grade round 2 — see `frontend-judge`
+`references/invocation.md`); P7 adds the builder/fixer half only.
+There is no separate `run.json` file: run state lives in the
+append-only run log (`run-log.mjs` — tokens hash, picked variant,
+per-round gate/scores/evidence/fix-class/outcome), and the brief is
+assembled from it.
+
+1. **Assemble the brief with the generator, every round.**
+   `node scripts/run-log.mjs --project <dir> brief [--round N]` (or
+   `node scripts/round-brief.mjs --project <dir> [--round N]` directly).
+   The brief contains, and nothing else: the 5-line lock summary, the
+   locked `tokens.css` verbatim, the best HTML verbatim, the latest
+   round's gate findings, grader evidence lines (latest + best round
+   only), and a one-line-per-round run-state table. **All axes start
+   "ungraded" for the new round** — no score is ever carried from an
+   earlier round; a score only moves when an independent judge writes
+   evidence for it. The lock is restated at the end of every brief,
+   immediately before the output instruction.
+2. **The generator fails loudly, it never drops signal silently.** If
+   the lock, the best-HTML path, the latest round's gate findings, or a
+   graded round's evidence lines are missing, the brief command exits 1
+   and prints nothing — fix the log (re-record the round with
+   `--gate-findings` / `--evidence` / `--page`), do not work around it.
+   `--allow-missing` (round-brief only) downgrades a gap to an explicit
+   "NOT RECORDED" line; it never invents the missing field.
+3. **Fallback when the generator cannot run (no Node).** Hand-assemble
+   the same field list from the run log's LAST record + the locked
+   tokens — same sections, same order, same "ungraded" axes. Last
+   resort only, the brief is the full run log, labelled
+   `brief: full-log (generator unavailable)` — labelled, never silently
+   pasted. The generator is a convenience for assembling the brief, not
+   a load-bearing dependency: a round without a brief does not run.
+4. **Per-role context budgets — what each role may load.** The brief
+   the generator emits IS the builder/fixer budget in full: nothing
+   beyond it goes into a builder or fixer prompt except the fix
+   instruction itself (which cites a gate finding, a grader evidence
+   line, or a human instruction — step 5.4). Anything else in the
+   prompt violates the budget.
+
+   | Role | May load | Must never load |
+   |---|---|---|
+   | Orchestrator | The run log file, PLAN.md, the briefs; the full project on disk | Pastes the full run log into any subagent prompt |
+   | Builder (round N) | The round brief only: locked tokens + best HTML + gate findings + grader evidence lines + run-state table | The full run log, earlier HTML versions, its own reasoning from a prior round |
+   | Fixer (round N+1) | Same as the builder — the new round's brief | Same as the builder |
+   | Judge | Screenshots + the 1–3 locked reference shots + rubric/scope + the 5-line lock text + tool measurements (+ pairwise A/B inputs when the stop round calls for them) | Model/builder identity, earlier scores, the run log, gate findings — the single `gate: green` bit from the orchestrator's pre-filter is the only gate information the judge receives |
+   | Expert (second opinion) | Same as the judge, plus the one domain question it was asked | Same as the judge |
+
+   Measurable check: the builder/fixer prompt is the generator's brief
+   output plus one fix instruction. If a prompt to the builder contains
+   anything beyond that, the budget is broken — stop and rebuild the
+   prompt from the brief.
 
 ## Step 2 — Build (one HTML file, tokens only)
 
@@ -429,9 +497,16 @@ to step 4 with a red gate.
    the expert's top defects enter the fix list. An accessibility REWORK
    (1–2) blocks shipping even when the 4 axes are ≥4.
 5. Record the round with `scripts/run-log.mjs`: scores per round, grader
-   identity + independence basis per round, gate result. The run-log script
+   identity + independence basis per round, gate result, gate findings
+   (`--gate-findings`), fix class (`--fix-class`), outcome
+   (`--outcome kept|discarded|re-pick|stopped|escalated|pending`), and
+   the built page (`--page`) — the tokens hash is recorded automatically
+   from `design/tokens.css`. The run-log script
    REJECTS any entry whose grader is the builder. The log is the memory
-   that stops rejected directions from being re-proposed. **No independent
+   that stops rejected directions from being re-proposed, and it is the
+   only run state the next round's brief is assembled from — record the
+   findings and the page every round, or the next brief fails its schema
+   check. **No independent
    judge available (no-grade path):** record the round with
    `run-log.mjs record --round N --grader none --scores none --gate <pass|fail>`
    — the grade is recorded as exactly "gate green, vision not available",
@@ -444,7 +519,11 @@ to step 4 with a red gate.
    fails after the token change.
 2. Keep the best-scoring version. A round that scores lower is discarded, not
    iterated on (best-version-kept).
-3. Re-run step 3 (gate), then step 4 (grade). That is one round.
+3. Re-run step 3 (gate), then step 4 (grade). That is one round. Each
+   fix round starts from a FRESH context: assemble the round brief first
+   (`run-log.mjs brief`, see "Round briefs + per-role context budgets"
+   above) and send the fixer the brief + the fix instruction — never the
+   full run log, never the previous round's context.
 4. Every fix instruction cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". The fix prompt the orchestrator sends must require the citation field; a fix prompt without it is rejected by the orchestrator (not sent). A fix instruction with no citation is not a fix instruction.
 5. **Round folders + archive.** Each fix round is a change folder, not a
    free-form log line: before fixing, copy
@@ -516,8 +595,9 @@ to step 4 with a red gate.
    into TASTE.md mid-loop, ever.
 5. Record in the run log: scores per round, grader label per round, the
    converge result per round, the plan's approval basis (human approval
-   or "approved-by: converge-check + round-1 grade (no human present)"),
-   and every feedback → token change → new score, so the dictionary grows.
+   in PLAN.md, or the `approved-by` field on the lock entry for
+   human-less runs), and every feedback → token change → new score, so
+   the dictionary grows.
 
 ## Step 6a — Buffet mode (autonomous run + Figma handoff)
 
@@ -545,6 +625,7 @@ repeated here: one copy, at the top, is the rule.
 | Human-gate questions + next commands | `references/human-gate-pack.md` | Ask open-ended "what do you think?" |
 | Plan, Design Read, design-system declaration | `templates/design/PLAN.md`, `DESIGN-READ.md`, `DESIGN-SYSTEM.md` (filled in at step 1) | Build on an unapproved plan; put token values in DESIGN-SYSTEM.md |
 | Converge check (section/state presence) | `references/converge-checklist.md` + `scripts/gate/converge-check.mjs` | Present a human gate on a red converge; silently pass an uncheckable item |
+| Round brief (fresh context per round) | `scripts/run-log.mjs brief` / `scripts/round-brief.mjs` (lock + best HTML + gate findings + evidence lines + run state) | Paste the full run log into a builder/fixer prompt; carry a score from an earlier round |
 | Anti-cliché blocklist | `references/anti-cliche.md` + `scripts/gate/anti-cliche.mjs` (AC-1, AC-2) | Promote a checklist item to the gate without a script that checks it |
 | Anchored style recipes (one file only) | `references/style-recipes/` (INDEX first, then the one named file) | Load the whole recipe catalog; invent a direction from priors |
 

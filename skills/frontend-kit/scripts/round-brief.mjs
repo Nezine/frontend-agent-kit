@@ -181,8 +181,10 @@ export function buildBrief(project, opts = {}) {
   }
   out.push('');
   out.push('## Your task');
-  if (targetRound === 1 || !rounds.length) {
+  if (!rounds.length) {
     out.push('Build round 1 from the locked tokens below. No prior build exists: there is no best HTML, no gate findings, and no grader evidence yet. Build one HTML file, tokens only — every visual value comes from the locked tokens.css.');
+  } else if (targetRound === 1) {
+    out.push(`Re-pick restart: round 1 of the new direction (lock v${lock.lockVersion ?? '?'}). The prior direction's rounds below are state only — do not build on them and do not carry their scores. Build one HTML file from the locked tokens; the best version from the earlier direction stays kept separately and is what ships if no later round beats it.`);
   } else {
     out.push(`Fix round ${targetRound}: apply at most the top 2 fixes below, as token diffs against the locked tokens. Each fix cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". Do not re-read the full run log; this brief is your whole context for the round.`);
   }

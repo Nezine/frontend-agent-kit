@@ -23,6 +23,20 @@ taste, so the locked tokens can pass the kit's own gate):
 - Interactive elements need >= 44px height (--tap-min); display type size
   (--text-display) is hero-only, never for a stat or a section number. -->
 
+## Lock summary (5 lines — fill from the round-brief generator's output, never hand-written)
+
+<!-- The same five lines, in the same order, are emitted by
+`skills/frontend-kit/scripts/round-brief.mjs` at the top of every round
+brief and restated at the end of it. Fill this block from the generator
+(`run-log.mjs brief`) at lock time; the lock version and tokens hash
+come from the lock entry in the run log. -->
+
+1. Direction: [chosen DESIGN.md + reference screenshots]
+2. Tokens: design/tokens.css (sha256 [first 12 of the locked hash]…)
+3. Lock version: [1 — immutable within a direction; a re-pick creates a new version]
+4. Picked variant: [none yet / name]
+5. Stop: >=4 on Type/Layout/Colour/Space + gate green, or after 3 rounds; every axis starts ungraded.
+
 ## Intent (one paragraph)
 
 <!-- What is this page for, who is it for, and what should it feel like in one
