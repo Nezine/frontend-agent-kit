@@ -10,8 +10,7 @@ rounds, after the gate is green.
 Generate ALL variants before any critique, comparison, or scoring.
 No variant is judged while another is still being built: an early
 critique legitimises the first variant and suppresses divergence
-(the fixation mechanism in `variant-briefs.md` — primary CHƯA ĐỌC,
-see that file's evidence note). The v0 checkpoint governs the PICKED
+(the fixation mechanism in `variant-briefs.md` — primary read 2026-11-10, see that file's evidence note). The v0 checkpoint governs the PICKED
 variant's build only — never mid-generation.
 
 Order of operations:

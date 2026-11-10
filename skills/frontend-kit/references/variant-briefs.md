@@ -21,16 +21,7 @@ later work orbits it — the first structure's features get reproduced,
 flaws included. CSS-only variants share one structure, so the loop
 could spend 3 rounds polishing the wrong direction and then restart.
 Structural divergence is the only divergence mechanism that prevents
-that whole-loop cost. Evidence note: the design-fixation primary
-(Jansson & Smith, "Design fixation", Design Studies 12(1), 3–11,
-1991, doi:10.1016/0142-694X(91)90003-F) is CHƯA ĐỌC in this chain —
-its full text was not accessible through free legal open routes on
-2026-11-10 (ScienceDirect paywalled; no open copy found via web
-search, CORE, Semantic Scholar, ResearchGate, or Internet Archive;
-attempt log in `build-notes/w-loop-3.md`). The fixation claim here
-rests on the convergent secondaries recorded in
-`research/workflow-optimization/worker-failure-modes.md` §3-#5 (F11),
-not on the primary. Do not cite the paper's contents as read.
+that whole-loop cost. Evidence note: the design-fixation primary (Jansson & Smith, "Design fixation", Design Studies 12(1), 3–11, 1991, doi:10.1016/0142-694X(91)90003-F) was read in full 2026-11-10 (user-supplied copy; verification report `build-notes/w-p10-primary.md`). Definition: "a blind, and sometimes counterproductive, adherence to a limited set of ideas in the design process" (p. 4). Four control-vs-example experiments (n = 25 / 31 / 35 / 13 professionals): total output barely changes while conformity to the example's features jumps sharply (e.g. suction cups 6%→54%, straws 1%→17% despite an explicit no-straws instruction; flexibility 0.95→0.85, originality 0.64→0.53), including in professionals. The paper demonstrates fixation; it does not test structural-variant generation as a remedy — the variant mechanism remains a design decision inferred from these findings. No significance tests are reported in the paper (descriptive means/percentages only).
 
 This file is the kit's ready-to-use brief for each variant: what it
 means as tokens AND as structure, so the builder does not invent five
