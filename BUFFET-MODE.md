@@ -7,7 +7,7 @@
 
 | Role | Who | Does | Never does |
 |---|---|---|---|
-| Coordinator / orchestrator | Muse (this build's coordinator) | Owns the run sequence, `coord/BOARD.md`, the merge protocol, and the stop decision. Assigns slices, merges work, declares the run done. | Does not write the page. Does not grade. Does not command the other three agents directly — coordination works by this runbook protocol, not by orders. |
+| Coordinator | One agent per round — Muse holds the role in this run; the role may rotate between rounds, never mid-round. (P20, council-approved 2026-11-10.) | Owns the run sequence, `coord/BOARD.md`, the merge protocol, and the stop decision. Assigns slices, declares the run done. Is the ONLY merger (see §5). Owns the delegation contract (§5): no slice is dispatched until its `coord/TASK_TEMPLATE.md` fields are filled and its ownership row is on the board. | Does not write the page. Does not grade. Does not command the other three agents directly — coordination works by this runbook protocol, not by orders. |
 | Builder | Any of the four, one instance per direction | Writes the one HTML file + `design/tokens.css`, tokens-first. | Never grades its own work. |
 | Independent experts | The expert pack: `skills/frontend-kit/experts/` (typography, layout, colour, copy, imagery, motion, accessibility, design-systems, performance, responsive) | Judge ONLY their domain, from the artifacts (page + tokens + screenshots + gate result), never from the builder's reasoning. Advise; do not edit the build. | Never judge outside their domain; never see the builder's transcript. |
 | Independent judge | `frontend-judge` (fresh sub-agent, no production history) | Grades 1–5 on Type / Layout / Colour / Space, one evidence line per score. Fallback: other-model judge → `muse-manager` judge → no grade ("gate green, vision not available"). | Never the builder; never a self-grade. |
@@ -48,15 +48,47 @@ The four agents in this run are **Muse, Mie, Migga, Milo**. Each owns exactly on
 
 **Stop conditions:** (a) ≥4 all axes + gate green; (b) 3 rounds in a direction → re-pick (max 2); (c) 9th round ends regardless — present the best version; (d) Figma failure → degrade, do not stop the run; (e) QC/red-team SEVERE finding (fabrication, invented Figma data, builder self-grade) → run invalid, redo from the last valid lock, never patch over it.
 
+**Parallelise the portfolio, not the loop (P23, council-approved 2026-11-10 — INTEGRATE, unanimous, clean).** Four agents are faster than one only if the parallel work is independent. The loop's steps are coupled — one agent's output is the next step's input — so they stay sequential; the portfolio around the loop is where parallelism pays.
+
+| SEQUENTIAL — one agent, in order, per page | PARALLEL — across agents, at the same time |
+|---|---|
+| Taste lock → build → deterministic gate → grade → fix (the §4 steps, in order). No step starts until the previous step's artifact exists. | Different pages (each page runs its own sequential loop). |
+| A fix round waits for its grade; a grade waits for its gate. | The 5 CSS variants (same content/copy/HTML, only CSS changes — §4 step 2). |
+| The stop decision waits for the grade + gate of the current round. | Independent research angles (each angle is its own slice on the board). |
+| | Expert-pack reviews — each expert judges ONLY its own domain, from the artifacts, in parallel (§1). |
+
+The independent grader stays a separate role and **never grades its own branch** — a grader is a fresh sub-agent (or a different agent instance) with no production history of the build it grades (§1, §10). Parallelism never overrides that rule: if the only available grader built the branch, the grade is "gate green, vision not available" and the human gate carries the taste judgement.
+
+Guardrails (direction, not a buffet-mode forecast): Kim et al. report **+80.8%** on decomposable tasks and **−70.0%** on sequential tasks when adding agents (v3 abstract, confirmed by the red team — SYNTHESIS §6 erratum E6; the primary, arXiv:2512.08296, is CHƯA ĐỌC — these figures are Kim et al.'s benchmarks, read via secondaries, not measurements of this loop and not a forecast for buffet mode). The loop above is the sequential case, so getting this table wrong makes buffet mode *slower* than solo. And Cognition's rule, attributed to Cognition (not to Kim): **don't add agents to a step that already works** — if a single agent already completes a step well, leave it alone.
+
 ## 5. Handoff protocol (how four agents work without talking)
 
-**One file per agent, coordinator merges.** Each agent edits ONLY its own `coord/<name>.md` file and appends to `coord/run-log.jsonl`. NOBODY edits another agent's file. NOBODY edits `coord/BOARD.md` except the coordinator. NOBODY rewrites history in the run log. This is what makes concurrent work safe: there is no file two agents both write.
+**One file per agent, coordinator merges.** Each agent edits ONLY its own `coord/<name>.md` file and appends to `coord/run-log.jsonl`. NOBODY edits another agent's file. NOBODY edits `coord/BOARD.md` except the coordinator. `coord/run-log.jsonl` is append-only: NEVER edit a line already written — a stale or wrong record is superseded by appending a new record that says what it supersedes (P22). This is what makes concurrent work safe: there is no file two agents both write. Git is the transport in v1 — the repo is the coordination channel; there is no A2A/MCP layer (P22).
 
 **Claiming work:** the coordinator lists open slices on `coord/BOARD.md` (one line per slice: id, brief slice, owner, status). An agent claims a slice by writing `CLAIM <slice-id>` + timestamp in its OWN file — never by editing the board. The coordinator merges claims into the board on its next pass. Two agents claiming the same slice: the earlier timestamp in the run log wins; the later one picks another slice.
 
+**Delegation contract (P20, binding).** Every slice is dispatched with a filled `coord/TASK_TEMPLATE.md` — six mandatory fields: (1) objective, (2) output format, (3) tools/sources, (4) boundaries, (5) effort scale, (6) definition of done. **No board row is claimable until all six fields are filled** — an agent that finds an unfilled row writes `BLOCKED — template incomplete` in its own file and does not start. **Ownership before dispatch:** the coordinator fills the ownership table on `coord/BOARD.md` (file → agent → round) BEFORE dispatching, and **deterministically rejects claims on owned files** — a claim on a file another agent already owns for that round is refused, no judgement call, no negotiation; the claimant picks another slice. Why this exists: the largest measured failure category in multi-agent work is "system design issues" — **44.2% (MAST v3 Fig 1, summed per-mode shares)**. That number is SECONDARY-SOURCED (secondary summaries; the primary, arXiv:2503.13657, is CHƯA ĐỌC — never cite the figure as primary-verified). Retired wordings, never use: the "~42–44%" range (conflates paper versions) and "specification"/"FC1" as the category name (SYNTHESIS §6 erratum E2).
+
+**Board states (P22, binding).** Every board row carries one explicit state — `submitted → working → completed / failed / canceled`, plus `input-required` for a slice that is blocked and needs input (the coordinator resolves it or escalates it to the human; the Notes column names whose input is awaited). The runbook's `coord/` scheme wins: there is no `board/` directory and no `STATE.md` — P22 contributes only this status column and the append-only rule above (council decision D3).
+
 **Polling cadence (binding):** during an active buffet run, every agent runs `git pull --ff-only` **every 15 minutes** and reads `coord/BOARD.md` + its own handoff file. The coordinator merges + updates the board **every 30 minutes** (or immediately after a slice completes, whichever comes first). Between polls, agents work from their local copy and write only to their own file. A merge conflict on your own file: `git pull --rebase`, keep both entries, never delete the other side's lines — your file is append-mostly by construction, so conflicts should be rare; if one happens, keep everything and note it in the run log.
 
+**Liveness — heartbeat folded into the cadence, no second cadence (P24, binding; council decision D5).** There is NO separate heartbeat schedule and NO extra commits for heartbeats. Each agent keeps one last-seen line at the top of its own `coord/<name>.md`, updated on its normal 15-minute pull (same commit as its other work, never a commit of its own):
+
+`Last seen: <UTC timestamp> — task: <slice-id or —> — last commit: <short hash or —>`
+
+On each 30-minute merge pass the coordinator sweeps the four last-seen lines: **stale >30 min with no commit = stuck** → the slice is marked `failed` on the board and is reassignable; **stale with recent commits = slow, leave alone** (do not reassign, do not nudge); **no heartbeat after 15 min = never started** (the agent has not picked up the run — the coordinator reassigns or escalates). The 10/15/30-minute numbers are DESIGN JUDGEMENT, not sourced — no published cadence exists for file-based agent liveness; tune them on the first buffet run.
+
 **Branches (binding):** each agent works on its own branch `buffet/<name>` and pushes that branch. Only the coordinator merges branches into the buffet mainline (fast-forward or merge commit; never rebase someone else's branch, never force-push). Agents never push to the mainline directly. If push access is not yet granted for an agent, that agent works on a fork and opens a pull request — the coordinator merges the PR. (Whether the three other agents have push access is a human decision — see §9.)
+
+**Trial merges — gate on the MERGED tree (P21, binding; council decision D4).** Before landing any two branches, the coordinator trial-merges the pair — never land on per-branch green alone:
+
+```
+BASE=$(git merge-base buffet/<a> buffet/<b>)
+node scripts/trial-merge.mjs --base $BASE --a buffet/<a> --b buffet/<b> --worktree /tmp/trial-<a>-<b>
+```
+
+`scripts/trial-merge.mjs` runs `git merge-tree --write-tree` (exit 0 = clean, 1 = conflicts, 2 = usage/git error) and, with `--worktree`, checks the merged tree out into a detached worktree for gating. The gate runs ON the merged tree — `impeccable detect` + Playwright screenshots at 1440/768/390 — and the worktree is removed after (`git worktree remove /tmp/trial-<a>-<b>`). Record the merged tree OID in the run log so the gate run is traceable to the exact tree. The trial merge writes one tree object and never moves a branch. **Conflicts go to a neutral merger — a fresh-context agent, NOT the coordinator — capped at 1 attempt, then escalate to human-on-return.** "Rebase the rest" does not appear in this runbook and must never be added: the binding rule is "never rebase someone else's branch" (D4 wins over the proposal's wording). Scale note (SYNTHESIS §6 erratum E7): only **0.5%** of co-active pairs are cross-agent — **41.7%** is the conflict rate *given* a cross-agent pair, which is rare; treat the 41.7% as a warning about cross-agent pairs, not as the expected conflict rate for this run.
 
 **Milestone posts to the Optimus group:** the coordinator posts a short status line ONLY when a milestone lands (loop stopped, Figma export done, human return complete, run invalid + redo started). One line, e.g. "xong vòng build, Figma đã xuất — đang chờ người về sửa". No coordination detail, no error dumps, no agent-to-agent messages. Mie never posts there.
 

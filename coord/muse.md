@@ -29,6 +29,16 @@ agents directly — coordination works by this runbook protocol, not by orders.
 - The coordinator merges + updates the board **every 30 minutes** (or
   immediately after a slice completes, whichever comes first).
 
+## Last seen (heartbeat — BUFFET-MODE.md §5, P24)
+
+Last seen: — (no run yet) — task: — — last commit: —
+
+Updated on the normal 15-minute pull (same commit as other work — never a
+commit of its own). On every 30-minute merge pass the coordinator sweeps the
+four last-seen lines: stale >30 min with no commit = stuck (slice failed,
+reassignable); stale with recent commits = slow, leave alone; no heartbeat
+after 15 min = never started.
+
 ## Merge rules (binding)
 
 - Each agent works on its own branch `buffet/<name>` and pushes that branch.

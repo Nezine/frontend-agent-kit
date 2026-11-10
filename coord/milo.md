@@ -38,6 +38,16 @@ A/B only.
 - Between polls, work from your local copy and write only to this file
   (plus appends to `coord/run-log.jsonl`).
 
+## Last seen (heartbeat — BUFFET-MODE.md §5, P24)
+
+Last seen: — (no run yet) — task: — — last commit: —
+
+Update this line on your normal 15-minute pull (same commit as your other
+work — never a commit of its own). The coordinator sweeps it on every
+30-minute merge pass: stale >30 min with no commit = stuck (slice failed,
+reassignable); stale with recent commits = slow, leave alone; no heartbeat
+after 15 min = never started.
+
 ## Merge rules (binding)
 
 - Work on your own branch `buffet/milo` and push that branch. Only the
