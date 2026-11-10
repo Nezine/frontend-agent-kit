@@ -20,6 +20,8 @@ builder). A builder self-grade is FORBIDDEN and invalid — if no independent ju
 is available, record the grade as "gate green, vision not available" and the human
 gate carries the taste judgement.
 
+The human grades these blind (see `research/judge-calibration.md`).
+
 ---
 
 ## Brief 1 — Landing page

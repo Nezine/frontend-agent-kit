@@ -34,7 +34,7 @@ Impeccable `reference/critique.md` (which requires a
 `⚠️ DEGRADED: single-context` banner on degraded runs), upstream
 Impeccable `reference/new-work.md` (which substitutes a fresh in-thread
 finish-reviewer pass and a Verdict Pass from
-`degraded/finish-reviewer.md` when no subagent capability exists), and
+`degraded/finish-reviewer.md` when no subagent capability exists — no such file exists in the vendored tree), and
 `skills/frontend-design/SKILL.md:57–59` ("Critique your own work"). Those
 passages are upstream text the kit vendors verbatim in the canonical
 copies and does not rewrite there (the generator transforms only the
@@ -285,8 +285,8 @@ to step 4 with a red gate.
    sub-agent running **`frontend-judge`** (see
    `skills/frontend-judge/references/invocation.md` for the exact spawn
    pattern: fresh context, no production history, no shared context with
-   the builder; pass only the built page, locked tokens/references,
-   screenshots, gate result, and brief-type scope — never the builder's
+   the builder; pass only the built page, locked tokens + the 1–3 locked reference screenshots,
+   screenshots, the single bit `gate: green`, and brief-type scope — never the builder's
    reasoning or earlier scores). The judge reads the page + locked
    references + screenshots and returns the score table with evidence.
    **Fallback order, first available wins:** (1) fresh judge sub-agent
@@ -323,7 +323,7 @@ to step 4 with a red gate.
    identity + independence basis per round, gate result. The run-log script
    REJECTS any entry whose grader is the builder. The log is the memory
    that stops rejected directions from being re-proposed. **No independent
-   judge available (ladder rung 3):** record the round with
+   judge available (no-grade path):** record the round with
    `run-log.mjs record --round N --grader none --scores none --gate <pass|fail>`
    — the grade is recorded as exactly "gate green, vision not available",
    with no invented grader label. `--grader none` with scores is rejected.
@@ -336,6 +336,7 @@ to step 4 with a red gate.
 2. Keep the best-scoring version. A round that scores lower is discarded, not
    iterated on (best-version-kept).
 3. Re-run step 3 (gate), then step 4 (grade). That is one round.
+4. Every fix instruction cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". The fix prompt the orchestrator sends must require the citation field; a fix prompt without it is rejected by the orchestrator (not sent). A fix instruction with no citation is not a fix instruction.
 
 ## Step 6 — Stop + human gate
 

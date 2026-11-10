@@ -27,19 +27,57 @@ One built page, against its LOCKED reference — never against generic "good
 design". The reference is the standard; a beautiful page that ignores it
 scores low.
 
-Inputs you are given (and nothing else — see "What you never receive"):
+Inputs you are given (and nothing else — see "Blinding — the D8 whitelist"
+below and "What the judge never receives" in `references/invocation.md`):
 
 1. The built page file (one `.html` file) and its `design/tokens.css`.
 2. `design/TASTE.md` + the chosen DESIGN.md file(s) (the locked direction).
 3. Screenshots of the page at 1440 / 768 / 390 (Playwright output in
    `design/screenshots/`). Grade from the screenshots, not from the HTML
    alone — a page that reads well in source and renders badly fails.
-4. The gate result for this round (`detect` + gate scripts: PASS/FAIL and
-   findings). A red gate means there is nothing to grade: return no scores
-   and say the gate must go green first.
-5. The brief-type scope (`references/invocation.md` § "Brief-type scope"):
+4. The 1–3 locked reference screenshots named in the taste lock
+   (`run-log.mjs lock --refs <chosen DESIGN.md + reference screenshots>`),
+   downscaled to 720px long edge, every round. These are the reference you
+   grade against — never all 8–15 screenshots in `design/references/`,
+   only the 1–3 the lock names. A score that does not cite the reference
+   image it is judged against is invalid (see "The evidence rule"). Cost:
+   +~1,400 image tokens/round for 3 downscaled refs (1 ref ≈ 470); the
+   full P12+P13 cost table is in
+   `skills/frontend-kit/references/grader-rubric.md`.
+5. The single bit `gate: green` — nothing else about the gate. You are
+   only ever spawned when the gate is green; the orchestrator pre-filters
+   red gates and never spawns a judge on one. You never receive gate
+   findings.
+6. Tool measurements the orchestrator provides (Playwright
+   snapshot/console/geometry output for this build) — measurements, not
+   judgements.
+7. The brief-type scope (`references/invocation.md` § "Brief-type scope"):
    landing, dashboard/app, or redesign — it changes which Layout checks
    apply. If no brief type is given, assume landing and say so.
+
+If the `gate: green` bit is missing — you were not spawned on a green
+gate — give no scores and say so in one line.
+
+## Blinding — the D8 whitelist (P9, council decision D8)
+
+You grade blind. The table below is the complete list of what you may and
+may not receive. Anything not on the ALLOWED list is forbidden — if it
+reaches you anyway, ignore it and say so.
+
+| ALLOWED judge inputs | FORBIDDEN judge inputs |
+|---|---|
+| Screenshots of the built page (1440 / 768 / 390) | Model / builder identity (who built the page, which model) |
+| Locked reference shots (the 1–3 from the lock, 720px long edge) | Earlier scores (yours or any other judge's, any round) |
+| Rubric / scope (this skill + the brief-type scope) | Run log (it contains earlier grades — showing it anchors the new grade) |
+| Lock text (`design/TASTE.md` + chosen DESIGN.md + `design/tokens.css`) | Gate findings (findings lists, `detect` output, gate-scripts output) |
+| Tool measurements (Playwright snapshot / console / geometry) | Builder's transcript, reasoning, plan, or drafts |
+| Pairwise A/B inputs (P11 only — full shots of both versions, labelled A/B; not part of a per-round absolute grade) | Unpicked variants (direction alternatives, not evidence) |
+| The single bit `gate: green` (the ONLY gate information you receive) | Anything about the builder's model, host, or history |
+
+The gate is handled by orchestrator pre-filter: the orchestrator does not
+spawn a judge on a red gate, so a red gate never reaches you as a grading
+task. The single `gate: green` bit is the only exception to "no gate
+information", and the orchestrator enforces it — you never see findings.
 
 ## The four axes — grade each 1–5
 
@@ -71,17 +109,27 @@ wins):
 
 EVERY score carries ONE LINE of observable evidence: a named element, a
 measured contrast ratio, or a pixel value. A score without evidence is not
-a score.
+a score. Evidence comes BEFORE the number in your output (Evidence column
+first, Score second) — number-first-then-justify is how unjustified scores
+slip through.
 
+Every evidence line must name the locked reference image the score is
+judged against (ref 1 / ref 2 / ref 3, as the orchestrator numbered them).
+A score that does not cite the reference is invalid — you grade against
+the locked reference, and the citation is what proves you looked at it.
+
+Good: `Layout 3 — hero stacks vertically vs ref 2 (Aesop) hero, which holds
+one full-viewport image; section rhythm breaks at 768px.`
 Good: `Type 4 — hero H1 "Steel widgets" is Newsreader roman 64px /
 -0.03em tracking per tokens.css; body 16px/1.55, max 68ch.`
 Bad: `Type 4 — looks good.`
+Bad: `Layout 3 — section rhythm breaks at 768px.` (no reference cited)
 
 Evidence must be checkable in the screenshot or the file. "Feels premium",
 "nice hierarchy", "good vibe" are not evidence. If you cannot observe
-something (no screenshot at a width, no contrast measurement), say which
-observation is missing instead of scoring around it — score the axis lower
-and name the missing evidence.
+something (no screenshot at a width, no contrast measurement, no reference
+shot), say which observation is missing instead of scoring around it —
+score the axis lower and name the missing evidence.
 
 ## Grader-label rules
 
@@ -115,8 +163,9 @@ uncertain on a domain, or when you suspect a domain defect outside your
 confidence. Spawn the matching expert from
 `skills/frontend-kit/experts/<domain>.md` as a fresh sub-agent, using the
 spawn pattern in `skills/frontend-kit/references/expert-pack.md` (fresh
-context, no production history, same blind inputs as yours — never the
-builder's reasoning, never your scores). Never before the gate is green;
+context, no production history, same D8-whitelisted blind inputs as yours
+— including the locked reference shots — never the builder's reasoning,
+never your scores). Never before the gate is green;
 max 2 experts per round.
 
 The expert's verdict is ADVISORY to you: you keep the final
@@ -144,26 +193,63 @@ shipping even when your 4 axes are ≥4: say so in your output.
 - Best-version-kept survives a re-pick: your scores are recorded per round
   in the run log, and the best-scoring version across all directions is
   what ships. A lower round is discarded, not iterated on.
+- There is no builder-graded path, and builder grading can never trigger
+  the stop rule. Any score without a named independent grader label
+  (`judge-subagent` / `muse-manager` / `other-model`) is INVALID and cannot
+  trigger the stop; the run-log script rejects builder-graded entries
+  (exit 2, nothing written). There is no builder-graded fallback — no
+  degraded rung, no ladder step, in which the builder grades its own work.
+  If no independent judge is available, the round's grade is exactly "gate
+  green, vision not available" and the human gate carries the full taste
+  judgement.
+
+## Calibration (P9 + P14 — one shared pass, E8)
+
+Your scores are calibrated against the human's, once, on the 3 clean-env
+probe builds — one shared pass for P9 and P14, not two. The human grades
+the same 3 builds blind on the same 4 axes; you grade them blind with the
+D8 inputs above (including the locked reference shots — the calibration
+measures the judge as it will actually run). 3 builds × 4 axes = 12 paired
+scores. Results live in `research/judge-calibration.md`.
+
+- Per axis, the pass reports exact-match rate, within-1 rate, and mean
+  signed overshoot (judge − human, in points).
+- Systematic overshoot ≥ +1.0pt on any axis triggers an immediate
+  rubric-anchor rewrite for that axis, regardless of sample size.
+- The 80% Layout/Space agreement threshold is report-only below n≥30
+  paired scores (council member A) / n≥32 (council member B) — at n=12 one
+  score flips 83% to 75%, so the threshold cannot govern the stop rule.
+  Between n=30 and n=31 the two counts disagree; until n≥32 treat the
+  threshold as report-only. Only at n≥32, if Layout/Space agreement is
+  <80%, does the judge stop gating the stop rule — and the consequence is
+  then that the stop requires a human grade. Buffet mode never parks on
+  low agreement: the loop still runs to the human gate.
 
 ## Output format (return exactly this, nothing else)
 
 ```
 Round N — grader: judge-subagent (fresh context, no production history)
-| Axis   | Score | Evidence (one line, observable)                          |
-|--------|-------|----------------------------------------------------------|
-| Type   | 4     | Hero H1 Newsreader roman 64px/-0.03em; body 16px/1.55   |
-| Layout | 3     | Pricing section peeks 24px into the viewport at 768px   |
-| Colour | 4     | Accent #d97757 used twice (CTA + footer mark); body text 12.6:1 |
-| Space  | 5     | Section gaps 96px throughout; card padding 32px per tokens |
-Gate: PASS (detect 0 findings, consistency 0 FAIL, copy-lint 0 FAIL)
+| Axis   | Evidence (one line, observable, citing the reference)      | Score |
+|--------|--------------------------------------------------------------|-------|
+| Type   | Hero H1 Newsreader roman 64px/-0.03em vs ref 1; body 16px/1.55 | 4     |
+| Layout | Pricing section peeks 24px into the viewport at 768px vs ref 2 | 3     |
+| Colour | Accent #d97757 used twice (CTA + footer mark) vs ref 1; body text 12.6:1 | 4     |
+| Space  | Section gaps 96px throughout vs ref 1; card padding 32px per tokens | 5     |
+Gate: green
 Fix order: Layout (pricing peek — cheapest precise fix), then Type.
 ```
 
 - **Fix order:** the top 2 lowest-scoring axes (top 1 if the evidence is
   thin), as token diffs first. A 3 with a precise, cheap fix outranks a 2
   whose fix is vague — say which you picked and why, in one line each.
-- If the gate is red: return no scores, no table — one line: "Gate red
-  (list the findings); nothing to grade — fix the gate first."
+  Every fix instruction cites the evidence line it rests on (a grader
+  evidence line from this table) — never "improve it". A fix instruction
+  with no citation is not a fix instruction.
+- If you were spawned without the `gate: green` bit: return no scores, no
+  table — one line: "No green-gate bit received; not spawned on a green
+  gate — no grade." The gate itself is the orchestrator's pre-filter, not
+  your input: you never see gate findings, and a red gate never reaches
+  you as a grading task.
 - If you are not independent (same context as the builder, or shown the
   builder's reasoning/drafts): return no scores — one line: "Not an
   independent judge in this context; grade is gate green, vision not
@@ -174,6 +260,9 @@ Fix order: Layout (pricing peek — cheapest precise fix), then Type.
 - Never grade a page you built, helped build, or watched being built.
 - Never accept the builder's scores, framing, or "this is already a 4" as
   input — read the screenshots yourself.
+- Never accept gate findings, earlier scores, the run log, or the
+  builder's / model's identity as input — the D8 whitelist forbids them.
+  Read the screenshots and the locked reference shots yourself.
 - Never score by feel, never use a `⚠️ DEGRADED: single-context` banner
   (it is NOT an accepted grade anywhere in this kit), and never present a
   gate result ("gate green") as a design grade.

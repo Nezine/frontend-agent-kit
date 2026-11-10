@@ -46,6 +46,36 @@ is exactly **"gate green, vision not available"** and the HUMAN gate carries
 the full taste judgement. Never fake a 4/5, never present a gate result as a
 design grade.
 
+## Blind grading — the D8 whitelist (P9, council decision D8)
+
+The judge grades blind. This whitelist replaces P9's as-written blinding
+("screenshots + rubric only"), which forbade inputs P11/P12/P13 require.
+It is the complete list of what the judge may and may not receive.
+
+| ALLOWED judge inputs | FORBIDDEN judge inputs |
+|---|---|
+| Screenshots of the built page (1440 / 768 / 390) | Model / builder identity (who built the page, which model) |
+| Locked reference shots (1–3 from the lock, 720px long edge, every round) | Earlier scores (any judge's, any round) |
+| Rubric / scope (the rubric + the brief-type scope) | Run log (contains earlier grades — anchors the new grade) |
+| Lock text (`design/TASTE.md` + chosen DESIGN.md + `design/tokens.css`) | Gate findings (findings lists, `detect` output, gate-scripts output) |
+| Tool measurements (Playwright snapshot / console / geometry) | Builder's transcript, reasoning, plan, or drafts |
+| Pairwise A/B inputs (P11: full shots of both versions, labelled A/B only) | Unpicked variants (direction alternatives, not evidence) |
+| The single bit `gate: green` (the ONLY gate information the judge receives) | Anything about the builder's model, host, or history |
+
+Gate handled by orchestrator pre-filter: the orchestrator does not spawn a
+judge on a red gate, so a red gate never reaches the judge as a grading
+task. The single `gate: green` bit is the only exception, enforced by the
+orchestrator — the judge never sees gate findings.
+
+There is no builder-graded path, and builder grading can never trigger the
+stop rule. Any score without a named independent grader label
+(`judge-subagent` / `muse-manager` / `other-model`) is INVALID and cannot
+trigger the stop; the run-log script rejects builder-graded entries (exit
+2, nothing written). There is no degraded builder-grading rung to fall back
+to — if no independent judge is available, the round's grade is exactly
+"gate green, vision not available" and the human gate carries the full
+taste judgement.
+
 ## Human-eye acceptance bar: 60% slop-free (user-ordered 2026-11-10 19:23)
 
 The human-eye acceptance bar for a vague brief is **60% slop-free**,
@@ -134,29 +164,43 @@ being redesigned, plus: existing content and links survive. The judge skill
 
 EVERY score carries ONE LINE of observable evidence: a named element, a
 measured contrast ratio, or a pixel value. A score without evidence is not a
-score.
+score. Evidence comes BEFORE the number in the score table (Evidence column
+first, Score second) — number-first-then-justify is how unjustified scores
+slip through.
 
+Every evidence line must name the locked reference image the score is
+judged against (ref 1 / ref 2 / ref 3, as the orchestrator numbered them).
+A score that does not cite the reference is invalid — the judge grades
+against the locked reference, and the citation is what proves it looked at
+it.
+
+Good: `Layout 3 — hero stacks vertically vs ref 2 (Aesop) hero, which holds
+one full-viewport image; section rhythm breaks at 768px.`
 Good: `Type 4 — hero H1 "Steel widgets" is Newsreader roman 64px / -0.03em
 tracking per tokens.css; body 16px/1.55, max 68ch.` (Newsreader roman is
 gate-clean — verified against `impeccable detect`, engine 0.1.21: exit 0
 on a 64px hero. Do NOT use Instrument Serif here: it sits on the
 detector's overused-font list and the same hero flags exit 2.)
 Bad: `Type 4 — looks good.`
+Bad: `Layout 3 — section rhythm breaks at 768px.` (no reference cited)
 
 Evidence must be checkable in the screenshot or the file. "Feels premium",
 "nice hierarchy", "good vibe" are not evidence.
 
 ## Score table format (show every round)
 
+Evidence first, Score second — the column order is part of the evidence
+rule, not formatting preference.
+
 ```
 Round 2 — grader: judge-subagent (fresh context, no production history)
-| Axis   | Score | Evidence (one line, observable)                          |
-|--------|-------|----------------------------------------------------------|
-| Type   | 4     | Hero H1 Newsreader roman 64px/-0.03em; body 16px/1.55   |
-| Layout | 3     | Pricing section peeks 24px into the viewport at 768px   |
-| Colour | 4     | Accent #d97757 used twice (CTA + footer mark); body text 12.6:1 |
-| Space  | 5     | Section gaps 192px throughout (2×96px section padding, inside the 128–288px band); card padding 32px per tokens |
-Gate: PASS (detect 0 findings, consistency 0 FAIL, copy-lint 0 FAIL)
+| Axis   | Evidence (one line, observable, citing the reference)      | Score |
+|--------|--------------------------------------------------------------|-------|
+| Type   | Hero H1 Newsreader roman 64px/-0.03em vs ref 1; body 16px/1.55 | 4     |
+| Layout | Pricing section peeks 24px into the viewport at 768px vs ref 2 | 3     |
+| Colour | Accent #d97757 used twice (CTA + footer mark) vs ref 1; body text 12.6:1 | 4     |
+| Space  | Section gaps 192px throughout (2×96px section padding, inside the 128–288px band) vs ref 1; card padding 32px per tokens | 5     |
+Gate: green
 ```
 
 ## Fix order
@@ -164,3 +208,99 @@ Gate: PASS (detect 0 findings, consistency 0 FAIL, copy-lint 0 FAIL)
 Fix the top 2 lowest-scoring axes (top 1 if the evidence is thin), as token
 diffs first. A 3 that has a precise, cheap fix outranks a 2 whose fix is
 vague — say which you picked and why in the run log.
+
+Every fix instruction must cite a gate finding, a grader evidence line, or
+a human instruction — never "improve it". A fix instruction with no
+citation is not a fix instruction. The orchestrator's fix prompt must
+require the citation field; a fix prompt without it is rejected by the
+orchestrator.
+
+## Calibration — one shared pass (P9 + P14, E8)
+
+There is ONE calibration pass, not two: P9 and P14 share it. It is the
+precondition for P6 (triggers consume judge scores), P11 (pairwise), P13
+(carried-score abolition) and P14 (jury). It measures, and only it
+measures, judge–human agreement.
+
+- **What:** the human blind-grades the 3 clean-env probe builds
+  (`tests/clean-env/probe-briefs.md`) once, on the same 4 axes
+  (Type/Layout/Colour/Space, 1–5), blind to the judge's scores. The judge
+  grades the same 3 builds blind (D8-whitelisted inputs, including the
+  locked reference shots — the calibration measures the judge as it will
+  actually run — no human scores, no gate findings beyond the green bit).
+  3 builds × 4 axes = **12 paired scores**.
+- **Computed per axis:** exact-match rate, within-1 rate, and mean signed
+  overshoot (`judge − human`, in points). Plus overall exact/within-1.
+  Cohen's κ is NOT computed at n=12 (unstable) — only when the sample
+  reaches n≥32.
+- **What it does NOT measure:** pairwise keep/discard agreement, jury
+  agreement, agreement on any brief outside the 3 probes, or the
+  human–human agreement ceiling (unknown — the 80% headline from Zheng et
+  al. is for open-ended chat preference and does not transfer to design).
+- **Decision rule:** (a) If mean signed overshoot on any axis is ≥ +1.0pt
+  (judge systematically overshoots), the rubric's anchor descriptions for
+  that axis are rewritten to the human's anchors immediately, regardless
+  of sample size — a bias fix, not a threshold vote. (b) The 80%
+  Layout/Space agreement threshold is REPORT-ONLY until the sample reaches
+  n≥30 paired scores (council member A) / n≥32 (council member B) — at
+  n=12, one score flips 83% to 75%, so the threshold cannot govern the
+  stop rule. Between n=30 and n=31 the two counts disagree; until n≥32
+  treat the threshold as report-only. (c) Only at n≥32, if Layout/Space
+  agreement is <80%, does the judge stop gating the stop rule — and the
+  consequence is then: the stop requires a human grade (the human gate
+  carries the certification, which it already does as the final step),
+  recorded per build. In buffet mode this does not park the run: the loop
+  still runs to the human gate, which is where the human already is.
+- **Artefact:** `research/judge-calibration.md` (new): gold set (the 3
+  probe builds), the human's blind grades, the judge's blind grades,
+  per-axis table, overshoot, decision taken under (a)–(c).
+  `tests/clean-env/probe-briefs.md` gains one line: "human grades these
+  blind (see `research/judge-calibration.md`)".
+
+## Cost table — P12 + P13, Variant B (council member B)
+
+Planning figures, DERIVED, not measured. Replaces the synthesis table and
+the grading worker's §2 table. **Variant B (full-page 390) is the adopted
+column** — 390 is where defects hide. The ~2,500 figure is Variant A
+(390 viewport), not Variant B; do not cite it as the Variant B cost.
+
+**Formula (DERIVED, CLAIMED via convergent secondaries quoting Anthropic's
+docs — NOT verified against Anthropic's official docs):** image tokens ≈
+`min(width × height / 750, 1,568)` per image, standard tier (long edge
+1,568px, cap ~1,568 tokens/image). **Tier assumption, stated on every
+number below: standard tier.** On a Claude 4.7+ high-res tier the same
+shots cost ~3× per image (same PNG 1,578 → 4,744 tokens; same three
+full-page shots ~8,000–9,500). The enforceable defence is downscaling to
+1,568px long edge before sending, not a model pin.
+
+| Images per round (standard tier) | Current loop | With P12+P13, Variant A (390 viewport) | With P12+P13, Variant B (390 full-page) |
+|---|---|---|---|
+| Round 1: build shots (1440 + 768 + 390 full-page) | ~4,700 (1,568 + 1,568 + 1,560) | ~4,700 | ~4,700 |
+| Round 1: reference shots (1–3 locked refs, 720px long edge) | 0 (the hole P12 fixes) | +~1,400 (3 refs × ~470) | +~1,400 |
+| **Round 1 images total** | **~4,700** | **~6,100** | **~6,100** |
+| Rounds 2–3: build images | ~4,700 | ~1,100 (390 viewport 439 + crops 432 + 260) | ~2,250 (390 full-page 1,560 + crops 432 + 260) |
+| Rounds 2–3: reference shots | 0 | +~1,400 | +~1,400 |
+| **Rounds 2–3 images total (each)** | **~4,700** | **~2,500 (E3's figure — viewport reading only)** | **~3,650** |
+| Images / build, 3 rounds | ~14,100 | ~11,100 (−21%) | ~13,400 (−5%) |
+| Images / build, 2 rounds (typical, flat-line stop) | ~9,400 | ~8,600 (−9%) | ~9,750 (+4% — MORE than current) |
+
+Reference shots cost **+~1,400 image tokens/round** for 3 downscaled refs
+(range ~1,300–2,100 depending on aspect; 1 ref ≈ 470).
+
+**Text-context caveat:** a fresh judge invocation also reloads the judge
+skill, TASTE.md + DESIGN.md, `tokens.css`, the HTML, and the brief-type
+scope — ~4k text tokens per judge call, unmeasured estimate, same order as
+or larger than the image bill. Cropping therefore saves ~10–30% of a
+round, not 80%. The synthesis's "~30–40% worst case" and the worker's own
+disagreeing figures ("~30–50%", "~10–30%") are retired; the single stated
+figure is: **image-token saving on rounds 2–3 is −47% (Variant A) / −22%
+(Variant B); whole-round saving is ~10–30% (Variant A) and ~0–12%
+(Variant B), because text context dominates.** The largest saving remains
+rounds not run (P6 flat-line stop) and judge calls not made — not crops.
+
+**What this table still cannot correct from available evidence:** the ~4k
+text-context figure (needs one instrumented probe build — no instrumented
+cost run exists); the /750 formula itself (CLAIMED via secondaries, not
+Anthropic's official docs); the high-res-tier multiplier for full-page
+shots. The first verification step is that one instrumented run, and the
+table is then re-issued with measured numbers.
