@@ -45,13 +45,20 @@
 // mutable JSON file (a mutable file is the overwrite hazard the
 // long-running-harness lesson warns against). Schema, per record kind:
 //   taste-lock: { kind, lockVersion, tokens, tokensHash, references,
-//     approvedBy, notes, at }. lockVersion auto-increments (1, 2, …);
+//     purpose, approvedBy, notes, at }. lockVersion auto-increments (1, 2, …);
 //     --version N records an explicit version (a re-pick creates a NEW
 //     version; re-using an existing version is REJECTED, exit 2).
 //     tokensHash is the sha256 of the tokens file when it resolves on
 //     disk, else null. approvedBy carries the step-1.7 approval basis for
 //     human-less runs ("converge-check + round-1 grade (no human
 //     present)"); solo runs record human approval in PLAN.md instead.
+//     purpose is the PLAN.md "Purpose + primary user task" section,
+//     recorded with the lock (UX-B council decision 2026-11-10); null
+//     when the lock was recorded without --purpose.
+//   purpose-fail: { kind, action, purpose, notes, at }. action is
+//     re-plan (re-derive the section inventory from the revised
+//     purpose) or re-pick (record a NEW taste-lock version via `lock`);
+//     purpose is the revised purpose from the re-derived plan.
 //   round: { kind, round, grader, independenceBasis, scores, grade,
 //     evidence, gate, gateFindings, variant, tokensHash, fixClass,
 //     outcome, page, notes, at }. variant is the PICKED variant.
@@ -104,6 +111,7 @@
 //   node run-log.mjs --project <dir> lock --tokens <tokens.css path>
 //     --refs "<chosen DESIGN.md + reference screenshots>"
 //     [--version N] [--approved-by "<approval basis>"]
+//     [--purpose "<PLAN.md Purpose + primary user task section>"]
 //   lock records the step-1 taste lock (the "commit" of tokens + chosen
 //   references BEFORE any HTML). It appends {kind:'taste-lock'} to the run
 //   log; --tokens is required, --refs is required (name the locked
@@ -111,6 +119,19 @@
 //   defaults to (existing lock count + 1); a re-pick records a NEW
 //   version. --approved-by records the human-less approval basis
 //   (step 1.7); omit it on solo runs (approval lives in PLAN.md).
+//   --purpose records the PLAN.md "Purpose + primary user task"
+//   section with the lock (UX-B council decision 2026-11-10): the
+//   purpose is a lock field, not a plan note. It is optional so
+//   existing lock invocations keep working; omit it only when the plan
+//   has no Purpose section yet, and record it on the next lock.
+//   node run-log.mjs --project <dir> replan --action <re-plan|re-pick>
+//     --purpose "<revised purpose from PLAN.md>" [--notes "..."]
+//   replan records a purpose failure's resolution: re-plan re-derives
+//   the section inventory from the revised purpose; re-pick records a
+//   NEW taste-lock version (via `lock`). The decision is recorded in
+//   the run log; a purpose failure is never resolved by an unenforced
+//   plan note, and the inventory is never patched in place to fit a
+//   changed purpose.
 //   node run-log.mjs --project <dir> brief [--round N] [--out <file>]
 //   brief assembles the minimal round brief for round N (default: the
 //   next round) from this log + the locked files, via round-brief.mjs —
@@ -234,7 +255,8 @@ function usage(msg) {
   node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s|none> --evidence "<...>" --gate <pass|fail> [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>]
   node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--variant <name>] [--notes "..."]  (no-grade round: grade is exactly "gate green, vision not available")
   node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --evidence "<observable element>"] [--fix-class "<class>"]
-  node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"]
+  node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"]
+  node run-log.mjs --project <dir> replan --action <re-plan|re-pick> --purpose "<revised purpose from PLAN.md>" [--notes "..."]
   node run-log.mjs --project <dir> brief [--round N] [--out <file>]
   node run-log.mjs --project <dir> show
   node run-log.mjs --project <dir> best`);
@@ -465,12 +487,32 @@ if (cmd === 'record') {
     tokens: args.tokens,
     tokensHash: resolveTokensHash(args.project, args.tokens, undefined),
     references: args.refs,
+    purpose: args.purpose || null,
     approvedBy: args['approved-by'] || null,
     notes: args.notes || null,
     at: new Date().toISOString(),
   };
   appendLog(args.project, rec);
-  console.log(`run-log: taste locked (version ${lockVersion}) — tokens: ${args.tokens}${rec.tokensHash ? ` (sha256 ${rec.tokensHash.slice(0, 12)}…)` : ' (tokens file not on disk — no hash recorded)'}; refs: ${args.refs}${rec.approvedBy ? `; approved-by: ${rec.approvedBy}` : ''}`);
+  console.log(`run-log: taste locked (version ${lockVersion}) — tokens: ${args.tokens}${rec.tokensHash ? ` (sha256 ${rec.tokensHash.slice(0, 12)}…)` : ' (tokens file not on disk — no hash recorded)'}; refs: ${args.refs}${rec.purpose ? `; purpose: ${rec.purpose}` : ''}${rec.approvedBy ? `; approved-by: ${rec.approvedBy}` : ''}`);
+} else if (cmd === 'replan') {
+  // Purpose-fail execution path (UX-B council decision 2026-11-10): a
+  // purpose failure (grade-time P1–P5 check, or a purpose change
+  // mid-loop) is resolved by re-planning the inventory from the
+  // revised purpose or re-picking the direction — never by patching
+  // the inventory in place, and never by an unenforced plan note. The
+  // decision is recorded here in the run log; a re-pick records a NEW
+  // taste-lock version via `lock` (this command records the decision
+  // only, it does not lock).
+  const action = args.action;
+  if (!['re-plan', 're-pick'].includes(action)) usage('replan needs --action <re-plan|re-pick>');
+  if (!args.purpose || !args.purpose.trim()) usage('replan needs --purpose "<revised purpose from PLAN.md>"');
+  const rec = {
+    kind: 'purpose-fail', action, purpose: args.purpose.trim(),
+    notes: args.notes || null,
+    at: new Date().toISOString(),
+  };
+  appendLog(args.project, rec);
+  console.log(`run-log: purpose fail recorded — action: ${action}; revised purpose: ${rec.purpose}`);
 } else if (cmd === 'show') {
   const rows = readLog(args.project);
   if (!rows.length) { console.log('run-log: no entries yet.'); process.exit(0); }
@@ -487,7 +529,9 @@ if (cmd === 'record') {
     } else if (r.kind === 'variant-pick') {
       console.log(`variant pick: "${r.variant}"${r.note ? ` — ${r.note}` : ''}`);
     } else if (r.kind === 'taste-lock') {
-      console.log(`taste lock v${r.lockVersion ?? '?'}: tokens: ${r.tokens}${r.tokensHash ? ` (sha256 ${r.tokensHash.slice(0, 12)}…)` : ''}; refs: ${r.references}${r.approvedBy ? `; approved-by: ${r.approvedBy}` : ''}${r.notes ? `; notes: ${r.notes}` : ''} (${r.at})`);
+      console.log(`taste lock v${r.lockVersion ?? '?'}: tokens: ${r.tokens}${r.tokensHash ? ` (sha256 ${r.tokensHash.slice(0, 12)}…)` : ''}; refs: ${r.references}${r.purpose ? `; purpose: ${r.purpose}` : ''}${r.approvedBy ? `; approved-by: ${r.approvedBy}` : ''}${r.notes ? `; notes: ${r.notes}` : ''} (${r.at})`);
+    } else if (r.kind === 'purpose-fail') {
+      console.log(`purpose fail: action: ${r.action}; revised purpose: ${r.purpose}${r.notes ? `; notes: ${r.notes}` : ''} (${r.at})`);
     } else if (r.kind === 'dictionary-overwrite') {
       console.log(`dictionary overwrite: "${r.word}" — was: ${r.previousChange} — now: ${r.newChange} (${r.at})`);
     } else {
@@ -528,5 +572,5 @@ if (cmd === 'record') {
   const best = rounds.reduce((a, b) => (total(b.scores) > total(a.scores) ? b : a));
   console.log(`best: round ${best.round} (grader: ${best.grader}) — T${best.scores.type}/L${best.scores.layout}/C${best.scores.colour}/S${best.scores.space}, total ${total(best.scores)}/20, gate: ${best.gate}`);
 } else {
-  usage(`unknown command "${cmd || ''}" (record | feedback | lock | brief | show | best)`);
+  usage(`unknown command "${cmd || ''}" (record | feedback | lock | replan | brief | show | best)`);
 }

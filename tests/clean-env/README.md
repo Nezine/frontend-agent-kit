@@ -73,7 +73,8 @@ Record per host, with the exact command output or error attached:
    390px screenshot succeeds, `impeccable detect` runs, gate scripts run, installed
    engine version matches the skill's expected engine (mismatch = loud failure).
 4. **(d) Probe build with the hook firing at least once unprompted.** From a vague
-   brief (see `probe-briefs/` — landing page, dashboard, redesign), the agent runs
+   brief (see `probe-briefs/` — landing page, dashboard, redesign, plus Brief 4:
+   landing page with motion + 3D hero), the agent runs
    the taste-locked loop and produces a page. Record:
    - Did the Impeccable hook / detector fire at least once **without being manually invoked**?
    - Was `taste-reference` consulted before building (taste lock)?
@@ -82,6 +83,14 @@ Record per host, with the exact command output or error attached:
      spec does not invent the rubric). Every score recorded under (d) carries the
      named independent grader label; a builder self-grade is FORBIDDEN and invalid,
      and does not count.
+   - Delegation (Brief 4 only, artifact-checkable — not builder self-report): does
+     the built HTML contain a ScrollTrigger scrub/pin call matching the Design
+     Read's named pattern, and does the run log name the skill file + the pattern
+     number? Does the built HTML import the named ThreeUI catalog component, and
+     does the run log name `skills/threeui/SKILL.md` + the component? A probe run
+     that passes (d) while failing this bullet has the delegation still only on
+     paper. Probe-set note: Brief 4 changes the probe set — scores from the
+     original 3-brief set are a separate vintage from 4-brief runs.
 5. **Hook present where supported.** `hooks status` (Claude) / `/hooks` approval state
    (Codex) / `hermes plugins enable` state shows the Impeccable design hook wired.
    On hosts without hook support (Gemini CLI — no evidence), the report says so

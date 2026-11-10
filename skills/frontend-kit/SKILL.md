@@ -17,7 +17,7 @@ names another skill, read that skill and follow it.
 
 The full loop spec lives in `references/workflow.md`. The grade rubric lives in
 `references/grader-rubric.md`. The stop rules and the degradation ladder live
-in `references/stop-rules.md`. The expert pack (10 independent domain
+in `references/stop-rules.md`. The expert pack (11 independent domain
 specialists + call rules) lives in `references/expert-pack.md` and
 `experts/<domain>.md`. The 5 variants as concrete token directions live in
 `references/variant-briefs.md`; the variant scoring procedure
@@ -130,7 +130,12 @@ prompt for discussion.
    variation, motion, content per viewport, real-asset effort,
    preservation strictness) or they are decorative labels. No dial value
    may be cited as evidence for any grade or stop decision, and the judge
-   NEVER receives the dials. If the brief wants scroll motion, name the motion patterns by number from `references/style-recipes/scroll-motion.md` (at most two, e.g. "Pattern 2 + Pattern 5") in the Design Read; no pattern named = no motion beyond the fixed header and hover states. Copy the dials into `design/PLAN.md`
+   NEVER receives the dials. If the brief wants scroll motion, name the motion patterns by number from `references/style-recipes/scroll-motion.md` (at most two, e.g. "Pattern 2 + Pattern 5") in the Design Read; no pattern named = no motion beyond the fixed header and hover states. When a motion pattern is named, also record its implementation skill in the Design Read on the same line, in this format: `Motion: Pattern 2 + Pattern 5 — implementation skill: vendor/gsap/gsap-scrolltrigger/SKILL.md`. The pattern → skill map (all 8 patterns; the routing follows the recipe's Build-it text, not the pattern name alone):
+   - Pattern 1 (condensing wordmark) → none — a vanilla class toggle (`scroll-motion.md:95–101`); no implementation skill.
+   - Patterns 2, 3, 6, 8 → `vendor/gsap/gsap-scrolltrigger/SKILL.md` (scrub / pin / parallax). Pattern 3 is "Hero settle: scale-on-scroll" — the routing is a scrub because its Build-it text says the scale is "scrubbed to scroll over the hero's own height" (`scroll-motion.md:147–149`).
+   - Pattern 5 (reveal) → `vendor/gsap/gsap-scrolltrigger/SKILL.md` by default; vanilla `IntersectionObserver` only when no other named pattern uses GSAP, so the page does not load GSAP for one reveal — record the reason on the same line.
+   - Pattern 7 (Lenis smooth scroll) → the upstream Lenis docs at https://github.com/darkroomengineering/lenis (no vendored Lenis doc exists in the kit), plus `vendor/gsap/gsap-scrolltrigger/SKILL.md` only if combined with a scrubbed pattern (2, 3, 6, 8).
+   When the brief asks for a 3D or shader hero, name the component and record it on its own line: `3D: <component from the ThreeUI catalog> — implementation skill: skills/threeui/SKILL.md`. threeui covers catalog components only — its trigger forbids general Three.js work, and custom 3D/shader work has no skill at all; say so instead of misrouting it to threeui. A Design Read that names a pattern or a 3D component without its implementation skill or an explicit 'none' is incomplete — the round-brief generator fails loudly on it (see "Round briefs + per-role context budgets" below). Copy the dials into `design/PLAN.md`
    § Design Read. (Adapted from garden-skills `web-design-engineer`
    Step 2b — five dials, categorical here instead of its 1–10 numbers;
    see SOURCES.md for the no-vendoring note.)
@@ -462,7 +467,11 @@ assembled from it.
    `node scripts/run-log.mjs --project <dir> brief [--round N]` (or
    `node scripts/round-brief.mjs --project <dir> [--round N]` directly).
    The brief contains, and nothing else: the 5-line lock summary, the
-   locked `tokens.css` verbatim, the best HTML verbatim, the latest
+   Purpose lock field + the Design Read's motion/3D routing lines
+   (patterns + implementation skill, 3D component + threeui — step 2.1a;
+   the generator fails loudly when the Design Read names a pattern or a
+   3D component without its implementation skill or an explicit 'none'),
+   the locked `tokens.css` verbatim, the best HTML verbatim, the latest
    round's gate findings, grader evidence lines (latest + best round
    only), and a one-line-per-round run-state table. **All axes start
    "ungraded" for the new round** — no score is ever carried from an
@@ -493,7 +502,7 @@ assembled from it.
    | Role | May load | Must never load |
    |---|---|---|
    | Orchestrator | The run log file, PLAN.md, the briefs; the full project on disk | Pastes the full run log into any subagent prompt |
-   | Builder (round N) | The round brief only: locked tokens + best HTML + gate findings + grader evidence lines + run-state table | The full run log, earlier HTML versions, its own reasoning from a prior round |
+   | Builder (round N) | The round brief only: locked tokens + Purpose + motion/3D routing + best HTML + gate findings + grader evidence lines + run-state table | The full run log, earlier HTML versions, its own reasoning from a prior round |
    | Fixer (round N+1) | Same as the builder — the new round's brief | Same as the builder |
    | Judge | Screenshots + the 1–3 locked reference shots + rubric/scope + the 5-line lock text + tool measurements (+ pairwise A/B inputs when the stop round calls for them) | Model/builder identity, earlier scores, the run log, gate findings — the single `gate: green` bit from the orchestrator's pre-filter is the only gate information the judge receives |
    | Expert (second opinion) | Same as the judge, plus the one domain question it was asked | Same as the judge |
@@ -510,6 +519,7 @@ assembled from it.
    brief-type scoping table in step 3 — it governs both the build shape and
    the gate). No inline style drift: every visual value comes from
    `design/tokens.css`. A new token is added to the file first, then used.
+   **2.1a Motion/3D implementation (binding).** Before writing any motion or 3D code, read the skill the Design Read names: if it names a scroll-motion pattern, read `vendor/gsap/gsap-scrolltrigger/SKILL.md` and follow it — plus `gsap-core` and `gsap-timeline` when timelines are used, `gsap-react` only for React, `gsap-plugins` only for ScrollSmoother or scroll-to (the full read set that skill names at its "Related skills" line); if it names a ThreeUI catalog component, read `skills/threeui/SKILL.md` and follow it. Do not hand-roll what the named skill covers, and do not substitute another animation library without a recorded reason in the run log. The Design-Read-recorded implementation stands unless the motion expert's fix instruction explicitly re-routes it with a reason — then the re-route is recorded in the run log and the Design Read is amended. If the Design Read names no pattern and no 3D component, this sub-step is skipped and no motion beyond the fixed header and hover states is built (Step 1.2).
 2. If the brief is vague on direction, generate the 5 structural variants
    before building further: same content, same copy, same section
    inventory — structure may differ; tokens stay locked. The five are

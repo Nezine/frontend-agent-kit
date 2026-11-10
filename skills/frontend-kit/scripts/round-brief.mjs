@@ -13,6 +13,12 @@
 //
 // What the brief contains, and nothing else:
 //   - the 5-line lock summary (also at the top of templates/design/TASTE.md)
+//   - the Purpose lock field (the run-log lock record's `purpose`, else the
+//     Purpose section of design/PLAN.md) + the Design Read's motion/3D routing lines
+//     (patterns + implementation skill, 3D component + threeui) — W3:
+//     the builder budget is the brief only (SKILL.md per-role table), so
+//     routing that lives only in Step 1/2 reaches no builder without this
+//     section
 //   - the locked tokens.css, verbatim
 //   - the best HTML (best-scoring graded round's page), verbatim
 //   - the latest round's gate findings
@@ -32,6 +38,15 @@
 // evidence to explicit "NOT RECORDED" lines (the absence stays visible);
 // it never invents them. Round 1 has no prior round, so no gate
 // findings or evidence are required for it — the brief is lock + tokens.
+//
+// W3 (Design-Read check, fires at round 1 too): the brief FAILS LOUDLY
+// when design/DESIGN-READ.md names a scroll-motion pattern (or a 3D
+// component) without its implementation skill or an explicit 'none'
+// (same fail-loud pattern as the lock/evidence checks; --allow-missing
+// downgrades it to an explicit "NOT RECORDED" line, never an invented
+// skill). A missing DESIGN-READ.md is NOT a failure — it degrades to
+// explicit "NOT RECORDED" routing lines (older projects predate the
+// field); a missing Purpose field likewise degrades, never fails.
 //
 // Fallback (council-A/B): if this script cannot run (no Node), the
 // orchestrator hand-assembles the same field list from the run log's
@@ -123,6 +138,112 @@ function scoresLine(s) {
   return s ? `T${s.type}/L${s.layout}/C${s.colour}/S${s.space}` : 'no grade';
 }
 
+function designReadPath(project) {
+  return path.join(project, 'design', 'DESIGN-READ.md');
+}
+
+function planPath(project) {
+  return path.join(project, 'design', 'PLAN.md');
+}
+
+// W3: the Design Read's motion/3D routing lines, in the stated format
+// (SKILL.md step 1.2): `Motion: Pattern 2 + Pattern 5 — implementation
+// skill: vendor/gsap/gsap-scrolltrigger/SKILL.md` and
+// `3D: <component from the ThreeUI catalog> — implementation skill:
+// skills/threeui/SKILL.md` (or `Motion: none` / `3D: none`). The
+// generator reads the file from disk — the run log carries no
+// Design-Read field, and free-text prose is never parsed as a routing
+// decision beyond the lines this function recognises.
+// Returns { present, motion, threeD, motionGap, threeDGap } where
+// motion/threeD are the verbatim routing lines (or null), and the *Gap
+// flags mark a fail-loud check downgraded by --allow-missing. Throws on
+// component) named without an implementation skill or an explicit
+// 'none', unless opts.allowMissing, in which case the caller emits an
+// explicit NOT RECORDED line instead.
+function readMotionRouting(project, opts = {}) {
+  const p = designReadPath(project);
+  if (!fs.existsSync(p)) return { present: false, motion: null, threeD: null };
+  const text = fs.readFileSync(p, 'utf8');
+  const lines = text.split('\n');
+  const patterns = [...new Set([...text.matchAll(/Pattern\s+([1-8])\b/g)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+  const skillLines = lines.filter((l) => /implementation skill/i.test(l));
+  const motionLine = skillLines.find((l) => /Pattern|Motion/i.test(l)) || null;
+  const threeDLine = skillLines.find((l) => /threeui|3D/i.test(l)) || null;
+  const namesThreeD = lines.some((l) => /^3D:/i.test(l.trim())) || /threeui/i.test(text);
+  const noneMotion = /Motion:\s*none/i.test(text);
+  const noneThreeD = /3D:\s*none/i.test(text);
+  const fail = (msg) => {
+    if (opts.allowMissing) return null;
+    throw new Error(msg);
+  };
+
+  let motion = null;
+  let motionGap = false;
+  if (patterns.length) {
+    if (motionLine) {
+      if (!/vendor\/gsap\/[\w-]+\/SKILL\.md/i.test(motionLine) && !/\bnone\b/i.test(motionLine)) {
+        fail(`Design Read names Pattern ${patterns.join(' + ')} but its implementation-skill line names neither a vendor/gsap skill path nor 'none': "${motionLine.trim()}" (record the skill per SKILL.md step 1.2, or pass --allow-missing to label the gap explicitly)`);
+        motion = null; // allow-missing: caller emits NOT RECORDED
+        motionGap = true;
+      } else {
+        motion = motionLine.trim();
+      }
+    } else if (noneMotion) {
+      motion = 'Motion: none';
+    } else {
+      const msg = `Design Read names Pattern ${patterns.join(' + ')} with no implementation skill recorded (record it per SKILL.md step 1.2, or pass --allow-missing to label the gap explicitly)`;
+      fail(msg);
+      motion = null; // allow-missing: caller emits NOT RECORDED
+      motionGap = true;
+    }
+  } else if (motionLine) {
+    motion = motionLine.trim();
+  } else if (noneMotion) {
+    motion = 'Motion: none';
+  }
+
+  let threeD = null;
+  let threeDGap = false;
+  if (namesThreeD) {
+    if (threeDLine) {
+      if (!/skills\/threeui\/SKILL\.md/i.test(threeDLine) && !/\bnone\b/i.test(threeDLine)) {
+        fail(`Design Read names a 3D component but its implementation-skill line names neither skills/threeui/SKILL.md nor 'none': "${threeDLine.trim()}" (record the skill per SKILL.md step 1.2, or pass --allow-missing to label the gap explicitly)`);
+        threeD = null; // allow-missing: caller emits NOT RECORDED
+        threeDGap = true;
+      } else {
+        threeD = threeDLine.trim();
+      }
+    } else if (noneThreeD) {
+      threeD = '3D: none';
+    } else {
+      fail('Design Read names a 3D component with no implementation skill recorded (record skills/threeui/SKILL.md per SKILL.md step 1.2, or pass --allow-missing to label the gap explicitly)');
+      threeD = null; // allow-missing: caller emits NOT RECORDED
+      threeDGap = true;
+    }
+  } else if (threeDLine) {
+    threeD = threeDLine.trim();
+  } else if (noneThreeD) {
+    threeD = '3D: none';
+  }
+
+  return { present: true, motion, threeD, motionGap, threeDGap };
+}
+
+// W3: the Purpose lock field. The run-log lock record's `purpose` wins
+// (BUILD-2's lock field, recorded at lock time); else the Purpose
+// section of design/PLAN.md. Returns the purpose text, or null when
+// neither exists yet (the caller emits an explicit NOT RECORDED line).
+function readPurpose(project, lock) {
+  if (lock.purpose && String(lock.purpose).trim()) return String(lock.purpose).trim();
+  const p = planPath(project);
+  if (!fs.existsSync(p)) return null;
+  const text = fs.readFileSync(p, 'utf8');
+  const m = text.match(/^##\s+Purpose[^\n]*\n([\s\S]*?)(?=^##\s|\Z)/m);
+  if (!m) return null;
+  const body = m[1].split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('<!--')).join(' ');
+  return body || null;
+}
+
 // The 5-line lock summary. The same five lines, in the same order, sit
 // at the top of templates/design/TASTE.md and are restated at the end of
 // every brief — one canonical shape, three places, no drift.
@@ -179,6 +300,25 @@ export function buildBrief(project, opts = {}) {
     out.push('');
     out.push(`WARNING: tokens on disk do NOT match the locked hash (lock v${lock.lockVersion ?? '?'} recorded sha256 ${lock.tokensHash.slice(0, 12)}…, disk is ${tokensHash.slice(0, 12)}…). The lock moved mid-loop — re-lock before building; do not build against unlocked tokens.`);
   }
+  // W3: Purpose + motion/3D routing. The builder's budget is the brief
+  // only, so this is the one place the routing reaches a builder — in
+  // any round, including round 1. readMotionRouting throws (fail loud)
+  // when the Design Read names a pattern or a 3D component without its
+  // implementation skill; --allow-missing downgrades that to NOT
+  // RECORDED, never to an invented skill.
+  const routing = readMotionRouting(project, opts);
+  const purpose = readPurpose(project, lock);
+  out.push('');
+  out.push('## Purpose + motion/3D routing');
+  out.push(`Purpose: ${purpose || 'NOT RECORDED — no Purpose lock field in the run log and no Purpose section in design/PLAN.md yet.'}`);
+  if (!routing.present) {
+    out.push('Motion: NOT RECORDED — design/DESIGN-READ.md not found; no motion beyond the fixed header and hover states.');
+    out.push('3D: NOT RECORDED — design/DESIGN-READ.md not found; no 3D component.');
+  } else {
+    out.push(routing.motion ? routing.motion : (routing.motionGap ? 'Motion: NOT RECORDED — the Design Read names a pattern but no implementation skill (run with --allow-missing to label the gap explicitly). No motion beyond the fixed header and hover states until the skill is recorded.' : 'Motion: none — no motion pattern named in the Design Read; no motion beyond the fixed header and hover states.'));
+    out.push(routing.threeD ? routing.threeD : (routing.threeDGap ? '3D: NOT RECORDED — the Design Read names a 3D component but no implementation skill (run with --allow-missing to label the gap explicitly). No 3D component until the skill is recorded.' : '3D: none — no 3D component named in the Design Read.'));
+  }
+  out.push('Before writing any motion or 3D code, read the implementation skill named above (SKILL.md step 2.1a). Do not hand-roll what the named skill covers, and do not substitute another animation library without a recorded reason in the run log.');
   out.push('');
   out.push('## Your task');
   if (!rounds.length) {

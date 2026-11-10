@@ -220,10 +220,23 @@ cd frontend-agent-kit
   OpenCode v2 uses `mcp.servers.<name>` + `disabled`, never v1 `mcp.<name>` + `enabled`;
   Gemini streamable HTTP uses `httpUrl`, `url` means SSE and will fail on servers without /sse).
 - **Plugin-route scope (from `.claude-plugin/plugin.json` / `.codex-plugin/plugin.json`):**
-  Plugin route delivers only the 6 canonical skills in `./skills/`; GSAP skills,
-  Impeccable variants, reference data and OpenCode commands are install.sh-only.
-  For the full 15 skills + reference data + the OpenCode `/impeccable` and
-  `/frontend-kit` commands, run `./install.sh`.
+  Plugin route delivers exactly the 6 canonical skills in `./skills/` —
+  `frontend-design`, `frontend-kit`, `frontend-judge`, `taste-reference`,
+  `threeui`, `ui-ux-pro-max-reference` — and nothing else. The 8 GSAP
+  skills (`vendor/gsap/gsap-*`: `gsap-core`, `gsap-frameworks`,
+  `gsap-performance`, `gsap-plugins`, `gsap-react`, `gsap-scrolltrigger`,
+  `gsap-timeline`, `gsap-utils`), Impeccable variants, reference data and
+  OpenCode commands are install.sh-only. Consequence, stated plainly: a
+  plugin-route host HAS `threeui` (3D catalog components) but has NO GSAP
+  skill — it cannot do GSAP motion through the loop's delegation
+  (`frontend-kit` SKILL.md step 2.1a names `vendor/gsap/gsap-scrolltrigger/SKILL.md`,
+  which does not exist on that route). A motion brief on a plugin-route
+  host needs `./install.sh` first, or vanilla motion only. Why GSAP was
+  excluded from the plugin route is unverified — whether a plugin manifest
+  can reference `vendor/` paths has not been established; do not claim the
+  add is possible until it is verified. For the full 15 skills + reference
+  data + the OpenCode `/impeccable` and `/frontend-kit` commands, run
+  `./install.sh`.
 - **Figma is excluded from unattended install.** It needs human OAuth. See §4.
 
 ### Step 4 — RESTART, then re-verify in the NEW session (mandatory)

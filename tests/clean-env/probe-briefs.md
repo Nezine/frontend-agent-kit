@@ -1,10 +1,21 @@
 # Probe briefs — clean-env test (§5, assertion d)
 
-Three vague briefs, written the way a user who is not good at art would write them.
+Four vague briefs, written the way a user who is not good at art would write them.
 Paste each brief **verbatim** (no elaboration, no added direction) into the host under
 test, after the kit is installed. The agent must run the taste-locked loop from the
 brief alone: taste lock → variants if direction is unclear → build → gate → grade →
 fix → human gate.
+
+Coverage note (verified 2026-11-10): none of the first three briefs asks for
+motion or 3D — a grep for `motion|3d|scroll|animat` over the first three briefs
+returns nothing — so the fixtures as written cannot produce evidence about
+threeui/GSAP delegation. The clean-env test itself was never executed
+(`tests/clean-env/README.md`: "Status: specification only"). Brief 4 exists so
+the fixtures CAN catch delegation. The gap it closes is an unwired capability,
+no live failure yet: no brief to date has needed GSAP/threeui routing.
+Probe-set note: adding Brief 4 changes the probe set — scores from the original
+3-brief set are a separate vintage from 4-brief runs, and pre/post comparisons
+must note it.
 
 Record per brief: whether the taste lock happened before HTML, whether `detect`
 fired, whether screenshots were taken at 1440/768/390, whether the hook fired at
@@ -42,3 +53,12 @@ The human grades these blind (see `research/judge-calibration.md`).
 > projects and some links. I'm a second-year software engineering student who likes
 > Linux and building small tools. Make it feel like me, not like a template. I don't
 > have a style in mind, surprise me but keep it tasteful.
+
+## Brief 4 — Landing page with motion + 3D hero
+
+> Make me a landing page for a small coffee roastery that sells beans online.
+> I want it to feel alive when you scroll — the hero card growing to full-bleed
+> as you scroll (Pattern 2, I think it's called?) and the sections fading in as
+> they come into view (Pattern 5). And the hero should have a real 3D moment —
+> one of those ThreeUI catalog components, a shader or 3D element that fits
+> coffee. Nothing too flashy, just enough to feel expensive. One page is fine.

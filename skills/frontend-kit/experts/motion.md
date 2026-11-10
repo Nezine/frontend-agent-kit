@@ -64,6 +64,14 @@ or FAIL, with one line of observable evidence for every FAIL.
    or marquee that moves while the reader is reading; any autoplay is
    pausable and stops on interaction.
 
+**Fix instructions name the implementation skill.** When your verdict
+prescribes a scrub/pin/parallax fix, name the implementation skill
+(`vendor/gsap/gsap-scrolltrigger/SKILL.md`) in the fix instruction, so
+the fixer (brief-only context) can read it. The Design-Read-recorded
+implementation stands unless your fix instruction explicitly re-routes
+it with a reason — then the re-route is recorded in the run log and the
+Design Read is amended.
+
 ## How you grade (1–5, one line of evidence per score)
 
 One domain score for motion/interaction, with one line of observable

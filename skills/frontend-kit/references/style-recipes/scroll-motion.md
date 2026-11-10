@@ -98,6 +98,8 @@ page is a tool, not a film.
 - **Build it:** two logo variants (full + mark) in the header; swap
   on a scroll threshold with a single class toggle; no width/height
   animation on the header itself. Never animate the nav links.
+  Implementation skill: none — a vanilla class toggle; no GSAP skill,
+  no threeui.
 
 ### Pattern 2 — Expanding hero card → full-bleed (Anthropic, user-named)
 
@@ -124,7 +126,10 @@ page is a tool, not a film.
 - **Build it:** a hero card whose `clip-path: inset()` is driven by a
   `--scroll-grow: 0→1` custom property over the first ~300px of
   scroll (set it from an `IntersectionObserver` + scroll listener, or
-  from GSAP ScrollTrigger `scrub: true` — see the kit's GSAP skills).
+  from GSAP ScrollTrigger `scrub: true` — read
+  `vendor/gsap/gsap-scrolltrigger/SKILL.md` before implementing;
+  vanilla `IntersectionObserver` + scroll listener is the only
+  alternative, and the choice is recorded in the Design Read).
   Horizontal inset ~64–80px → 0, bottom inset ~48px → 0, radius
   ~4px → 0. Do not animate width/height/margin on the card — those
   reflow; clip does not.
@@ -147,6 +152,8 @@ page is a tool, not a film.
   scroll over the hero's own height, `ease: 'none'`, `transform-origin:
   center`. Never scale text with the image. Never combine with
   Pattern 2 on the same hero — one hero moment per page.
+  Implementation skill: `vendor/gsap/gsap-scrolltrigger/SKILL.md` —
+  the scale is scrubbed to scroll, so it is a ScrollTrigger scrub.
 
 ### Pattern 4 — Full-viewport stacked sections (SpaceX, Apple)
 
@@ -168,7 +175,8 @@ page is a tool, not a film.
 - **Build it:** one section per viewport (the kit's Layout axis
   already demands this for landings); a fixed header; bands
   alternate canvas/surface. No reveals inside a band beyond Pattern 5
-  (one per band, max).
+  (one per band, max). Implementation skill: none — layout, not
+  animation; no GSAP skill, no threeui.
 
 ### Pattern 5 — Reveal-on-scroll (fade + short rise)
 
@@ -194,7 +202,8 @@ page is a tool, not a film.
   section's one moment).
 - **Build it:** `IntersectionObserver` with `threshold: 0.15` and
   `rootMargin: '0px 0px -15% 0px'`, adding one class; or GSAP
-  ScrollTrigger `toggleActions: 'play none none none'`; or Motion
+  ScrollTrigger `toggleActions: 'play none none none'` (see
+  `vendor/gsap/gsap-scrolltrigger/SKILL.md`); or Motion
   `whileInView` (React). Never use a scroll listener that sets
   `style.opacity` per frame for reveals — that is what scrubbing is
   for (Patterns 2–3); reveals are state changes, not scrubbed values.
@@ -212,7 +221,8 @@ page is a tool, not a film.
   `end: '+=' + container.offsetWidth` for horizontal; gsap.com /
   lab.good-fella.com, read 2026-11-10), but no pinned sequence was
   captured mid-pin in this run, so no site is cited as the pin
-  exemplar. The kit's GSAP skills own the implementation detail.
+  exemplar. The implementation detail lives in
+  `vendor/gsap/gsap-scrolltrigger/SKILL.md` (pin/scrub).
 - **Prescription:** at most ONE pinned section per page; pin distance
   ≤ 2 viewports of scroll; the pinned content changes by discrete
   steps (not continuous motion); a calm section follows it. Never pin
@@ -230,7 +240,7 @@ page is a tool, not a film.
   studiofreight.com (the current home of the old Lenis demo URL).
   The glide itself is not measurable in headless instant scrolling —
   presence is verified, feel is not.
-- **DOCUMENTED (Lenis docs, read 2026-11-10):** `npm i lenis`,
+- **DOCUMENTED (upstream Lenis docs, https://github.com/darkroomengineering/lenis, read 2026-11-10):** `npm i lenis`,
   `new Lenis({ autoRaf: true })` (or `anchors: true`); ~3kB
   gzipped; it keeps the browser's native scroll position and only
   eases wheel/trackpad input toward the target (lerp), so sticky
@@ -260,6 +270,16 @@ page is a tool, not a film.
   `scrub: 1`, `ease: 'none'`. The Bulgari "Emerald Strata" roundup
   note (secondary write-up, not live-visited) describes the same
   idea as "layered backgrounds shift at different speeds".
+- **Implementation skill:** `vendor/gsap/gsap-scrolltrigger/SKILL.md`.
+
+### 3D hero (ThreeUI catalog component)
+
+Patterns 1–8 cover scroll motion only. A brief that wants a 3D or
+shader hero moment uses a named component from the ThreeUI catalog:
+read `skills/threeui/SKILL.md` before implementing, and name the
+component in the Design Read (SKILL.md step 1.2). threeui is a
+component catalog, not a general Three.js skill — do not invoke it
+for general Three.js work.
 - **Prescription:** at most two layers; total travel ≤200px; only
   `transform: translateY` (never `background-position` — it repaints);
   never parallax text. If the travel is visible as "movement" rather
@@ -390,10 +410,14 @@ easing.
   brief disagree, the expert brief governs the grade and this file
   is fixed.
 - It does not teach the libraries. GSAP ScrollTrigger pin/scrub
-  detail lives in the kit's vendored GSAP skills; Lenis setup lives
-  in the Lenis docs; Motion `useScroll`/`whileInView` lives in the
-  Motion docs. This file names the pattern and its restraint, and
-  points at the implementation.
+  detail lives in `vendor/gsap/gsap-scrolltrigger/SKILL.md`
+  (timelines in `vendor/gsap/gsap-timeline/SKILL.md`; performance in
+  `vendor/gsap/gsap-performance/SKILL.md`); Lenis setup lives in the
+  upstream Lenis docs at https://github.com/darkroomengineering/lenis
+  (no vendored Lenis doc exists in the kit); Motion
+  `useScroll`/`whileInView` lives in the Motion docs at
+  https://motion.dev/docs/react-scroll-animations. This file names
+  the pattern and its restraint, and points at the implementation.
 - It does not set the grade. Motion has no axis (see the grading
   proposal in `build-notes/w-motion.md`); motion is graded as evidence
   under Layout by the judge, with the motion expert as second opinion

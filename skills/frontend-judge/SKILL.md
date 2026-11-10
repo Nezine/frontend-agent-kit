@@ -124,8 +124,29 @@ Pattern N, e.g. Pattern 2 for the expanding hero card) as well as the
 reference — a motion claim with no pattern number is invalid, same as a
 score with no reference citation.
 
+An evidence line about UX also cites the UX checklist item by number
+(`UX-<n>`, the criterion number in the UX expert brief,
+`skills/frontend-kit/experts/ux.md`) as well as the reference — a UX
+claim with no UX-N tag is invalid, same as a motion claim with no
+pattern number.
+
+UX evidence is cited under the axis the defect belongs to — the
+per-defect axis. Layout-only is STRUCK: E3's own tells span Layout,
+Space, and Type-adjacent defects (vanishing nav under Layout and dead
+bands under Space in the probe judges' own reports; unreadable chart
+labels at 390 under Type), so the axis follows the defect — no UX
+evidence is cited under an axis the defect does not belong to. An
+evidence line resting on a UX defect carries both the reference
+citation and the UX-N tag.
+
+HTML-dependent tags are confined to the expert paragraph: per-element
+control checks and `display: none` rules are the expert's evidence,
+not the judge's — you grade from the screenshots and cite the UX-N tag
+for what the screenshots show.
+
 Good: `Layout 3 — hero stacks vertically vs ref 2 (Aesop) hero, which holds
 one full-viewport image; section rhythm breaks at 768px.`
+Good: `Layout 3 — nav section links vanish entirely at 768/390 with no hamburger (UX-6) vs ref 1.`
 Good: `Type 4 — hero H1 "Steel widgets" is Newsreader roman 64px /
 -0.03em tracking per tokens.css; body 16px/1.55, max 68ch.`
 Bad: `Type 4 — looks good.`
@@ -253,12 +274,41 @@ Fix order: Layout (pricing peek — cheapest precise fix), then Type.
   It never changes any axis score and never affects the stop rule. If no
   motion expert was consulted, omit the paragraph — never invent a motion
   score.
-- **Fix order:** the top 2 lowest-scoring axes (top 1 if the evidence is
+- **UX (non-scoring):** if you consulted a UX expert this round, add one
+  paragraph after the `Gate: green` line (after the Motion paragraph when
+  both are present), surfacing the expert's existing 1–5 domain score
+  (`skills/frontend-kit/experts/ux.md`):
+  `UX: <score> (ux-expert) — <the expert's one-line evidence>`, plus one
+  line per FAILED UX-N item only: `UX-N: FAIL — <one line>`. PASS items
+  are omitted. It never changes any axis score and never affects the stop
+  rule. If no UX expert was consulted this round, omit the paragraph —
+  never invent a UX score. (Worked example with FAIL lines only: see the
+  UX paragraph in `skills/frontend-kit/references/grader-rubric.md`.)
+- **Comparability — broken by this change (E3 §3(c) as written is
+  STRUCK):** UX adds no fifth axis and changes no stop rule. The loop
+  still stops at ≥4 on every axis AND gate green, or after 3 rounds per
+  direction (max 2 re-picks, 9 rounds total). The 60% slop-free human-eye
+  bar is unchanged. The UX domain score is advisory to the judge, exactly
+  as the Motion domain score is: it surfaces defects for the fix order
+  and never moves an axis score. But E3 §3(c)'s claim that probe scores
+  stay comparable is false as written and is struck: the tells the probe
+  judges missed (brief 1 navigation vanishing below 820px; brief 2 "End
+  of day" restating Low stock — E3 T1 and T7) are deductions the judge did
+  not make, and the capped top-2 fix order means UX defects displace judge
+  defects in the fix list. Comparability is broken. Pre-UX and post-UX
+  rounds are not comparable. Probes must be re-baselined: the new baseline
+  is the first UX-graded round. The three probe scores (Type 4, Layout 3,
+  Colour 4, Space 3 on each of briefs 1–3) stand as pre-UX scores and must
+  not be compared against post-UX rounds.
+- **Fix order:** the top 2 across judge + experts (top 1 if the evidence is
   thin), as token diffs first. A 3 with a precise, cheap fix outranks a 2
   whose fix is vague — say which you picked and why, in one line each.
   Every fix instruction cites the evidence line it rests on (a grader
   evidence line from this table) — never "improve it". A fix instruction
-  with no citation is not a fix instruction.
+  with no citation is not a fix instruction. A UX paragraph FAIL line is
+  itself a citable fix-order entry — a UX defect with no axis evidence
+  line (e.g. UX-1, the primary-task destination) enters the fix order by
+  citing its `UX-N: FAIL` line.
 - If you were spawned without the `gate: green` bit: return no scores, no
   table — one line: "No green-gate bit received; not spawned on a green
   gate — no grade." The gate itself is the orchestrator's pre-filter, not

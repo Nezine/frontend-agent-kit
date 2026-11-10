@@ -6,7 +6,7 @@ specialists. Each expert is one Markdown brief in
 and the judge (`frontend-judge`) call them as fresh sub-agents when a round
 needs domain expertise — never the builder, never in the build thread.
 
-## The pack (10 domains)
+## The pack (11 domains)
 
 | Domain | File | Judges | Call it when |
 |---|---|---|---|
@@ -20,6 +20,7 @@ needs domain expertise — never the builder, never in the build thread.
 | Design systems | `experts/design-systems.md` | One system, tokens-only, component recipes, token/reference match | Drift is suspected — ad-hoc values, two button recipes, tokens not matching the lock |
 | Performance | `experts/performance.md` | Page/image/font/script budgets, layout shift, loading behaviour | The page is overweight, fonts shift, or loading behaviour is un-designed |
 | Responsive | `experts/responsive.md` | Overflow, clipped glyphs, stacking order, tap targets, breakpoints | Anything width-specific — the desktop looks fine and the phone is suspect |
+| UX (task flow) | `experts/ux.md` | Primary task completion, system status, navigation at every width, error prevention/recovery, help | The judge is uncertain on Layout/task-flow, or the brief is task-heavy (form, checkout, dashboard, portfolio with a primary task), or Layout scored <4 in a prior round of the same direction. NOT every round. |
 
 ## When to call an expert (and when not to)
 
@@ -35,6 +36,15 @@ needs domain expertise — never the builder, never in the build thread.
 - **Never more than 2 experts per round.** If three or more domains are
   suspect, the build has a direction problem — re-pick the variant, not a
   third expert. Experts are a second opinion, not a committee.
+- **UX priority on overlap.** When a defect could belong to two experts,
+  it counts once, under one expert: nav-vanishing → UX (not responsive);
+  focus-ring/keyboard/contrast → accessibility (not UX); label/CTA
+  wording → copy (not UX), except where the label is the task's
+  destination; pure width breakage (overflow, clipping) → responsive
+  (not UX). A defect assigned to one expert counts as one suspect domain
+  (the tripwire counts once).
+- **UX budget.** At most 1 UX invocation per round; a re-grade is a new
+  invocation.
 - **Never the builder, never in the build thread.** Experts are spawned
   exactly like the judge (see "Spawn pattern" below). The builder never
   calls an expert on its own work, and an expert never sees the builder's

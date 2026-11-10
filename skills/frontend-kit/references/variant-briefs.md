@@ -16,6 +16,18 @@ in structure — layout doctrine, section order, hero form — not only in
 CSS. A set of five variants that share one structure is one direction
 worn five ways, not five directions.
 
+**Purpose check (UX): every variant must state, in one line, how its structure serves the page's purpose and primary task.**
+
+Each variant brief (§§1–6) carries a `Purpose line:` — one sentence naming the primary task step its structure serves first, and how. The line is written from the plan's "Purpose + primary user task" section (`templates/design/PLAN.md`): it names the task step, not the mood. A variant that cannot state its purpose line is INVALID — it is a structure without a job, and it is rebuilt or dropped, not picked.
+
+Format: `Purpose line: [This structure serves the primary task "<task>" by <mechanism> — e.g. putting <step> first / removing <step> / making <step> the whole page.]`
+
+The break-frame variant (§6) is NOT exempt: its purpose line must state which task step the broken frame serves better than the canonical frame — e.g. "serves 'grasp what the tool does' by removing the hero so the proof is the first thing seen". A break-frame whose purpose line is only "it looks different" is invalid.
+
+The `Purpose line:` values below are kit-starter lines for the worked task in each brief; each real build rewrites its variant's line from its own plan — the line names the build's own primary task step, not the starter's.
+
+**Motion patterns (W5): each variant brief also names its motion pattern(s) by number from `references/style-recipes/scroll-motion.md` plus the implementation skill, or "none".** The skill follows the Design Read routing: Patterns 2, 3, 6, 8 (scrub / pin / parallax) → `vendor/gsap/gsap-scrolltrigger/SKILL.md`; Pattern 5 (reveal) → `vendor/gsap/gsap-scrolltrigger/SKILL.md` or vanilla `IntersectionObserver` (builder's choice, recorded); Pattern 7 (Lenis) → Lenis docs, plus `gsap-scrolltrigger` only if combined with a scrubbed pattern; Patterns 1, 4 → none. A variant that names no scroll-motion pattern records "none" — no motion beyond the fixed header and hover states.
+
 **Why structural (F11, design fixation):** once a first draft exists,
 later work orbits it — the first structure's features get reproduced,
 flaws included. CSS-only variants share one structure, so the loop
@@ -53,6 +65,8 @@ same section inventory — structure may differ).
   padding; hairline rules instead of borders or shadows.
 - **Radius / motion:** Small radii (2/6px); still, quiet motion
   (120/220ms, no parallax, no reveal beyond a single fade).
+- **Purpose line:** This structure serves the primary task "decide whether this report is worth reading" by putting the argument in one centred column in brief order, so the reader judges the content before any decoration competes with it.
+- **Motion patterns:** Pattern 5 (reveal-on-scroll, one fade only) — `vendor/gsap/gsap-scrolltrigger/SKILL.md` or vanilla `IntersectionObserver` (builder's choice, recorded).
 - **Feels like:** A printed magazine page. Pick it when the brief's content
   is the argument (long-form, report, portfolio of writing).
 
@@ -71,6 +85,8 @@ same section inventory — structure may differ).
 - **Space:** Same gaps as the locked tokens; panels as flat dark surfaces
   with hairline borders, never glow.
 - **Radius / motion:** Same radii as the locked tokens; motion unchanged.
+- **Purpose line:** This structure serves the primary task "grasp what the tool does and decide whether it fits" by putting copy and visual side by side in the split hero, so the argument and the proof are judged together before the dense feature grid.
+- **Motion patterns:** none — this variant names no scroll-motion pattern of its own; motion is whatever the locked tokens carry (fixed header and hover states only, unless the Design Read names a pattern).
 - **Feels like:** A developer tool at night. Pick it when the audience
   lives in dark UIs (developers, dashboards, evening reading).
 
@@ -89,6 +105,8 @@ same section inventory — structure may differ).
   visible borders (1–2px solid ink), no shadows, no rounding beyond 2px.
 - **Radius / motion:** Radius 2px throughout; motion minimal and blunt
   (120ms, no easing theatre).
+- **Purpose line:** This structure serves the primary task "decide whether this offer is worth the price" by putting pricing first, so the price — the argument — is judged before the features that prove it.
+- **Motion patterns:** none — no scroll-motion pattern; motion is minimal and blunt (120ms, no easing theatre).
 - **Feels like:** A poster on a wall. Pick it when the brief wants
   attitude and the content is short and punchy — never for long-form
   reading.
@@ -111,6 +129,8 @@ same section inventory — structure may differ).
   card padding.
 - **Radius / motion:** Radii at the top of the scale; motion smooth and
   slow (220/420ms), one reveal per section at most.
+- **Purpose line:** This structure serves the primary task "see what the service feels like before reading about it" by opening features visual-first under an overlapping hero panel, so the look of the product is judged before its claims.
+- **Motion patterns:** Pattern 5 (reveal-on-scroll, one reveal per section at most) — `vendor/gsap/gsap-scrolltrigger/SKILL.md` or vanilla `IntersectionObserver` (builder's choice, recorded).
 - **Feels like:** A calm consumer product. Pick it when the brief is a
   consumer app or a service that should feel effortless — never when the
   content needs density.
@@ -131,6 +151,8 @@ same section inventory — structure may differ).
 - **Space:** The most air of the five; one visual beat per page at most
   (or zero — the page must also work with zero).
 - **Radius / motion:** Radius 2/6px; motion 120ms or none.
+- **Purpose line:** This structure serves the primary task "make one decision" by stripping the page to a single narrow column that ends on the action, so nothing competes with the step the user must take last.
+- **Motion patterns:** none — no scroll-motion pattern; motion is 120ms or none.
 - **Feels like:** A blank page with one decision on it. Pick it when the
   brief's one action matters more than the page (signup, waitlist, single
   offer).
@@ -151,6 +173,8 @@ if it looks right, the brief's real direction was outside the frame.
   statement section carries the headline copy.
 - **Tokens:** Same locked tokens as the other variants (tokens stay
   locked — divergence is structural, never a token escape).
+- **Purpose line:** This structure serves the primary task "see the proof before the pitch" by opening directly on the content with no hero, so the proof is the first thing seen.
+- **Motion patterns:** none — no scroll-motion pattern; if the build needs one, the Design Read names it with its implementation skill.
 - **Rule:** The break-frame variant is REQUIRED in every vague-brief
   set (5 canonical + 1 break-frame = 6 variants). `variant-picker.mjs
   check` reports its presence; a set without it is incomplete per this
