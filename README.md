@@ -125,6 +125,12 @@ Chi tiết nguồn, phiên bản và giấy phép: [SOURCES.md](SOURCES.md). Cá
 - **Muse app install.** Không tồn tại. Xem giới hạn ở đầu README và `templates/install/muse-app-pack.md`.
 - **macOS/Windows.** Linux-first; các đường macOS/Windows là open work.
 
+### Buffet mode (chế độ tự chạy + bàn giao qua Figma)
+
+**Buffet mode là yêu cầu chính thức của kit (xây sau khi push v2, không phải trong v2):** bạn giao brief rồi đi ăn; các agent tự chạy vòng lặp (orchestrator chia vai: builder / chuyên gia độc lập / judge độc lập / QC + red team, không có người trong vòng lặp, giữ bản tốt nhất, dừng theo luật 3 vòng/hướng); bạn quay lại sửa trực tiếp trên file Figma các agent đã làm (3 trang: Cover / Design System với biến Tokens + component / Screens 1440-768-390), hoặc sửa thẳng trên sản phẩm đã build. Sửa trong Figma chỉ về lại code bằng cách **đọc lại Figma rồi sinh code lại** (khóa lại `tokens.css`, build lại, chạy gate, chấm lại) — Figma không tự cập nhật app đang chạy.
+
+**Giới hạn nói thẳng:** ghi Figma về qua MCP đang beta, chỉ chạy remote, cần ghế Full để ghi ngoài drafts, sau này sẽ thu phí theo lượt dùng với giá chưa công bố; `html_to_figma` chỉ ra các lớp phẳng, không ra component/biến — file Figma sửa được thật phải dựng bằng `use_figma`; API Variables chỉ dành cho Enterprise; Figma không có công cụ so sánh nên không bao giờ nằm trong gate; tài khoản Starter chỉ có ~20 lượt đọc MCP/tháng. Figma là input tùy chọn ở bước 1 (xuất biến native / import một lần bằng PAT / MCP nếu có), không bao giờ là xương sống — vòng lặp chạy đủ không cần Figma. Runbook đầy đủ: `BUFFET-MODE.md`.
+
 ## Kiểm tra sau khi cài
 
 1. Chạy `./verify.sh` — v2 kiểm tra **cả vòng lặp**, không chỉ file tồn tại: skill có mặt theo từng host, `playwright-cli --help` chạy được, screenshot headless 390px thành công, `impeccable detect` chạy được, gate scripts chạy được, engine version khớp skill (lệch là fail to).

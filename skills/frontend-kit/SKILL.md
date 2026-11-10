@@ -365,6 +365,10 @@ to step 4 with a red gate.
 4. Record in the run log: scores per round, grader label per round, and every
    feedback → token change → new score, so the dictionary grows.
 
+## Step 6a — Buffet mode (autonomous run + Figma handoff)
+
+Buffet mode is the autonomous form of this loop: the run starts from a brief (+ an optional Figma link), the orchestrator splits the work across the builder, the independent experts in `experts/`, the independent judge, and QC + red team with no human in the loop, and the run ends in "awaiting human" state with the score table + 3-width screenshots prepared. Figma is the handoff surface, via the figma-reference module (planned in the buffet milestone — `references/figma-reference.md`, see `BUFFET-MODE.md`): step 1 pulls Figma in (paths A/B/C — native export, PAT import, MCP where available), step 4 may grade against the cached Figma ground truth, step 7 (after the loop stops, once) exports the shipped state back to Figma as Pages 01 Cover / 02 Design System / 03 Screens — and a human's Figma edits return only by re-pull + regeneration (re-lock `tokens.css`, rebuild, re-gate, re-grade). Figma never enters step 3 (no comparison tool exists), fixes never go to Figma mid-loop, and if Figma is unavailable the loop degrades to the screenshot-references flow and still ships the HTML/CSS artifacts. MCP write-back is beta, remote-only, Full-seat-gated outside drafts, and will become usage-based paid at an unannounced price; `html_to_figma` yields plain layers, not components — see `BUFFET-MODE.md` for the runbook and the full honest-limits list.
+
 ## Precedence — see the top of this file
 
 The grader-rule override lives at the TOP of this file ("Precedence —
