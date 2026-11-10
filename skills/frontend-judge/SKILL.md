@@ -84,7 +84,7 @@ information", and the orchestrator enforces it — you never see findings.
 | Axis | What it judges | 1 | 3 | 5 |
 |---|---|---|---|---|
 | Type | Typeface choices, scale, tracking, line length, hierarchy | Default stack, one size everywhere, no hierarchy | Sensible scale, one weak choice (e.g. body too small at 390px) | Deliberate faces with clear roles, scale follows the locked tokens, hierarchy readable at all 3 widths |
-| Layout | Section rhythm, alignment, density — scoped by brief type (below) | Sections collide or run long, no grid | Mostly on-rhythm, one break | Rhythm follows the brief-type rule, alignment consistent, whitespace follows the locked space scale |
+| Layout | Section rhythm, alignment, density, scroll rhythm (pinned sections, hero expansion, header condense behaviour) — scoped by brief type (below) | Sections collide or run long, no grid | Mostly on-rhythm, one break | Rhythm follows the brief-type rule, alignment consistent, whitespace follows the locked space scale |
 | Colour | Colour roles, contrast, accent discipline | Accent everywhere or nowhere, contrast below WCAG AA | Roles mostly right, one contrast or accent slip | Roles match the locked tokens, one accent used sparingly, all text passes WCAG AA |
 | Space | Spacing scale, section gaps, padding, breathing room | Cramped or random gaps, padding inconsistent | Scale mostly followed, one gap off-scale | Space scale followed throughout, gaps consistent, content breathes |
 
@@ -117,6 +117,12 @@ Every evidence line must name the locked reference image the score is
 judged against (ref 1 / ref 2 / ref 3, as the orchestrator numbered them).
 A score that does not cite the reference is invalid — you grade against
 the locked reference, and the citation is what proves you looked at it.
+
+An evidence line about scroll motion also cites the scroll-motion recipe
+pattern by number (`skills/frontend-kit/references/style-recipes/scroll-motion.md`
+Pattern N, e.g. Pattern 2 for the expanding hero card) as well as the
+reference — a motion claim with no pattern number is invalid, same as a
+score with no reference citation.
 
 Good: `Layout 3 — hero stacks vertically vs ref 2 (Aesop) hero, which holds
 one full-viewport image; section rhythm breaks at 768px.`
@@ -239,6 +245,13 @@ Gate: green
 Fix order: Layout (pricing peek — cheapest precise fix), then Type.
 ```
 
+- **Motion (non-scoring):** if you consulted a motion expert this round,
+  add one paragraph after the `Gate: green` line, surfacing the expert's
+  existing 1–5 domain score (`skills/frontend-kit/experts/motion.md`):
+  `Motion: <score> (motion-expert) — <the expert's one-line evidence>`.
+  It never changes any axis score and never affects the stop rule. If no
+  motion expert was consulted, omit the paragraph — never invent a motion
+  score.
 - **Fix order:** the top 2 lowest-scoring axes (top 1 if the evidence is
   thin), as token diffs first. A 3 with a precise, cheap fix outranks a 2
   whose fix is vague — say which you picked and why, in one line each.

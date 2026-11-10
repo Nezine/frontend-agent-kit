@@ -119,7 +119,7 @@ standard; a beautiful page that ignores it scores low.
 | Axis | What it judges | 1 | 3 | 5 |
 |---|---|---|---|---|
 | Type | Typeface choices, scale, tracking, line length, hierarchy | Default stack, one size everywhere, no hierarchy | Sensible scale, one weak choice (e.g. body too small at 390px) | Deliberate faces with clear roles, scale follows the locked tokens, hierarchy readable at all 3 widths |
-| Layout | Section rhythm, one-section-per-screen, alignment, density | Sections collide or run long, no grid | Mostly one-section-per-screen, one rhythm break | Every section exactly one (or two) screens, alignment consistent, whitespace follows the locked space scale |
+| Layout | Section rhythm, one-section-per-screen, alignment, density, scroll rhythm (pinned sections, hero expansion, header condense behaviour) | Sections collide or run long, no grid | Mostly one-section-per-screen, one rhythm break | Every section exactly one (or two) screens, alignment consistent, whitespace follows the locked space scale |
 | Colour | Colour roles, contrast, accent discipline | Accent everywhere or nowhere, contrast below WCAG AA | Roles mostly right, one contrast or accent slip | Roles match the locked tokens, one accent used sparingly, all text passes WCAG AA |
 
 **Contrast — decorative vs functional accent (probe G-9c, third place this
@@ -174,8 +174,15 @@ A score that does not cite the reference is invalid — the judge grades
 against the locked reference, and the citation is what proves it looked at
 it.
 
+An evidence line about scroll motion also cites the scroll-motion recipe
+pattern by number (`references/style-recipes/scroll-motion.md` Pattern N,
+e.g. Pattern 2 for the expanding hero card) as well as the reference — a
+motion claim with no pattern number is invalid, same as a score with no
+reference citation.
+
 Good: `Layout 3 — hero stacks vertically vs ref 2 (Aesop) hero, which holds
 one full-viewport image; section rhythm breaks at 768px.`
+Good: `Layout 4 — hero card expands to full-bleed over ~300px scroll vs ref 1 (scroll-motion Pattern 2); no second hero moment; sections hold one-per-screen.`
 Good: `Type 4 — hero H1 "Steel widgets" is Newsreader roman 64px / -0.03em
 tracking per tokens.css; body 16px/1.55, max 68ch.` (Newsreader roman is
 gate-clean — verified against `impeccable detect`, engine 0.1.21: exit 0
@@ -202,6 +209,14 @@ Round 2 — grader: judge-subagent (fresh context, no production history)
 | Space  | Section gaps 192px throughout (2×96px section padding, inside the 128–288px band) vs ref 1; card padding 32px per tokens | 5     |
 Gate: green
 ```
+
+**Motion (non-scoring):** if a motion expert was consulted this round, the
+report adds one paragraph after the `Gate: green` line, surfacing the
+expert's existing 1–5 domain score (`skills/frontend-kit/experts/motion.md`)
+— `Motion: <score> (motion-expert) — <the expert's one-line evidence>`.
+It never changes any axis score and never affects the stop rule. If no
+motion expert was consulted this round, the paragraph is omitted — never
+invent a motion score.
 
 ## Fix order
 
