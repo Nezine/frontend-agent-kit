@@ -1,0 +1,20 @@
+source=https://github.com/Leonxlnx/taste-skill
+tag=v2.5.1
+commit=f6b76575f949707b4e3c37cd86cb44b0b98643e8
+# Full tagged tree (skills + scripts + library + assets + examples +
+# tests + upstream install.sh and host adapter dirs), byte-identical to
+# the tag. Replaces the v1 v2-experimental monolith (87,253 B, dead pin
+# b482f7a970abb98c4108d4a9f761e458c64cefc8), which had no scripts,
+# library or assets and could not run the pipeline.
+# Runnable pipeline: skills/taste-skill/ (SKILL.md 381 lines +
+# references/ + scripts/consistency.mjs, gate.mjs, copy-lint.mjs, ... +
+# library/palettes.json, type.json + assets/ incl. diagrams/presets.json).
+# presets.json: 27 NAMED presets — count the keys of the `presets`
+# object, never the top-level keys (top level has only `about` +
+# `presets`, i.e. 2 keys; counting those is the old QC error, struck).
+# Presets: bowtie-events, bowtie-model, fanin-telemetry,
+# fanin-warehouse, free-approval, grid-assets, grid-documents,
+# hub-branches, hub-stack, hub-stores, hub-tools, hub-web, lanes-agent,
+# lanes-deploy, lanes-matchmaking, lanes-media, lanes-render, ring-apps,
+# ring-edge, ring-regions, ring-servers, sync-crm, sync-saves,
+# timeline-onboarding, timeline-season, tree-orders, tree-release.

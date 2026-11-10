@@ -1,0 +1,23 @@
+source=https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+tag=v2.15.0
+commit=a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5
+# Vendored scope: upstream .claude/skills/ui-ux-pro-max/ (SKILL.md + data/
+# + references/ + scripts/) — the skill itself, NOT the cli/ installer.
+# v1 mislabelled the previous tree (main @ 477bcb28, post-2.13.0) as the
+# "2.13.0" tag in SOURCES.md; this pin is BY TAG and the label is fixed.
+# NOTE: upstream skill.json still reads "version": "2.13.0" at this tag —
+# the tag is authoritative, not skill.json.
+# KIT PATCH (re-apply on every re-pin, see vendor-update.sh): the vendored
+# SKILL.md's 11 `${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/
+# scripts/search.py` refs were replaced with `<skill-dir>/scripts/search.py`,
+# where `<skill-dir>` is the directory containing SKILL.md — the upstream
+# variable only resolves inside a Claude plugin install and breaks in a
+# clean env / any other host. Zero `${CLAUDE_PLUGIN_ROOT}` refs remain.
+patch-lines=42,78,85,93,116,131,137,160,180,183,186
+# LICENCE (resolved 2026-11-10): the vendored skill + data are MIT —
+# root LICENSE (MIT, © 2024 Next Level Builder), root README.md tail
+# "## License — This project is licensed under the MIT License
+# (LICENSE)", skill.json L7 "license": "MIT", cli/package.json L60
+# "license": "MIT". The CC-BY-NC-4.0 half is the CLI installer package
+# ONLY: cli/README.md L99-101 "## License / CC-BY-NC-4.0". The kit does
+# NOT vendor cli/, so nothing vendored here is under CC-BY-NC-4.0.

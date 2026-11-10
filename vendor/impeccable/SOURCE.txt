@@ -1,0 +1,12 @@
+source=https://github.com/pbakaus/impeccable
+tag=skill-v4.8.2
+commit=035c8f319edd019936525a062fe99e83ca8d12c6
+engine=0.1.21
+engine_commit=fe45455d36ed14c85ece25c9b868344e55713352
+canonical=skill/
+# Single canonical copy (upstream skill/ tree, verbatim at the tag above).
+# Per-host SKILL.md variants are GENERATED at install time by
+# scripts/generate-host-variants.sh — never hand-maintain variants.
+# Skill 4.8.2 locks to engine 0.1.21: skill/scripts/VERSION and the root
+# ENGINE_VERSION file both read 0.1.21 at this tag. Do not mix a newer
+# engine with this skill (the 62-rule registry lives in the engine).
