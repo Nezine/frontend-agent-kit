@@ -70,8 +70,29 @@
 #      with sections — never on the single-file demo target (a token
 #      proof, not a page) and never on a page with no sections (e.g. the
 #      verify.sh fixture).
+#   3c. Anti-cliché seed checks (P1, 2026-11-10): scripts/gate/
+#      anti-cliche.mjs on the built pages — AC-1 (purple-pink-blue
+#      gradient) and AC-2 (emoji as icon). SEEDED from garden-skills,
+#      not grown from an observed failure (see anti-cliche.md); a
+#      finding still fails the gate. Waived only by an explicit
+#      "Anti-cliche allow: AC-<n>" hard rule in design/TASTE.md. Runs
+#      when node is available; skipped with a warning otherwise (same
+#      pattern as the optional validators below). Never on the demo or
+#      v0 single-file targets (a token proof / a skeleton, not a page).
 #   4. Optional validators when installed: html-validate, pa11y
 #      (--standard WCAG2AA). Absent = skipped with a warning, never fatal.
+#   5. Converge check (P2, 2026-11-10): scripts/gate/converge-check.mjs
+#      against every built page — but ONLY when design/PLAN.md exists
+#      under the project dir (step 1 writes the plan; a build without a
+#      plan cannot be converge-checked, and the verify.sh fixture has
+#      none — so absence skips with a note, never a failure). A missing
+#      planned section/state FAILS the gate and blocks the human gate.
+#      Runs when node is available; skipped with a warning otherwise —
+#      in that case the orchestrator runs the converge checklist by hand
+#      before the human gate (see skills/frontend-kit/references/
+#      converge-checklist.md). Never on a variants-dir target (the
+#      unpicked alternatives are not the deliverable) and never on the
+#      demo single-file target.
 #
 # Usage: gate.sh --target <dir-or-file> [--launcher <path-to-impeccable>]
 #        gate.sh --self-test   (runs against its own bundled fixture logic)
@@ -142,8 +163,10 @@ esac
 # unless the target IS a variants dir (an explicit per-variant gate).
 # design/demo.html is the taste-lock proof artifact, not the deliverable:
 # exclude it from project-dir scans for the same reason — unless the
-# target IS the demo file itself (an explicit demo gate). A single-file
-# target gates exactly that file.
+# target IS the demo file itself (an explicit demo gate). design/v0.html
+# (the v0 skeleton, P1) is excluded the same way: a skeleton with
+# placeholders is not the deliverable, and it is gated explicitly on
+# its own file. A single-file target gates exactly that file.
 if [[ -f "$target" ]]; then
   case "$target" in
     *.html|*.HTML) html_files=("$target") ;;
@@ -153,9 +176,10 @@ elif [[ "$target" == */design/variants || "$target" == */design/variants/ ]]; th
   mapfile -t html_files < <(find "$target" -name '*.html' -type f 2>/dev/null || true)
 else
   # .taste-skill/ excluded (G-7): the checker's own output dir must never
-  # be scanned as build output. design/variants/ + design/demo.html
-  # excluded as before (unpicked alternatives / token-proof artifact).
-  mapfile -t html_files < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' 2>/dev/null || true)
+  # be scanned as build output. design/variants/ + design/demo.html +
+  # design/v0.html excluded as before (unpicked alternatives / token-proof
+  # artifact / skeleton — none of them is the deliverable).
+  mapfile -t html_files < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' 2>/dev/null || true)
 fi
 
 # --- 1. taste lock (F6/H8): no tokens, no pass ------------------------------
@@ -273,6 +297,37 @@ if [[ -d "$target" ]]; then
   done
 fi
 
+# --- 3c. anti-cliché seed checks (P1) -----------------------------------------
+# AC-1 (purple-pink-blue gradient) + AC-2 (emoji as icon), via
+# scripts/gate/anti-cliche.mjs. SEEDED from garden-skills, not observed
+# failures — a finding still fails the gate. Waivers live in
+# design/TASTE.md ("Anti-cliche allow: AC-<n>") and are read by the
+# script itself. Skipped (with a warning, never fatal) when node is
+# absent — same pattern as the optional validators — and never on the
+# demo or v0 single-file targets (a token proof / a skeleton, not a
+# page). The script prints its own findings in full.
+if [[ -f "$target" && ("$target" == */design/demo.html || "$target" == */design/v0.html) ]]; then
+  note "anti-cliché checks skipped: $target is a proof/skeleton target, not the deliverable"
+elif [[ "${#html_files[@]}" -eq 0 ]]; then
+  note "anti-cliché checks skipped: no .html files under $target"
+elif ! command -v node >/dev/null 2>&1; then
+  note "anti-cliché checks skipped: node not found on PATH — run scripts/gate/anti-cliche.mjs by hand (a skipped check is a degradation, not a pass)"
+else
+  gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$gate_dir/anti-cliche.mjs" ]]; then
+    if node "$gate_dir/anti-cliche.mjs" "${html_files[@]}" --project "$project_dir" > "$detect_log" 2>&1; then
+      note "anti-cliché checks: clean ($(cat "$detect_log" | tail -1))"
+    else
+      code=$?
+      if [[ "$code" == 1 ]]; then fail "anti-cliché seed check found a cliché (see above — AC-1 gradient or AC-2 emoji-as-icon; waive only via an explicit TASTE.md hard rule): $(tail -1 "$detect_log" | tr '\n' ' ')";
+      else fail "anti-cliché check could not run (exit $code) — see $detect_log"; fi
+      cat "$detect_log"
+    fi
+  else
+    note "anti-cliché checks skipped: scripts/gate/anti-cliche.mjs missing from the kit install"
+  fi
+fi
+
 # --- 4. optional validators ---------------------------------------------------
 if command -v html-validate >/dev/null 2>&1; then
   for f in "${html_files[@]}"; do html-validate "$f" >/dev/null 2>&1 || fail "html-validate failed on $f"; done
@@ -280,6 +335,46 @@ else note "html-validate not installed — skipped (npx html-validate to add it)
 if command -v pa11y >/dev/null 2>&1; then
   for f in "${html_files[@]}"; do pa11y --standard WCAG2AA "$f" >/dev/null 2>&1 || fail "pa11y WCAG2AA failed on $f"; done
 else note "pa11y not installed — skipped (npx pa11y to add it)"; fi
+
+# --- 5. converge check (P2) ----------------------------------------------------
+# Every planned section/state exists in the build — via
+# scripts/gate/converge-check.mjs. BLOCKING: a failure here fails the
+# gate (no grade) and blocks the human gate (step 6.1). Runs only when
+# design/PLAN.md exists under the project dir; absence skips with a
+# note, never a failure (the verify.sh fixture has no plan). Never on
+# a variants-dir target (unpicked alternatives are not the
+# deliverable) and never on the demo single-file target. When node is
+# absent the check is skipped with a warning and the orchestrator runs
+# the converge checklist by hand before the human gate.
+is_variants_target=0
+case "$target" in */design/variants|*/design/variants/) is_variants_target=1 ;; esac
+if [[ -f "$target" && "$target" == */design/demo.html ]]; then
+  note "converge check skipped: $target is the demo (token proof), not the deliverable"
+elif [[ "$is_variants_target" == 1 ]]; then
+  note "converge check skipped: variants dir target (unpicked alternatives are not the deliverable)"
+elif [[ ! -f "$project_dir/design/PLAN.md" ]]; then
+  note "converge check skipped: no design/PLAN.md under $project_dir (step 1 writes the plan; a build without a plan cannot be converge-checked)"
+elif [[ "${#html_files[@]}" -eq 0 ]]; then
+  note "converge check skipped: no .html files under $target"
+elif ! command -v node >/dev/null 2>&1; then
+  note "converge check skipped: node not found on PATH — run the converge checklist by hand before the human gate (see skills/frontend-kit/references/converge-checklist.md)"
+else
+  gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$gate_dir/converge-check.mjs" ]]; then
+    for f in "${html_files[@]}"; do
+      if node "$gate_dir/converge-check.mjs" --plan "$project_dir/design/PLAN.md" --page "$f" --project "$project_dir" > "$detect_log" 2>&1; then
+        note "converge check: green for $f ($(tail -1 "$detect_log"))"
+      else
+        code=$?
+        if [[ "$code" == 1 ]]; then fail "converge check FAILED for $f — the build dropped a planned section/state; the human gate is not presented until this is green: $(grep -m1 'CONVERGE FAIL' "$detect_log" | tr '\n' ' ')";
+        else fail "converge check could not run on $f (exit $code) — see $detect_log"; fi
+        cat "$detect_log"
+      fi
+    done
+  else
+    note "converge check skipped: scripts/gate/converge-check.mjs missing from the kit install"
+  fi
+fi
 
 if [[ "$fails" -gt 0 ]]; then printf 'GATE RESULT: FAIL (%s issue(s)) — fix findings, no vision round spent.\n' "$fails"; exit 2; fi
 printf 'GATE RESULT: PASS\n'

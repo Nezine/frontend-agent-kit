@@ -21,9 +21,13 @@ in `references/stop-rules.md`. The expert pack (10 independent domain
 specialists + call rules) lives in `references/expert-pack.md` and
 `experts/<domain>.md`. The 5 variants as concrete token directions live in
 `references/variant-briefs.md`; the human-gate question bank lives in
-`references/human-gate-pack.md`. Read workflow, rubric, and stop-rules
-before starting step 0. If they disagree with this file, they win — they are
-the detailed record; this file is the route map.
+`references/human-gate-pack.md`. The converge checklist lives in
+`references/converge-checklist.md`; the anti-cliché blocklist in
+`references/anti-cliche.md`; the anchored style recipes in
+`references/style-recipes/` (read the INDEX first, then only the one
+recipe file the brief names — never the whole catalog). Read workflow,
+rubric, and stop-rules before starting step 0. If they disagree with this
+file, they win — they are the detailed record; this file is the route map.
 
 ## Precedence — READ THIS FIRST (before step 1.4 delegates anything)
 
@@ -70,7 +74,13 @@ prompt for discussion.
    taste-lock demo, step 1.3),
    `design/references/DESIGN.md/` (Vercel, Claude, Linear — each labelled
    third-party analysis, not official), plus empty `design/references/`,
-   `design/screenshots/`, and `design/variants/` folders.
+   `design/screenshots/`, and `design/variants/` folders. The plan
+   template `design/PLAN.md`, the Design Read template
+   `design/DESIGN-READ.md`, the design-system declaration template
+   `design/DESIGN-SYSTEM.md`, and the round-folder scaffold
+   `design/rounds/` (README + `_template/`) are copied with them and
+   filled in at step 1 (plan, Design Read, declaration) and step 5
+   (one `design/rounds/<n>/` per fix round).
 2. Fill in `design/TASTE.md` from the brief and from the user: one-paragraph
    intent, likes, dislikes, hard rules. If the user names sites they love,
    save 8–15 screenshots of them in `design/references/`, named by site
@@ -99,11 +109,31 @@ prompt for discussion.
 
 1. Read the brief, `design/TASTE.md`, and the chosen DESIGN.md file. Pick the
    reference direction: which sites, which DESIGN.md, and why — in one short
-   paragraph, written into the run log.
-2. Write `design/tokens.css`: type scale, colour roles, space scale, radius,
+   paragraph, written into the run log. If the brief names an anchor
+   ("Linear-style", "Aesop feeling"), read ONLY that one recipe file in
+   `references/style-recipes/` (INDEX.md first, then the one file) — never
+   the whole catalog. Read `references/anti-cliche.md` before writing
+   anything: the blocklist names the generic patterns this step must not
+   lock in.
+2. **Design Read (end of step 1, before tokens).** Summarise the brief in
+   `design/DESIGN-READ.md` (template: `templates/design/DESIGN-READ.md`):
+   artifact, audience, visual language (a specific family, not "modern /
+   clean"), mode (greenfield / extension / preserve / overhaul), anchor /
+   recipe if any, and the five dials — visual variance, motion intensity,
+   information density, asset dependence, brand fidelity — each as a
+   categorical position (Low / Med / High) with a one-line anchor. The
+   dials are INTENT, not scores: they must affect real decisions (layout
+   variation, motion, content per viewport, real-asset effort,
+   preservation strictness) or they are decorative labels. No dial value
+   may be cited as evidence for any grade or stop decision, and the judge
+   NEVER receives the dials. Copy the dials into `design/PLAN.md`
+   § Design Read. (Adapted from garden-skills `web-design-engineer`
+   Step 2b — five dials, categorical here instead of its 1–10 numbers;
+   see SOURCES.md for the no-vendoring note.)
+3. Write `design/tokens.css`: type scale, colour roles, space scale, radius,
    motion. Start from the template's values only as a starting point; the
    locked reference overrides them.
-3. Build a 1-page demo proving the tokens work. Use the demo file at
+4. Build a 1-page demo proving the tokens work. Use the demo file at
    `templates/design/demo.html` (copied into the project as
    `design/demo.html` by step 0) — the same content every time so tokens
    stay comparable across briefs. The demo exercises every expected token
@@ -117,7 +147,7 @@ prompt for discussion.
    the gate when any listed token is undefined in `tokens.css` or
    unreferenced in the demo body. A demo that fails the gate proves the tokens — not the
    demo — are wrong: fix the tokens, not the demo file.
-4. Direction-setting: delegate to `frontend-design`. Read its SKILL.md
+5. Direction-setting: delegate to `frontend-design`. Read its SKILL.md
    and follow its plan-first process exactly: 4–6 named colours, type roles,
    ASCII wireframes, then the counterfactual plan check — worked through a
    similar prompt, would you arrive somewhere similar? If yes, the plan is
@@ -126,7 +156,39 @@ prompt for discussion.
    you build" (its SKILL.md:57–59) is OVERRIDDEN by the Precedence section
    at the top of this file — do not follow it. Direction-setting from that
    skill is plan-first only; no self-critique, no self-grade.
-5. **Verifiable artifact:** commit `design/tokens.css` and the chosen
+6. **Design-system declaration.** Write `design/DESIGN-SYSTEM.md` from
+   `templates/design/DESIGN-SYSTEM.md`: reference mapping (which
+   DESIGN.md / reference site each token family comes from), do/don't
+   rules, rationale. RATIONALE ONLY — it must not contain a single token
+   value (no hex codes, no pixel sizes, no custom property definitions);
+   `tokens.css` is the single source of truth for every value and governs
+   on any drift. Fix rounds touch `tokens.css` only and never
+   hand-maintain this file after the lock. (Adapted from garden-skills
+   Step 3 — "declare the design system in Markdown before writing code";
+   the no-values rule and the tokens-govern drift rule are the kit's
+   answer to the two-sources-of-truth problem.)
+7. **Plan + approval.** Write `design/PLAN.md` from
+   `templates/design/PLAN.md`: decisions, assumptions, section inventory
+   (by content, not order), EARS acceptance criteria (5–8 WHEN / THE
+   SYSTEM SHALL lines, including the 390px no-overflow rule and the
+   three-width rule), the screen × state matrix, the Design Read dials
+   (copied from step 1.2), and the design-system pointer section. Then
+   the approval gate:
+   - **Solo run:** the human approves `design/PLAN.md` before ANY build.
+     No build starts on an unapproved plan. Record the approval in
+     PLAN.md § Approval record.
+   - **Human-less / buffet run:** there is no human to approve, so the
+     plan proceeds WITHOUT human approval. The approval substitute is
+     the blocking converge check (step 3 / step 6) plus the
+     first-round independent grade; the run log labels the plan
+     "approved-by: converge-check + round-1 grade (no human present)".
+     Coordinator approval is NOT an approval and is never recorded as
+     one — a coordinator approving a plan its own run wrote is
+     self-approval, the same back door as builder self-grading.
+   The plan never moves the lock: round deltas merge into PLAN.md
+   § Amendments, the token dictionary, and the run log's notes — never
+   into TASTE.md or `tokens.css` mid-loop (see step 5.5).
+8. **Verifiable artifact:** commit `design/tokens.css` and the chosen
    references BEFORE any page HTML is written. If the finished page's tokens
    do not match the locked references, the workflow has a hole, not a feature.
    **"Commit" means exactly this (no more, no less):** (a) the files are
@@ -137,6 +199,10 @@ prompt for discussion.
    && git commit -m "Taste lock: <direction>"`; if it is not a git repo,
    (a) + (b) alone ARE the commit — never create a repo just for this, and
    never treat "saved the file" without the run-log lock as committed.
+   The lock is immutable within a direction: a re-pick creates a NEW lock
+   version, recorded by a new `run-log.mjs lock` entry (the lock-version
+   field is added to the script with the P7 round-brief work — until
+   then, record the version number in the run log's notes by hand).
 
 ## Step 2 — Build (one HTML file, tokens only)
 
@@ -168,6 +234,44 @@ prompt for discussion.
    alphabetically). State the rule before picking, record the pick with
    its scores in the run log, and give no quality verdict: the auto-pick
    says only which variant is closest to the locked direction.
+   **"Play first, critique later" governs variant generation:** all five
+   variants are generated before any critique. The v0 checkpoint below
+   governs the PICKED variant's build only — never mid-generation.
+4. **v0 draft checkpoint (inside step 2, on the picked variant only).**
+   Before writing full components, build a viewable v0 skeleton at
+   `design/v0.html`: core structure (every section from PLAN.md's
+   inventory, in order) + the locked tokens + key module placeholders
+   with explicit markers (`[image]`, `[icon]`) + the list of design
+   assumptions. It does NOT include content details, the complete
+   component set, all states, or motion. Placeholders use `[image]` /
+   `[icon]` markers only — never `[NEED]` or `[insert]`, which the
+   copy-lint leg fails as residue. A v0 with assumptions and
+   placeholders is more valuable than a polished v1 that took three
+   times the work: if the direction is wrong, the v1 has to be scrapped
+   entirely.
+   - **Solo run:** show the v0 to the human and wait for the nod
+     before the full build. The nod is the course-correction point:
+     tone, layout direction, variant directions.
+   - **Human-less / buffet run:** there is no human to nod, and no
+     coordinator nod either — a coordinator nodding at its own run's
+     skeleton is self-approval, which defeats the checkpoint. The
+     autonomous form is a DETERMINISTIC SKELETON GATE: run
+     `gate.sh --target design/v0.html` (leg 1: no overflow, tokens
+     resolve, no missing files) AND
+     `node scripts/gate/converge-check.mjs --plan design/PLAN.md
+     --page design/v0.html` (every planned section present as a
+     placeholder section). Both must be green before the full build
+     proceeds. The skeleton gate is a gate check, not a grade — the
+     builder never judges its own skeleton. Record the skeleton, the
+     tokens, and the skeleton-gate result in the run log as the
+     direction receipt. (On a host with no Chrome the browser leg of
+     the skeleton gate fails closed per H13; the checkpoint then
+     degrades to the leg-1 static checks + the converge check, labelled
+     as such in the run log — the full build still waits for the
+     human gate to carry the visual judgement.)
+   `design/v0.html` is a skeleton, not the deliverable: `gate.sh`
+   excludes it from project-dir scans (like `design/demo.html`), and
+   it is gated explicitly on its own file only.
 
 ## Step 3 — Deterministic gate (before any vision grade)
 
@@ -180,7 +284,12 @@ build is not green: fix the build, do not pick the greener leg, and never
 lower a gate to green a bad page.
 
 Run, in this order, and print every result in full — never summarise a gate
-result:
+result. Leg 1 (`gate.sh`) also runs two newer checks: the anti-cliché
+seed checks (`scripts/gate/anti-cliche.mjs`, §3c — AC-1 gradient,
+AC-2 emoji) and, whenever `design/PLAN.md` exists, the converge check
+(`scripts/gate/converge-check.mjs`, §5 — every planned section/state
+exists in the build). Both fail the gate like any leg-1 finding; the
+converge check additionally blocks the human gate (step 6.1).
 
 1. `node scripts/gate/detect.mjs <page or dir>` — the `impeccable detect`
    wrapper (62 deterministic rules: 31 slop / 31 quality). Exit codes:
@@ -337,10 +446,44 @@ to step 4 with a red gate.
    iterated on (best-version-kept).
 3. Re-run step 3 (gate), then step 4 (grade). That is one round.
 4. Every fix instruction cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". The fix prompt the orchestrator sends must require the citation field; a fix prompt without it is rejected by the orchestrator (not sent). A fix instruction with no citation is not a fix instruction.
+5. **Round folders + archive.** Each fix round is a change folder, not a
+   free-form log line: before fixing, copy
+   `templates/design/rounds/_template/` to `design/rounds/<n>/` and fill
+   in `proposal.md` (bugfix-spec shape: current behaviour / expected
+   behaviour / UNCHANGED behaviour — the third line names what must not
+   move), `delta.md` (token diffs, ADDED / MODIFIED / REMOVED), and
+   `tasks.md` (the top-2 list, each task citing its source). After the
+   round, the ARCHIVE step merges the delta into PLAN.md § Amendments,
+   into the token dictionary (`scripts/token-dictionary.mjs`), and into
+   the run log's notes — NEVER into TASTE.md or `tokens.css` mid-loop.
+   The lock is immutable within a direction. A lessons merge into
+   TASTE.md happens only once, after the human gate approves the build
+   (step 6.4). The re-run gate + `converge-check.mjs` run against the
+   round's output before any re-grade: no archive without
+   converge-green.
 
 ## Step 6 — Stop + human gate
 
-1. Stop when every axis is ≥ 4 AND the gate is green — or after 3 rounds,
+1. **Converge check (before the human gate — BLOCKING).** Before the
+   human gate is presented, the build must converge against the plan:
+   - Script half: `converge-check.mjs` already ran inside `gate.sh`
+     leg 1 at step 3 whenever `design/PLAN.md` exists — a failure
+     there blocked the grade. Re-run it directly here against the
+     final build (`node scripts/gate/converge-check.mjs --plan
+     design/PLAN.md --page <built.html>`) and confirm it is green.
+     When Node is unavailable, run the checklist in
+     `references/converge-checklist.md` by hand instead and record
+     the result in the run log with the degradation labelled.
+   - Judge half: the step-4 grade already verified the screen ×
+     state matrix — every applicable cell has a frame / story /
+     preview AND the state looks right. A missing state is a scored
+     Layout defect; a Layout defect that keeps the build under 4 on
+     that axis blocks the stop the same way.
+   A build that drops a planned section or state is NOT presented as
+   done: the human gate does not open, and the round goes back to
+   step 5 with the failing section or state named. There is no
+   advisory mode. The converge result is recorded in the run log.
+2. Stop when every axis is ≥ 4 AND the gate is green — or after 3 rounds,
    whichever comes first. A build that cannot reach ≥ 4 in 3 rounds is a
    direction problem (wrong reference, wrong tokens): re-pick a variant
    (step 2a), not a 4th round. **Re-pick cap: max 2 re-picks, 9 rounds
@@ -350,8 +493,10 @@ to step 4 with a red gate.
    survives a re-pick:** the best-scoring version across ALL directions
    stays the version that ships; a re-pick starts a new direction from
    scratch but never discards the previous best — if no later round beats
-   it, the earlier best is what the human gate sees.
-2. Present the human gate: the score table, the 3-width screenshots, 2–4
+   it, the earlier best is what the human gate sees. A re-pick creates a
+   NEW lock version (step 1.8): the new direction is locked, not merged
+   into the old lock.
+3. Present the human gate: the score table, the 3-width screenshots, 2–4
    targeted questions with concrete options (pick them from
    `references/human-gate-pack.md` — never an open-ended "what do you
    think?"), and the recommended next command, ending with `polish`. The
@@ -360,11 +505,19 @@ to step 4 with a red gate.
    bar for the vague-brief acceptance test, the 4-axis scores are the
    per-round gate). The human's pick or adjective maps through
    the token dictionary (`scripts/token-dictionary.mjs`) and re-enters at
-   step 5 — never as a rebuild.
-3. After human approval: save the 3-width screenshots as the pixel-diff
+   step 5 — never as a rebuild. The human-gate pack states the converge
+   result in one line: "Converge: green — N sections present, M states
+   evidenced, K uncheckable (judge's call, step 4)".
+4. After human approval: save the 3-width screenshots as the pixel-diff
    baseline so later feedback rounds cannot silently regress it.
-4. Record in the run log: scores per round, grader label per round, and every
-   feedback → token change → new score, so the dictionary grows.
+   **Post-approval archive (the only TASTE.md merge):** now — and only
+   now — merge the rounds' lessons into TASTE.md (what the rounds
+   learned about the direction, in one short section). Nothing merges
+   into TASTE.md mid-loop, ever.
+5. Record in the run log: scores per round, grader label per round, the
+   converge result per round, the plan's approval basis (human approval
+   or "approved-by: converge-check + round-1 grade (no human present)"),
+   and every feedback → token change → new score, so the dictionary grows.
 
 ## Step 6a — Buffet mode (autonomous run + Figma handoff)
 
@@ -390,10 +543,20 @@ repeated here: one copy, at the top, is the rule.
 | Domain expertise (specialist second opinion) | `references/expert-pack.md` + `experts/<domain>.md` (fresh sub-agent, never the builder) | Ask the builder or the judge to cover a domain outside its confidence |
 | Variant directions (concrete token briefs) | `references/variant-briefs.md` | Invent five directions from priors |
 | Human-gate questions + next commands | `references/human-gate-pack.md` | Ask open-ended "what do you think?" |
+| Plan, Design Read, design-system declaration | `templates/design/PLAN.md`, `DESIGN-READ.md`, `DESIGN-SYSTEM.md` (filled in at step 1) | Build on an unapproved plan; put token values in DESIGN-SYSTEM.md |
+| Converge check (section/state presence) | `references/converge-checklist.md` + `scripts/gate/converge-check.mjs` | Present a human gate on a red converge; silently pass an uncheckable item |
+| Anti-cliché blocklist | `references/anti-cliche.md` + `scripts/gate/anti-cliche.mjs` (AC-1, AC-2) | Promote a checklist item to the gate without a script that checks it |
+| Anchored style recipes (one file only) | `references/style-recipes/` (INDEX first, then the one named file) | Load the whole recipe catalog; invent a direction from priors |
 
 ## Rules that are never optional
 
 - Tokens are committed before HTML. No exceptions.
+- The plan is written and approved before any build (step 1.7). No
+  build starts on an unapproved plan.
+- The converge check blocks the human gate (step 6.1). A build that
+  drops a planned section or state is not presented as done.
+- DESIGN-SYSTEM.md holds rationale only — no token values; `tokens.css`
+  governs on drift.
 - The gate runs before the grade. No vision round on a red gate.
 - Every score has one line of observable evidence and a named independent
   grader label. A builder self-grade is FORBIDDEN. A score without a named

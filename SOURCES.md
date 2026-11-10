@@ -17,6 +17,27 @@ Các thư mục `vendor/` là bản sao cố định của nguồn công khai, k
 | `threeui` skill | Skill hướng dẫn do bộ này viết; tham chiếu [MengTo/threeui](https://github.com/MengTo/threeui) | Package `@designcodeio/threeui@1.2.0` (npm), repo HEAD `68802d5428071ada5c20db8094b1649e6bb770ed` lúc kiểm chứng | MIT của repo này (package theo MIT của upstream) |
 | Hai skill tra cứu, script cài và tài liệu | Viết cho bộ này | Bản trong repo | MIT của repo này |
 
+## garden-skills — cited, not vendored (P1, 2026-11-10)
+
+The P1 staged workflow (Design Read dials, Markdown design-system
+declaration, v0 draft checkpoint, anti-cliché blocklist, anchored
+style recipes) is adapted from garden-skills `web-design-engineer`
+([ConardLi/garden-skills](https://github.com/conardli/garden-skills),
+commit `08150e75`, MIT). The skill's SKILL.md was read in full
+2026-11-10 (752 lines, main at that commit) and its README catalog
+was read the same day.
+
+**No garden-skills content is vendored verbatim in this repo, so no
+pin is added here.** The Design Read dials are categorical (Low / Med
+/ High with anchors), not the upstream 1–10 numbers; the anti-cliché
+items in `skills/frontend-kit/references/anti-cliche.md` are
+kit-authored restatements; the 7 files in
+`skills/frontend-kit/references/style-recipes/` are kit-authored
+adaptations (the upstream recipe files themselves are CHƯA ĐỌC). If
+any garden-skills content is ever vendored verbatim, pin the release
+`.zip` + SHA-256 here first, per the kit's pinning discipline — never
+`main`.
+
 Repo này không chứa mã component ThreeUI, package GSAP, các model AI, token hay cấu hình cá nhân. Khi dùng ThreeUI trong một project, cài package chính thức theo nhu cầu và giấy phép của package đó.
 
 ## Kiểm chứng pin (ngày kiểm chứng: 2026-11-10)

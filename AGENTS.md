@@ -295,7 +295,7 @@ The default path is the **taste-locked deterministic-gate loop**, driven by the
    **Verifiable artifact:** `tokens.css` + chosen references committed BEFORE any HTML.
    "Commit" means exactly: files saved under `design/` in the project AND the lock
    recorded in the run log (`run-log.mjs lock`); `git commit` only if the project is
-   a git repo (see `frontend-kit` SKILL.md step 1.5).
+   a git repo (see `frontend-kit` SKILL.md step 1.8).
 2. **Build (one HTML file, tokens only — no inline style drift).** If the brief is vague
    on direction: generate the 5 CSS-only variants (same content/copy/HTML, only CSS
    changes — Editorial / Dark / Warm brutalist / Glassy / Minimal), screenshot each at
