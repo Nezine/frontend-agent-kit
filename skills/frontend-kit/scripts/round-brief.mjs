@@ -1,0 +1,301 @@
+#!/usr/bin/env node
+// round-brief.mjs — P7 round-brief generator (fresh context per round).
+//
+// Assembles the minimal brief for one round from the append-only run log
+// (design/run-log.jsonl, via skills/frontend-kit/scripts/run-log.mjs) +
+// the locked files — and NEVER from the full run log. A round starts from
+// this brief, not from the previous round's context: the full log stays
+// in a file, not in context (context rot: quality falls as input length
+// grows, and the lock sits mid-context where attention sags — see the
+// P7 evidence in research/workflow-optimization/worker-failure-modes.md
+// F4/F6/F15; the Liu "Lost in the Middle" primary itself is CHƯA ĐỌC,
+// cited via convergent secondaries, never presented as read).
+//
+// What the brief contains, and nothing else:
+//   - the 5-line lock summary (also at the top of templates/design/TASTE.md)
+//   - the locked tokens.css, verbatim
+//   - the best HTML (best-scoring graded round's page), verbatim
+//   - the latest round's gate findings
+//   - grader evidence lines (latest round + best round only)
+//   - a one-line-per-round run-state table (round, gate, scores,
+//     fix-class, outcome — state, not the log)
+// All axes start "ungraded" for the new round; no score is ever carried
+// from an earlier round. The lock is restated at the end of every brief,
+// immediately before the output instruction, so the highest-signal
+// tokens are also the most recent.
+//
+// Schema check (council-B): for round N > 1 the brief FAILS LOUDLY
+// (exit 1, nothing printed) when the lock, the best-HTML path, the
+// latest round's gate findings, or a graded round's evidence lines are
+// missing. A silent signal-dropping generator is worse than no
+// generator. --allow-missing downgrades missing gate findings /
+// evidence to explicit "NOT RECORDED" lines (the absence stays visible);
+// it never invents them. Round 1 has no prior round, so no gate
+// findings or evidence are required for it — the brief is lock + tokens.
+//
+// Fallback (council-A/B): if this script cannot run (no Node), the
+// orchestrator hand-assembles the same field list from the run log's
+// last record + the locked tokens (see SKILL.md "Round briefs +
+// per-role context budgets"). Last resort only, the brief is the full
+// run log, labelled `brief: full-log (generator unavailable)` —
+// labelled, never silently pasted.
+//
+// No run.json file exists in this loop (council decision, 2026-11-10):
+// run state lives in the append-only run log; this script reads it, it
+// never writes it.
+//
+// Node, no dependencies. Usage:
+//   node round-brief.mjs --project <dir> [--round N] [--page <built.html>]
+//     [--out <file>] [--allow-missing]
+//   node run-log.mjs --project <dir> brief [--round N] [--out <file>]
+//     (same brief, via the run-log entry point the skill cites)
+// --round defaults to the next round (highest recorded round + 1, or 1).
+// --page overrides the best-HTML path (otherwise the best round's
+// recorded `page`, else the latest round's, else <project>/index.html).
+//
+// Exit codes: 0 ok, 1 usage error or schema-check failure.
+
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+
+const AXES = ['Type', 'Layout', 'Colour', 'Space'];
+
+function usage(msg) {
+  if (msg) console.error(`round-brief: ${msg}`);
+  console.error(`usage:
+  node round-brief.mjs --project <dir> [--round N] [--page <built.html>] [--out <file>] [--allow-missing]
+  node run-log.mjs --project <dir> brief [--round N] [--out <file>]`);
+  process.exit(1);
+}
+
+function fail(msg) {
+  console.error(`round-brief: SCHEMA CHECK FAILED — ${msg} Nothing printed.`);
+  process.exit(1);
+}
+
+function parseArgs(argv) {
+  const out = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const key = a.slice(2);
+      if (key === 'allow-missing') { out[key] = true; continue; }
+      const val = argv[i + 1];
+      if (val === undefined) usage(`--${key} needs a value`);
+      out[key] = val;
+      i++;
+    } else out._.push(a);
+  }
+  return out;
+}
+
+function logPath(project) {
+  return path.join(project, 'design', 'run-log.jsonl');
+}
+
+function readLog(project) {
+  const p = logPath(project);
+  if (!fs.existsSync(p)) return [];
+  const lines = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean);
+  return lines.map((l, i) => {
+    try {
+      return JSON.parse(l);
+    } catch {
+      throw new Error(`run log line ${i + 1} is not valid JSON: ${l.slice(0, 80)}`);
+    }
+  });
+}
+
+function sha256(text) {
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function resolveInProject(project, p) {
+  return path.isAbsolute(p) ? p : path.join(project, p);
+}
+
+function scoresTotal(s) {
+  return s.type + s.layout + s.colour + s.space;
+}
+
+function scoresLine(s) {
+  return s ? `T${s.type}/L${s.layout}/C${s.colour}/S${s.space}` : 'no grade';
+}
+
+// The 5-line lock summary. The same five lines, in the same order, sit
+// at the top of templates/design/TASTE.md and are restated at the end of
+// every brief — one canonical shape, three places, no drift.
+function lockSummary({ references, tokensPath, tokensHash, lockVersion, variant }) {
+  return [
+    `1. Direction: ${references}`,
+    `2. Tokens: ${tokensPath} (sha256 ${tokensHash ? tokensHash.slice(0, 12) + '…' : 'not recorded'})`,
+    `3. Lock version: ${lockVersion} — immutable within a direction; a re-pick creates a new version.`,
+    `4. Picked variant: ${variant || 'none yet'}`,
+    '5. Stop: >=4 on Type/Layout/Colour/Space + gate green, or after 3 rounds; every axis starts ungraded.',
+  ];
+}
+
+export function buildBrief(project, opts = {}) {
+  const rows = readLog(project);
+  const locks = rows.filter((r) => r.kind === 'taste-lock');
+  if (!locks.length) {
+    throw new Error('no taste lock in the run log — run `run-log.mjs lock` (SKILL.md step 1.8) before any round brief');
+  }
+  const lock = locks.reduce((a, b) => ((b.lockVersion ?? 0) > (a.lockVersion ?? 0) ? b : a));
+  const rounds = rows.filter((r) => r.kind === 'round').sort((a, b) => a.round - b.round);
+  const maxRound = rounds.length ? rounds[rounds.length - 1].round : 0;
+  const targetRound = opts.round ?? maxRound + 1;
+
+  const tokensPath = lock.tokens;
+  const tokensFile = resolveInProject(project, tokensPath);
+  if (!fs.existsSync(tokensFile)) {
+    throw new Error(`locked tokens file not found on disk: ${tokensFile} (lock v${lock.lockVersion ?? '?'})`);
+  }
+  const tokensText = fs.readFileSync(tokensFile, 'utf8');
+  const tokensHash = sha256(tokensText);
+  const hashMismatch = lock.tokensHash && lock.tokensHash !== tokensHash;
+
+  // Picked variant: the latest round's variant, else the latest
+  // variant-pick record, else none.
+  const latestRound = rounds.length ? rounds[rounds.length - 1] : null;
+  const picks = rows.filter((r) => r.kind === 'variant-pick');
+  const variant = latestRound?.variant || (picks.length ? picks[picks.length - 1].variant : null);
+
+  const summary = lockSummary({
+    references: lock.references,
+    tokensPath,
+    tokensHash,
+    lockVersion: lock.lockVersion ?? '?',
+    variant,
+  });
+
+  const out = [];
+  out.push(`# Round ${targetRound} brief`);
+  out.push('');
+  out.push('## Lock summary');
+  out.push(...summary);
+  if (hashMismatch) {
+    out.push('');
+    out.push(`WARNING: tokens on disk do NOT match the locked hash (lock v${lock.lockVersion ?? '?'} recorded sha256 ${lock.tokensHash.slice(0, 12)}…, disk is ${tokensHash.slice(0, 12)}…). The lock moved mid-loop — re-lock before building; do not build against unlocked tokens.`);
+  }
+  out.push('');
+  out.push('## Your task');
+  if (targetRound === 1 || !rounds.length) {
+    out.push('Build round 1 from the locked tokens below. No prior build exists: there is no best HTML, no gate findings, and no grader evidence yet. Build one HTML file, tokens only — every visual value comes from the locked tokens.css.');
+  } else {
+    out.push(`Fix round ${targetRound}: apply at most the top 2 fixes below, as token diffs against the locked tokens. Each fix cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". Do not re-read the full run log; this brief is your whole context for the round.`);
+  }
+  out.push('');
+  out.push('## Locked tokens');
+  out.push(`File: ${tokensPath} (${tokensText.split('\n').length} lines, sha256 ${tokensHash.slice(0, 12)}…)`);
+  out.push('```css');
+  out.push(tokensText.replace(/\n$/, ''));
+  out.push('```');
+
+  if (targetRound > 1 && rounds.length) {
+    // Best HTML: best-scoring graded round; if no round was ever graded,
+    // the latest round's page (the only build there is).
+    const graded = rounds.filter((r) => r.scores);
+    const best = graded.length
+      ? graded.reduce((a, b) => (scoresTotal(b.scores) > scoresTotal(a.scores) ? b : a))
+      : null;
+    const bestRound = best || latestRound;
+    let bestPage = opts.page || bestRound.page || latestRound.page;
+    if (!bestPage && fs.existsSync(path.join(project, 'index.html'))) bestPage = 'index.html';
+    if (!bestPage) {
+      throw new Error(`best-HTML path unknown: no round recorded a --page and <project>/index.html does not exist (re-record the round with --page, or pass --page)`);
+    }
+    const bestFile = resolveInProject(project, bestPage);
+    if (!fs.existsSync(bestFile)) {
+      throw new Error(`best HTML file not found on disk: ${bestFile} (round ${bestRound.round}${bestRound.page ? '' : ' — page fell back to the latest round'})`);
+    }
+    const bestText = fs.readFileSync(bestFile, 'utf8');
+    out.push('');
+    out.push(`## Best HTML (round ${bestRound.round}${best ? `, ${scoresLine(bestRound.scores)}, total ${scoresTotal(bestRound.scores)}/20` : ', ungraded — no graded round yet'})`);
+    out.push(`File: ${bestPage} (${bestText.split('\n').length} lines) — edit this file, or a copy of it; a lower-scoring round is discarded, not iterated on.`);
+    out.push('```html');
+    out.push(bestText.replace(/\n$/, ''));
+    out.push('```');
+
+    // Gate findings + grader evidence: latest round only (plus the best
+    // round's evidence line when it differs). Never the full log.
+    out.push('');
+    out.push(`## Gate findings (round ${latestRound.round}, gate: ${latestRound.gate})`);
+    if (latestRound.gateFindings) {
+      out.push(latestRound.gateFindings);
+    } else if (opts.allowMissing) {
+      out.push('NOT RECORDED — the round was logged without --gate-findings. Record the gate output on the next round; do not guess at findings.');
+    } else {
+      throw new Error(`gate findings missing for round ${latestRound.round} (re-record the round with --gate-findings, or pass --allow-missing to label the gap explicitly)`);
+    }
+    out.push('');
+    out.push('## Grader evidence lines');
+    const evidenceRounds = [latestRound];
+    if (best && best.round !== latestRound.round) evidenceRounds.push(best);
+    for (const r of evidenceRounds) {
+      if (r.scores) {
+        if (r.evidence) {
+          out.push(`Round ${r.round} (${scoresLine(r.scores)}, grader: ${r.grader}): ${r.evidence}`);
+        } else if (opts.allowMissing) {
+          out.push(`Round ${r.round} (${scoresLine(r.scores)}): NOT RECORDED — the round was logged without --evidence.`);
+        } else {
+          throw new Error(`grader evidence missing for round ${r.round} (re-record the round with --evidence, or pass --allow-missing to label the gap explicitly)`);
+        }
+      } else {
+        out.push(`Round ${r.round}: no grade — grade is exactly "gate green, vision not available"; the human gate carries the taste judgement.`);
+      }
+    }
+    if (latestRound.fixClass) {
+      out.push('');
+      out.push(`## Fix class tried last round (round ${latestRound.round}): ${latestRound.fixClass}`);
+      out.push('Do not repeat this fix class unchanged — if the round did not improve the lowest axis, change strategy or revert to the best-kept version.');
+    }
+  }
+
+  out.push('');
+  out.push('## Run state');
+  if (!rounds.length) {
+    out.push('No rounds recorded yet.');
+  } else {
+    for (const r of rounds) {
+      out.push(`- round ${r.round} | gate: ${r.gate} | scores: ${scoresLine(r.scores)} | fix-class: ${r.fixClass || '—'} | outcome: ${r.outcome || 'pending'} | variant: ${r.variant || '—'} | tokens: ${r.tokensHash ? r.tokensHash.slice(0, 12) + '…' : '—'}`);
+    }
+    out.push(`Rounds used: ${rounds.length} of 3 per direction. Best version: round ${(() => { const g = rounds.filter((r) => r.scores); return g.length ? g.reduce((a, b) => (scoresTotal(b.scores) > scoresTotal(a.scores) ? b : a)).round : 'none graded yet'; })()}.`);
+  }
+  out.push('');
+  out.push(`## Scores for round ${targetRound} — all axes start ungraded`);
+  for (const a of AXES) out.push(`- ${a}: ungraded`);
+  out.push('No score is carried from an earlier round. A score only moves when an independent judge writes evidence for it.');
+  out.push('');
+  out.push('## Lock restated — read this last, it governs');
+  out.push(...summary);
+  out.push('');
+  out.push(`Now do round ${targetRound} under the lock above, and nothing outside it.`);
+  return out.join('\n');
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+if (isMain) {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.project) usage('--project <dir> is required');
+  const round = args.round !== undefined ? Number(args.round) : undefined;
+  if (round !== undefined && (!Number.isInteger(round) || round < 1)) usage('--round must be a positive integer');
+  let brief;
+  try {
+    brief = buildBrief(args.project, {
+      round,
+      page: args.page,
+      allowMissing: args['allow-missing'] === true,
+    });
+  } catch (e) {
+    fail(e.message);
+  }
+  if (args.out) {
+    fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true });
+    fs.writeFileSync(args.out, brief + '\n');
+    console.log(`round-brief: round brief written to ${args.out}`);
+  } else {
+    console.log(brief);
+  }
+}
