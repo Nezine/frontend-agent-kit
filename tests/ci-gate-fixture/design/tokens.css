@@ -1,0 +1,7 @@
+:root {
+  --primitive-white: #ffffff;
+  --primitive-ink: #111111;
+  --color-bg: var(--primitive-white);
+  --color-on-bg: var(--primitive-ink);
+  --color-ink: var(--primitive-ink);
+}

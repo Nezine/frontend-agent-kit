@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # frontend-agent-kit — installer v2.
 #
-# Non-interactive, Linux-first. Detects the hosts actually present, copies the
+# Non-interactive, Linux/macOS. Detects the hosts actually present, copies the
 # vendored skills into EVERY applicable skills directory (backup-first), then
 # best-effort installs the Impeccable hook, the Playwright MCP server, the
 # Playwright CLI, and the gitleaks secret scanner (gate 1.1 — without it the
@@ -72,7 +72,11 @@ PLAYWRIGHT_MCP_VERSION="0.0.85"
 # Secret scanner for gate 1.1 (F4, 2026-11-11): gitleaks v8.30.1, VERIFIED
 # 2026-11-11 against the GitHub releases API (tag v8.30.1, published
 # 2026-03-21; assets gitleaks_8.30.1_linux_x64.tar.gz +
-# gitleaks_8.30.1_checksums.txt). Pinned — never @latest.
+# gitleaks_8.30.1_checksums.txt) and darwin assets VERIFIED 2026-11-11
+# against the published checksums file (darwin_arm64
+# b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5,
+# darwin_x64 dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709).
+# Pinned — never @latest.
 GITLEAKS_VERSION="8.30.1"
 
 KNOWN_HOSTS="claude codex opencode gemini hermes copilot muse cmd"
@@ -82,6 +86,12 @@ user_home="${HOME:?HOME must be set}"
 backup="$user_home/.local/share/frontend-agent-kit/backups/$(date -u +%Y%m%dT%H%M%SZ)-$$"
 state_dir="$user_home/.local/share/frontend-agent-kit"
 refs_dir="$user_home/.local/share/agent-design-references"
+# Playwright browser cache root (macOS phase, D12): Playwright's own
+# default cache is ~/.cache/ms-playwright on Linux but
+# ~/Library/Caches/ms-playwright on macOS. Only the curl fallback
+# hardcodes it (the CLI knows its own cache dir); $os_name is set by the
+# OS dispatch below, so this is assigned there — see the dispatch block.
+pw_cache_dir=""
 
 # Impeccable hook pin, read from the repo pin (single source of truth).
 # No fallback: if SOURCE.txt is unreadable or carries no tag=skill-v line,
@@ -117,7 +127,7 @@ usage() {
   cat <<'EOF'
 Usage: ./install.sh [--hosts=H1,H2] [--dry-run] [--no-warm] [--skip-hooks] [--skip-mcp] [--skip-eyes]
 
-Installs frontend-agent-kit skills for every detected host on Linux.
+Installs frontend-agent-kit skills for every detected host on Linux or macOS.
   --hosts=LIST   only these hosts: claude,codex,opencode,gemini,hermes,copilot,muse,cmd
   --dry-run      print planned actions, write nothing
   --no-warm      skip the first-run Impeccable engine download
@@ -145,7 +155,22 @@ for arg in "$@"; do
   esac
 done
 
-[[ "$(uname -s)" == Linux ]] || fail "This package currently supports Linux only. macOS/Windows install paths are open work, not verified — see phase-1 research/SYNTHESIS.md §7 (workspace research note, not shipped in this repo)."
+# OS dispatch (macOS phase, D12): Linux and macOS (Darwin) are supported;
+# anything else fails fast with a clear message. Windows install paths are
+# open work, not verified. Stock macOS ships bash 3.2 — the scripts are
+# written bash-3.2-compatible (no bash-4-only constructs); see
+# D12. No Homebrew bash is required.
+os_name="$(uname -s)"
+is_darwin=0
+case "$os_name" in
+  Linux) : ;;
+  Darwin) is_darwin=1 ;;
+  *) fail "This package supports Linux and macOS only (detected: $os_name). Windows install paths are open work, not verified — see phase-1 research/SYNTHESIS.md §7 (workspace research note, not shipped in this repo)." ;;
+esac
+# Playwright browser cache root: ~/Library/Caches/ms-playwright on macOS,
+# ~/.cache/ms-playwright on Linux (the CLI's own default per OS).
+if [[ "$is_darwin" == 1 ]]; then pw_cache_dir="$user_home/Library/Caches/ms-playwright";
+else pw_cache_dir="$user_home/.cache/ms-playwright"; fi
 
 # --- prerequisites: hard for the copy path, soft (warn) for node ----------
 # DECISION (5c, recorded 2026-11-10): python3 and git stay HARD prereqs
@@ -363,7 +388,12 @@ skills_dirs_for_host() {
     hermes)   printf '%s\n%s\n' "$user_home/.hermes/skills" "$user_home/.agents/skills" ;;
     copilot)  printf '%s' "$user_home/.copilot/skills" ;;
     muse)     printf '%s' "$user_home/workspace/custom-skills" ;;
-    cmd)      printf '%s' "$user_home/.agents/skills" ;;
+    # CommandCode (cmd): native user dir FIRST (it outranks the shared
+    # dir on the documented priority order — project .commandcode/ >
+    # project .agents/ > user ~/.commandcode/skills/ > user
+    # ~/.agents/skills/ — commandcode.ai/docs/skills, read 2026-11-11),
+    # then the shared dir so cmd also sees the cross-agent copy.
+    cmd)      printf '%s\n%s\n' "$user_home/.commandcode/skills" "$user_home/.agents/skills" ;;
   esac
 }
 
@@ -383,16 +413,17 @@ install_dir() { # <source> <target>
   if ! cp -a -- "$source" "$target"; then
     # cp -a fails on filesystems that reject dir chown (EPERM, "failed
     # to preserve ownership", exit 1 — seen 2026-11-10 on the workspace
-    # overlay/btrfs). Fall back to cp -r (best-effort preservation) and
-    # record it. The failed cp -a may have left a partial target, so
-    # remove it first: it was just created by that failed copy, and any
-    # pre-existing content was already moved to the backup above.
-    printf 'WARNING: cp -a failed for %s (filesystem rejects ownership preservation) — falling back to cp -r (best-effort preservation).\n' "$source" >&2
+    # overlay/btrfs). Fall back to cp -R (POSIX spelling; cp -r is the
+    # fragile one on BSD/macOS) and record it. The failed cp -a may have
+    # left a partial target, so remove it first: it was just created by
+    # that failed copy, and any pre-existing content was already moved
+    # to the backup above.
+    printf 'WARNING: cp -a failed for %s (filesystem rejects ownership preservation) — falling back to cp -R (best-effort preservation).\n' "$source" >&2
     mkdir -p "$state_dir"
-    printf '%s: cp -a failed, used cp -r fallback: %s -> %s\n' "$(date -u +%FT%TZ)" "$source" "$target" >> "$state_dir/copy-fallbacks.log"
+    printf '%s: cp -a failed, used cp -R fallback: %s -> %s\n' "$(date -u +%FT%TZ)" "$source" "$target" >> "$state_dir/copy-fallbacks.log"
     rm -rf -- "$target"
-    cp -r -- "$source" "$target" || fail "copy failed even with cp -r fallback: $source -> $target"
-    printf 'Installed %s (via cp -r fallback; ownership/timestamps best-effort)\n' "$target"
+    cp -R -- "$source" "$target" || fail "copy failed even with cp -R fallback: $source -> $target"
+    printf 'Installed %s (via cp -R fallback; ownership/timestamps best-effort)\n' "$target"
     return 0
   fi
   printf 'Installed %s\n' "$target"
@@ -411,27 +442,48 @@ install_file() { # <source> <target>
   fi
   if ! cp -a -- "$source" "$target"; then
     # Same cp -a EPERM fallback as install_dir (see above).
-    printf 'WARNING: cp -a failed for %s — falling back to cp -r (best-effort preservation).\n' "$source" >&2
+    printf 'WARNING: cp -a failed for %s — falling back to cp -R (best-effort preservation).\n' "$source" >&2
     mkdir -p "$state_dir"
-    printf '%s: cp -a failed, used cp -r fallback: %s -> %s\n' "$(date -u +%FT%TZ)" "$source" "$target" >> "$state_dir/copy-fallbacks.log"
+    printf '%s: cp -a failed, used cp -R fallback: %s -> %s\n' "$(date -u +%FT%TZ)" "$source" "$target" >> "$state_dir/copy-fallbacks.log"
     rm -rf -- "$target"
-    cp -r -- "$source" "$target" || fail "copy failed even with cp -r fallback: $source -> $target"
-    printf 'Installed %s (via cp -r fallback)\n' "$target"
+    cp -R -- "$source" "$target" || fail "copy failed even with cp -R fallback: $source -> $target"
+    printf 'Installed %s (via cp -R fallback)\n' "$target"
     return 0
   fi
   printf 'Installed %s\n' "$target"
 }
 
 # --- copy -----------------------------------------------------------------
-declare -A DONE_DIRS=()
+# Which dirs are already claimed, and by WHICH host (the post-hook restore
+# below needs the variant each dir was installed from — clean-env
+# 2026-11-11, GAP-2/3). Bash 3.2 has no associative arrays (stock macOS
+# /bin/bash is 3.2; the feature arrived in bash 4), so the dir->host map
+# is two parallel indexed arrays plus a linear lookup — the map is only
+# ever queried by exact dir key and N is small, so the lookup cost is
+# negligible. (macOS phase, D12.)
+DONE_DIR_LIST=()
+DONE_DIR_HOST=()
+done_dir_host() { # <dir> — print the host that claimed <dir>, or nothing
+  # Index loop, not an array expansion: expanding an empty array under
+  # `set -u` aborts bash older than 4.4 (stock macOS bash 3.2 included),
+  # and this lookup runs while the list is still empty on every run.
+  local _i=0
+  while [[ "$_i" -lt "${#DONE_DIR_LIST[@]}" ]]; do
+    if [[ "${DONE_DIR_LIST[$_i]}" == "$1" ]]; then printf '%s' "${DONE_DIR_HOST[$_i]}"; return 0; fi
+    _i=$((_i+1))
+  done
+  return 1
+}
 for host in $hosts; do
   while IFS= read -r dir || [[ -n "$dir" ]]; do
     [[ -z "$dir" ]] && continue
     # Record WHICH host claimed the dir (not just "done"): the post-hook
     # restore below needs the variant each dir was installed from
     # (clean-env 2026-11-11, GAP-2/3).
-    [[ -n "${DONE_DIRS[$dir]:-}" ]] && continue
-    DONE_DIRS["$dir"]="$host"
+    _claimed_host="$(done_dir_host "$dir" || true)"
+    [[ -n "$_claimed_host" ]] && continue
+    DONE_DIR_LIST+=("$dir")
+    DONE_DIR_HOST+=("$host")
     for name in "${CANON_SKILLS[@]}"; do
       install_dir "$root/skills/$name" "$dir/$name"
     done
@@ -486,7 +538,11 @@ fi
 # dir. A symlink, not a second 40M copy per host — the tree lives once
 # in $refs_dir/taste. verify.sh checks every cited path resolves.
 if [[ -d "$refs_dir/taste/skills" || "$dry_run" == 1 ]]; then
-  for dir in "${!DONE_DIRS[@]}"; do
+  # Index loop, not `for dir in "${DONE_DIR_LIST[@]}"`: expanding an empty
+  # array under `set -u` aborts bash older than 4.4 (stock macOS bash 3.2).
+  _di=0
+  while [[ "$_di" -lt "${#DONE_DIR_LIST[@]}" ]]; do
+    dir="${DONE_DIR_LIST[$_di]}"; _di=$((_di+1))
     if [[ "$dry_run" == 1 ]]; then printf 'would link %s/taste-reference/vendor -> %s\n' "$dir" "$refs_dir"; continue; fi
     [[ -d "$dir/taste-reference" ]] || continue
     [[ -d "$refs_dir/taste/skills" ]] || continue
@@ -696,7 +752,7 @@ mcp_add_checked() { # <host> <label> <cmd...>
 # the fallback derives its URL from the chrome URL (same CDN version
 # directory) and fetches it through the same path. Post-download, the
 # fallback reproduces the CLI's own steps:
-#   ~/.cache/ms-playwright/<name>-<revision>/ + an empty
+#   $pw_cache_dir/<name>-<revision>/ + an empty
 #   INSTALLATION_COMPLETE marker (the marker is what makes the CLI skip the
 #   download on re-run), per-entry Unix permissions restored from the zip
 #   (E-1: extractall drops exec bits — see playwright_curl_one), AND the
@@ -712,11 +768,20 @@ mcp_add_checked() { # <host> <label> <cmd...>
 # the marker and fetches the rest) and confirms with --list.
 playwright_core_dir() { # prints the playwright-core dir for the installed CLI, or nothing
   # Shim-proof (red-team H5): if playwright-cli resolves via a mise shim,
-  # readlink -f gives the shims dir, which has no node_modules. Fall back
-  # to the npm global root.
-  local cli_dir core
+  # canonicalising gives the shims dir, which has no node_modules. Fall
+  # back to the npm global root.
+  # Canonicaliser (macOS phase, D12): BSD readlink has no -f, so fall back
+  # to python3 realpath (python3 is a hard prereq of this script); if
+  # neither works, use the unresolved PATH result — the node_modules
+  # check below still decides, so the fallback is never a wrong answer.
+  local cli_dir core _cli_path _cli_real
   if command -v playwright-cli >/dev/null 2>&1; then
-    cli_dir="$(dirname -- "$(readlink -f "$(command -v playwright-cli)" 2>/dev/null)")"
+    _cli_path="$(command -v playwright-cli)"
+    _cli_real="$(readlink -f -- "$_cli_path" 2>/dev/null || true)"
+    if [[ -z "$_cli_real" ]] && command -v python3 >/dev/null 2>&1; then
+      _cli_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$_cli_path" 2>/dev/null || true)"
+    fi
+    cli_dir="$(dirname -- "${_cli_real:-$_cli_path}")"
     core="$cli_dir/node_modules/playwright-core"
     if [[ -d "$core" ]]; then printf '%s' "$core"; return 0; fi
   fi
@@ -749,6 +814,15 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
     # 131,998,580 B; Playwright CDN for older CLI builds + ffmpeg, whose
     # URL was read from the CLI's own download log:
     # cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1013/).
+    # Darwin arms (macOS phase, D12): same hosts, mac-arm64/mac-x64
+    # shapes, VERIFIED 2026-11-11 from the CLI 0.1.24 bundle's own
+    # lib/coreBundle.js (DOWNLOAD_PATHS + EXECUTABLE_PATHS) and live HEAD
+    # checks — mac-arm64 chrome 200, 199,683,801 B; headless-shell 200,
+    # 104,957,869 B; ffmpeg-mac 200, 1,549,708 B. The darwin chromium exe
+    # is the app-bundle path; the headless shell is NOT a bundle
+    # (chrome-headless-shell-mac-<arch>/chrome-headless-shell); ffmpeg
+    # extracts a top-level `ffmpeg-mac` file on both arches (verified
+    # against the downloaded zips, 2026-11-11).
     https://storage.googleapis.com/chrome-for-testing-public/*/linux64/chrome-linux64.zip)
       name="chromium"; exe_rel="chrome-linux64/chrome" ;;
     https://storage.googleapis.com/chrome-for-testing-public/*/linux64/chrome-headless-shell-linux64.zip)
@@ -759,6 +833,26 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux64/chrome-headless-shell" ;;
     https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-linux.zip)
       name="ffmpeg"; exe_rel="ffmpeg-linux" ;;
+    https://storage.googleapis.com/chrome-for-testing-public/*/mac-arm64/chrome-mac-arm64.zip)
+      name="chromium"; exe_rel="chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
+    https://storage.googleapis.com/chrome-for-testing-public/*/mac-arm64/chrome-headless-shell-mac-arm64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-arm64/chrome-headless-shell" ;;
+    https://storage.googleapis.com/chrome-for-testing-public/*/mac-x64/chrome-mac-x64.zip)
+      name="chromium"; exe_rel="chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
+    https://storage.googleapis.com/chrome-for-testing-public/*/mac-x64/chrome-headless-shell-mac-x64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-x64/chrome-headless-shell" ;;
+    https://cdn.playwright.dev/*/builds/cft/*/mac-arm64/chrome-mac-arm64.zip)
+      name="chromium"; exe_rel="chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
+    https://cdn.playwright.dev/*/builds/cft/*/mac-arm64/chrome-headless-shell-mac-arm64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-arm64/chrome-headless-shell" ;;
+    https://cdn.playwright.dev/*/builds/cft/*/mac-x64/chrome-mac-x64.zip)
+      name="chromium"; exe_rel="chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
+    https://cdn.playwright.dev/*/builds/cft/*/mac-x64/chrome-headless-shell-mac-x64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-x64/chrome-headless-shell" ;;
+    https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-mac.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-mac" ;;
+    https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-mac-arm64.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-mac" ;;
     *)
       printf 'curl fallback: unknown artifact URL (no cache-layout mapping — not guessing): %s\n' "$url"
       return 1 ;;
@@ -796,7 +890,7 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
     return 1
   fi
   [[ -s "$zip_path" ]] || { printf 'curl fallback: empty file for %s.\n' "$url"; return 1; }
-  dest="$user_home/.cache/ms-playwright/$dir_name"
+  dest="$pw_cache_dir/$dir_name"
   printf 'curl fallback: placing %s into the CLI cache layout %s ...\n' "$fname" "$dest"
   rm -rf -- "$dest"
   mkdir -p -- "$dest"
@@ -832,7 +926,7 @@ for info in z.infolist():
   fi
   : > "$dest/INSTALLATION_COMPLETE"
   # F-C (2026-11-10): the CLI's `install-browser --list` reads
-  # ~/.cache/ms-playwright/.links/<sha1(playwright-core-dir)> (content =
+  # $pw_cache_dir/.links/<sha1(playwright-core-dir)> (content =
   # the playwright-core dir path, no trailing newline) and ENOENTs when
   # the dir is absent — a fallback-only cache failed --list even though
   # the browser was placed. Reproduce the CLI's own entry exactly
@@ -842,7 +936,7 @@ for info in z.infolist():
   # is what makes the CLI skip re-downloading; the .links entry only
   # repairs --list. Never overwrite an existing entry.
   core_dir="$(playwright_core_dir 2>/dev/null || true)"
-  links_dir="$user_home/.cache/ms-playwright/.links"
+  links_dir="$pw_cache_dir/.links"
   link_name=""
   if [[ -n "$core_dir" ]]; then
     link_name="$(printf '%s' "$core_dir" | sha1sum 2>/dev/null | awk '{print $1}' || true)"
@@ -874,7 +968,11 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   [[ -n "$urls" ]] || { printf 'curl fallback unavailable: no download URL in %s.\n' "$log"; return 1; }
   while IFS= read -r url || [[ -n "$url" ]]; do
     [[ -z "$url" ]] && continue
-    case "$url" in */linux64/chrome-linux64.zip) chrome_url="$url" ;; esac
+    case "$url" in
+      */linux64/chrome-linux64.zip) chrome_url="$url" ;;
+      */mac-arm64/chrome-mac-arm64.zip) chrome_url="$url" ;;
+      */mac-x64/chrome-mac-x64.zip) chrome_url="$url" ;;
+    esac
     playwright_curl_one "$url" || ok=0
   done <<< "$urls"
   # Headless-shell completion (E-1 round, 2026-11-10): the log-parsed URLs
@@ -889,7 +987,11 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   # filename chrome-headless-shell-linux64.zip — the exact URL the CLI
   # itself prints on the re-run (VERIFIED via curl HEAD 2026-11-11 on
   # the Chrome-for-Testing public bucket URL: 200 OK, 131,998,580 B =
-  # the CLI log's 125.9 MiB). So when a chrome URL
+  # the CLI log's 125.9 MiB). Darwin is the same shape
+  # (chrome-mac-arm64.zip -> chrome-headless-shell-mac-arm64.zip,
+  # chrome-mac-x64.zip -> chrome-headless-shell-mac-x64.zip — VERIFIED
+  # via curl HEAD 2026-11-11: mac-arm64 headless-shell 200 OK,
+  # 104,957,869 B). So when a chrome URL
   # was seen but no headless-shell URL was in the log, derive it by
   # filename substitution and fetch it through the same playwright_curl_one
   # (same source, same layout, same per-entry permission restore — nothing
@@ -899,8 +1001,12 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   # step does not need it (verify.sh eyes use chromium-1254; the headless
   # shell is what `playwright-cli install-browser chrome-for-testing`
   # needs to report a clean install).
-  if [[ -n "$chrome_url" ]] && ! printf '%s\n' "$urls" | grep -q 'chrome-headless-shell-linux64\.zip'; then
-    hs_url="${chrome_url%/chrome-linux64.zip}/chrome-headless-shell-linux64.zip"
+  if [[ -n "$chrome_url" ]] && ! printf '%s\n' "$urls" | grep -q 'chrome-headless-shell-.*\.zip'; then
+    case "$chrome_url" in
+      */linux64/chrome-linux64.zip) hs_url="${chrome_url%/chrome-linux64.zip}/chrome-headless-shell-linux64.zip" ;;
+      */mac-arm64/chrome-mac-arm64.zip) hs_url="${chrome_url%/chrome-mac-arm64.zip}/chrome-headless-shell-mac-arm64.zip" ;;
+      */mac-x64/chrome-mac-x64.zip) hs_url="${chrome_url%/chrome-mac-x64.zip}/chrome-headless-shell-mac-x64.zip" ;;
+    esac
     printf 'curl fallback: chrome URL seen but no headless-shell URL was logged (CLI died during chrome retries) — deriving it from the same CDN version directory: %s\n' "$hs_url"
     playwright_curl_one "$hs_url" || printf 'curl fallback: WARNING — derived headless-shell fetch failed for %s (non-fatal: the post-fallback CLI re-run will retry it; the eyes step uses chromium-1254 and does not need the headless shell).\n' "$hs_url"
   fi
@@ -987,7 +1093,21 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
   _pw_have_timeout=0; type -P timeout >/dev/null 2>&1 && _pw_have_timeout=1
   if [[ "$_pw_have_timeout" == 0 ]]; then printf 'WARNING: timeout(1) not found — probes run unbounded (a hung mise/shim can stall the script).\n' >&2; fi
   _pw_timeout30() { if [[ "$_pw_have_timeout" == 1 ]]; then timeout -k 5 30 "$@"; else "$@"; fi; }
-  _pw_canon() { local _c=""; if [[ -n "${1:-}" ]] && command -v readlink >/dev/null 2>&1; then _c="$(readlink -f -- "$1" 2>/dev/null || true)"; fi; printf '%s' "${_c:-$1}"; }
+  _pw_canon() { # <path> — canonical path, or the input unchanged
+    # Portable canonicaliser (macOS phase, D12): GNU readlink -f first,
+    # then python3 realpath (BSD readlink has no -f; python3 is a hard
+    # prereq). If neither works, return the input unchanged — callers
+    # treat that as "unresolved", never as an error. No `--` before the
+    # path argument: with `python3 -c`, `--` lands in sys.argv[1]
+    # instead of being stripped (verified 2026-11-11), so it would
+    # canonicalise the literal `--`. All call sites pass absolute paths.
+    local _c=""
+    if [[ -n "${1:-}" ]]; then
+      if command -v readlink >/dev/null 2>&1; then _c="$(readlink -f -- "$1" 2>/dev/null || true)"; fi
+      if [[ -z "$_c" ]] && command -v python3 >/dev/null 2>&1; then _c="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || true)"; fi
+    fi
+    printf '%s' "${_c:-$1}"
+  }
   _pw_same_file() { # <a> <b>: exit 0 if the same file, by canonical path or inode
     local _a="${1:-}" _b="${2:-}" _ca _cb _ia _ib
     [[ -z "$_a" || -z "$_b" ]] && return 1
@@ -1241,30 +1361,31 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
   fi
   # M1: canonicalise the resolved paths and reject shims. A shim (or a
   # symlink into a shims dir) passes -x, so executability never proved
-  # the binary was real — that was the hole. If readlink -f is
-  # unavailable (or cannot canonicalise), the temp-cwd execution probe
-  # below is the minimum shim check (H3 — already being added).
+  # the binary was real — that was the hole. If no canonicaliser is
+  # available, the temp-cwd execution probe below is the minimum shim
+  # check (H3 — already being added).
   # (M-E: the rejection is ANCHORED to the real mise shims dir —
   # ${MISE_DATA_DIR:-~/.local/share/mise}/shims — not to any path
   # component named "shims" (e.g. /opt/<team>/shims/bin is a real
   # install, not a mise shim). A canonical path under some OTHER
   # shims-like dir is only a SUSPECT: it is rejected only if it also
-  # fails the temp-cwd execution probe just below (M-E fallback). M-D:
-  # if readlink -f returns empty for a non-empty resolved path, that is
-  # warned by name — the M1 gate is skipped for it, not silently.)
-  _pw_readlink_ok=0
-  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then _pw_readlink_ok=1; fi
+  # fails the temp-cwd execution probe just below (M-E fallback).
+  # Canonicaliser (macOS phase, D12): _pw_canon tries GNU readlink -f,
+  # then python3 realpath (BSD readlink has no -f). The gate below tests
+  # whether either exists; when neither does, M1 is skipped and only the
+  # execution probe runs. _pw_canon never returns empty for a non-empty
+  # input (it falls back to the input), so there is no per-path
+  # "could not canonicalise" warning anymore — an unresolved path is
+  # still compared against the shims anchor, and the probe is the
+  # backstop for a symlinked path it cannot see through.)
+  _pw_canon_ok=0
+  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then _pw_canon_ok=1;
+  elif command -v python3 >/dev/null 2>&1; then _pw_canon_ok=1; fi
   _pw_cli_maybe_shim=0; _pw_node_maybe_shim=0
-  if [[ "$_pw_resolve_ok" == 1 && "$_pw_readlink_ok" == 1 ]]; then
+  if [[ "$_pw_resolve_ok" == 1 && "$_pw_canon_ok" == 1 ]]; then
     _pw_cli_real=""; _pw_node_real=""
-    [[ -n "$_pw_cli_resolved" ]] && _pw_cli_real="$(readlink -f -- "$_pw_cli_resolved" 2>/dev/null || true)"
-    [[ -n "$_pw_node_resolved" ]] && _pw_node_real="$(readlink -f -- "$_pw_node_resolved" 2>/dev/null || true)"
-    if [[ -n "$_pw_cli_resolved" && -z "$_pw_cli_real" ]]; then
-      printf 'WARNING: readlink -f could not canonicalise the Playwright CLI path "%s" (loop, permission, or vanished target) — the shim check for it is skipped; the temp-cwd execution probe below is the backstop.\n' "$_pw_cli_resolved" >&2
-    fi
-    if [[ -n "$_pw_node_resolved" && -z "$_pw_node_real" ]]; then
-      printf 'WARNING: readlink -f could not canonicalise the node path "%s" (loop, permission, or vanished target) — the shim check for it is skipped; the temp-cwd execution probe below is the backstop.\n' "$_pw_node_resolved" >&2
-    fi
+    [[ -n "$_pw_cli_resolved" ]] && _pw_cli_real="$(_pw_canon "$_pw_cli_resolved")"
+    [[ -n "$_pw_node_resolved" ]] && _pw_node_real="$(_pw_canon "$_pw_node_resolved")"
     [[ -n "$_pw_cli_real" ]] && printf 'Playwright CLI canonical path: %s\n' "$_pw_cli_real"
     [[ -n "$_pw_node_real" ]] && printf 'Node canonical path: %s\n' "$_pw_node_real"
     # M2: the anchor is the CANONICAL mise shims dir. _pw_mise_data is
@@ -1404,7 +1525,7 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
       fi
     fi
   elif [[ "$_pw_resolve_ok" == 1 ]]; then
-    printf 'WARNING: readlink -f unavailable — the temp-cwd execution probe below is the only shim check (M1 fallback).\n' >&2
+    printf 'WARNING: no canonicaliser available (neither readlink -f nor python3 realpath) — the temp-cwd execution probe below is the only shim check (M1 fallback).\n' >&2
   fi
   # H1: after BOTH prepends, the node that will run the CLI must be
   # Node 22+ — the kit's hard gate (same as the Node 22+ gate above).
@@ -1533,9 +1654,11 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
     # (revision chromium-1254 for CLI 0.1.24); the plain `playwright
     # install chromium` package downloads a DIFFERENT revision (1248)
     # that the CLI does not use. Default `open` wants system Google
-    # Chrome at /opt/google/chrome/chrome — verify.sh tries
+    # Chrome (Linux: /opt/google/chrome/chrome; macOS: /Applications/
+    # Google Chrome.app/Contents/MacOS/Google Chrome) — verify.sh tries
     # --browser=chromium first, then the default, so either works.
-    # The browser cache is HOME-relative (~/.cache/ms-playwright): a
+    # The browser cache is HOME-relative (~/.cache/ms-playwright on
+    # Linux, ~/Library/Caches/ms-playwright on macOS): a
     # scratch HOME sees no browsers and re-downloads. Skip the install
     # when --list already shows a chromium build, and stage the download
     # under $HOME (TMPDIR) — this VM's /tmp is a 512M tmpfs and a
@@ -1572,10 +1695,15 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
           if printf '%s' "$list_out" | grep -q 'chromium-'; then
             printf 'Playwright browser confirmed via curl fallback (`playwright-cli install-browser --list` shows chromium).\n'
           else
-            note_pending "Chrome-for-Testing browser not confirmed after the curl fallback (see \`playwright-cli install-browser --list\`). Run: playwright-cli install-browser chrome-for-testing (on Linux, add --with-deps for system libs — needs sudo)."
+            # --with-deps is a Linux-only flag (it runs apt); omit it on macOS.
+            _with_deps=""
+            if [[ "$is_darwin" == 0 ]]; then _with_deps=" (on Linux, add --with-deps for system libs — needs sudo)"; fi
+            note_pending "Chrome-for-Testing browser not confirmed after the curl fallback (see \`playwright-cli install-browser --list\`). Run: playwright-cli install-browser chrome-for-testing${_with_deps}."
           fi
         else
-          note_pending "Chrome-for-Testing browser not installed for Playwright CLI. Run: playwright-cli install-browser chrome-for-testing (on Linux, add --with-deps for system libs — needs sudo). The CLI's Node downloader fails on this network (server closed connection at ~90%); if it fails again, fetch the URL it prints with: curl -C - -L -o <file.zip> <url>, then extract it under ~/.cache/ms-playwright/ (see install.sh playwright_curl_fallback for the layout)."
+          _with_deps=""
+          if [[ "$is_darwin" == 0 ]]; then _with_deps=" (on Linux, add --with-deps for system libs — needs sudo)"; fi
+          note_pending "Chrome-for-Testing browser not installed for Playwright CLI. Run: playwright-cli install-browser chrome-for-testing${_with_deps}. The CLI's Node downloader fails on this network (server closed connection at ~90%); if it fails again, fetch the URL it prints with: curl -C - -L -o <file.zip> <url>, then extract it under $pw_cache_dir/ (see install.sh playwright_curl_fallback for the layout)."
         fi
       fi
     fi
@@ -1784,10 +1912,11 @@ fi
 # — the --providers list is claude,codex). A hand-edit in one of those
 # dirs is indistinguishable from the upstream overwrite, so it is also
 # restored — backed up first, and the version being replaced is printed.
-if [[ "$dry_run" == 0 && "$skip_hooks" == 0 && -n "${providers:-}" && "${#DONE_DIRS[@]}" -gt 0 ]]; then
+if [[ "$dry_run" == 0 && "$skip_hooks" == 0 && -n "${providers:-}" && "${#DONE_DIR_LIST[@]}" -gt 0 ]]; then
   for _restore_dir in "$user_home/.claude/skills" "$user_home/.agents/skills" "$user_home/.codex/skills"; do
-    [[ -n "${DONE_DIRS[$_restore_dir]:-}" ]] || continue
-    _restore_src="$(impeccable_source_for_host "${DONE_DIRS[$_restore_dir]}")" || true
+    _restore_host="$(done_dir_host "$_restore_dir" || true)"
+    [[ -n "$_restore_host" ]] || continue
+    _restore_src="$(impeccable_source_for_host "$_restore_host")" || true
     [[ -n "$_restore_src" && -d "$_restore_src" && -d "$_restore_dir/impeccable" ]] || continue
     # diff exit codes (red-team S2): 0 = same, 1 = differs, 2/127 =
     # error (missing/unreadable path, or no diff binary). Only 1 means
@@ -1892,23 +2021,44 @@ fi
 # "install one" as guidance and no file recorded how. Install gitleaks
 # here so a fresh install passes 1.1: the pinned v8.30.1 release tarball
 # (see GITLEAKS_VERSION above), fetched with its published checksums file
-# and verified with sha256sum BEFORE extraction — never @latest, never
-# curl|sh, no sudo (installs to ~/.local/bin). Best-effort like the
-# hook/MCP/eyes steps: any failure is a PENDING note with the exact
-# manual command, never fatal. trufflehog / osv-scanner / go-licenses
-# are NOT installed here (no verified pin established for them in this
-# round) — the PENDING note below names them as manual alternatives.
+# and verified with sha256sum (or shasum -a 256 on macOS) BEFORE extraction
+# — never @latest, never curl|sh, no sudo (installs to ~/.local/bin).
+# Best-effort like the hook/MCP/eyes steps: any failure is a PENDING note
+# with the exact manual command, never fatal. trufflehog / osv-scanner /
+# go-licenses are NOT installed here (no verified pin established for them
+# in this round) — the PENDING note below names them as manual alternatives.
+# Gitleaks asset per OS/arch (macOS phase, D12): the pinned release
+# publishes one tarball per OS/arch; the checksums file is the
+# verification source at install time (same trust model as the Linux
+# path — the tarball line is grepped from the published checksums.txt
+# and verified before extraction). Darwin hashes (from that file,
+# VERIFIED 2026-11-11): darwin_arm64 b40ab0ae…eb6a5, darwin_x64
+# dfe101a4…952709 (full hashes at GITLEAKS_VERSION above).
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64|Darwin-aarch64) _gl_asset="darwin_arm64" ;;
+  Darwin-x86_64|Darwin-amd64) _gl_asset="darwin_x64" ;;
+  *) _gl_asset="linux_x64" ;;
+esac
+# Hash command: GNU sha256sum, else BSD shasum -a 256 (stock macOS has no
+# sha256sum). Both read the same checksum format with -c.
+_gl_sha_cmd=""
+if command -v sha256sum >/dev/null 2>&1; then _gl_sha_cmd="sha256sum";
+elif command -v shasum >/dev/null 2>&1; then _gl_sha_cmd="shasum -a 256"; fi
+# Profile file for the PATH advice below: zsh (the macOS default shell)
+# reads ~/.zshrc, not ~/.profile.
+if [[ "$is_darwin" == 1 ]]; then _gl_profile="~/.zshrc"; else _gl_profile="~/.profile"; fi
 install_gitleaks() { # pinned tarball + published checksums, into ~/.local/bin
   command -v curl >/dev/null 2>&1 || { printf 'gitleaks install: curl not found.\n'; return 1; }
-  command -v sha256sum >/dev/null 2>&1 || { printf 'gitleaks install: sha256sum not found.\n'; return 1; }
+  [[ -n "$_gl_sha_cmd" ]] || { printf 'gitleaks install: no sha256sum or shasum found.\n'; return 1; }
   local base="https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION"
   local tmpd
   tmpd="$(mktemp -d)" || return 1
-  # The tarball MUST be saved under its real filename: sha256sum -c reads
-  # the filename FROM the checksum line, so a renamed file can never
-  # verify (clean-env 2026-11-11, GAP-1: the old gitleaks.tar.gz name made
-  # every fresh install refuse the binary and fail closed on gate 1.1).
-  if ! curl -fsSL -o "$tmpd/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; then
+  # The tarball MUST be saved under its real filename: the checksum
+  # verifier reads the filename FROM the checksum line, so a renamed
+  # file can never verify (clean-env 2026-11-11, GAP-1: the old
+  # gitleaks.tar.gz name made every fresh install refuse the binary and
+  # fail closed on gate 1.1).
+  if ! curl -fsSL -o "$tmpd/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz" "$base/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz"; then
     printf 'gitleaks install: tarball download failed.\n'; rm -rf -- "$tmpd"; return 1
   fi
   if ! curl -fsSL -o "$tmpd/checksums.txt" "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"; then
@@ -1916,10 +2066,10 @@ install_gitleaks() { # pinned tarball + published checksums, into ~/.local/bin
   fi
   # Anchored (red-team M6): an unanchored grep would also match a
   # "...tar.gz.sig" line if upstream ever added one, failing the check.
-  if ! (cd "$tmpd" && grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$" checksums.txt | sha256sum -c - >/dev/null 2>&1); then
+  if ! (cd "$tmpd" && grep "gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz$" checksums.txt | $_gl_sha_cmd -c - >/dev/null 2>&1); then
     printf 'gitleaks install: checksum verification FAILED — refusing to install.\n'; rm -rf -- "$tmpd"; return 1
   fi
-  if ! tar -xzf "$tmpd/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -C "$tmpd" gitleaks; then
+  if ! tar -xzf "$tmpd/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz" -C "$tmpd" gitleaks; then
     printf 'gitleaks install: extraction failed.\n'; rm -rf -- "$tmpd"; return 1
   fi
   mkdir -p "$user_home/.local/bin"
@@ -1945,10 +2095,10 @@ elif install_gitleaks; then
     printf 'OK: gitleaks %s installed (gate 1.1 scanner)\n' "$GITLEAKS_VERSION"
   else
     printf 'OK: gitleaks %s installed to ~/.local/bin/gitleaks, but ~/.local/bin is not on PATH — gate 1.1 still cannot see it.\n' "$GITLEAKS_VERSION"
-    note_pending "gitleaks $GITLEAKS_VERSION is installed at ~/.local/bin/gitleaks but ~/.local/bin is not on PATH, so gate 1.1 still fails closed. Add it: export PATH=\"\$HOME/.local/bin:\$PATH\" (e.g. in ~/.profile), then re-run ./verify.sh. Alternative scanners the gate also accepts: trufflehog (see https://github.com/trufflesecurity/trufflehog/releases)."
+    note_pending "gitleaks $GITLEAKS_VERSION is installed at ~/.local/bin/gitleaks but ~/.local/bin is not on PATH, so gate 1.1 still fails closed. Add it: export PATH=\"\$HOME/.local/bin:\$PATH\" (e.g. in $_gl_profile), then re-run ./verify.sh. Alternative scanners the gate also accepts: trufflehog (see https://github.com/trufflesecurity/trufflehog/releases)."
   fi
 else
-  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$ gitleaks-checksums.txt | sha256sum -c -) && tar -xzf /tmp/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
+  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz$ gitleaks-checksums.txt | ${_gl_sha_cmd:-sha256sum} -c -) && tar -xzf /tmp/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
 fi
 
 # Figma: human-gated by design (OAuth). Never attempted here.
@@ -1963,7 +2113,7 @@ if ! "$root/verify.sh"; then
 fi
 
 if [[ "$no_warm" == 0 ]]; then
-  printf '\nPreparing Impeccable engine for this Linux machine...\n'
+  printf '\nPreparing Impeccable engine for this machine...\n'
   launcher=""
   # Launcher search covers EVERY skills dir the kit installs to — the old
   # 3-path list missed muse-only (~/workspace/custom-skills) and
@@ -1977,6 +2127,7 @@ if [[ "$no_warm" == 0 ]]; then
              "$user_home/.gemini/skills/impeccable/scripts/impeccable" \
              "$user_home/.hermes/skills/impeccable/scripts/impeccable" \
              "$user_home/.copilot/skills/impeccable/scripts/impeccable" \
+             "$user_home/.commandcode/skills/impeccable/scripts/impeccable" \
              "$user_home/workspace/custom-skills/impeccable/scripts/impeccable"; do
     [[ -x "$cand" ]] && { launcher="$cand"; break; }
   done

@@ -105,3 +105,104 @@ Council (2–1, dissent recorded in `build-notes/sr2-council/decision.md` §5; S
 **Operative form.** `references/layout-doctrine.md` §4 (SR-2 fill rule), `references/grader-rubric.md` (Fix order: re-expression rule + 2× note), `SKILL.md` step 5 (pointer), `scripts/gate/consistency.mjs` (section-height / section-tile / SR-2 T-height fix hints name D11 — guidance only, the check is unchanged). Consistent with D2 (tokens stay locked — B composes locked values, changes none).
 
 **Scope.** Candidate B is gate-verified only; it has never been vision-graded, and this decision does not predict the next Space/Layout grade. The 96px gap-vs-padding ambiguity in the judge's wording is resolved by the token-semantics note above.
+
+## D12 — macOS support: bash-3.2 rewrite, OS dispatch, darwin binaries, CI matrix (2026-11-11)
+
+Coordinator decision (macOS phase, for Ngọc Anh's MacBook and the 14/11
+buffet run). Stock macOS ships bash 3.2.57 as `/bin/bash` and GitHub
+Actions macOS runners default to it; the scripts must run under it.
+
+**1. Bash 3.2 compatibility by rewrite, NOT by requiring Homebrew bash.**
+Requiring Homebrew bash adds friction for the end user (clone-and-go) and
+for CI. The bash-4-only constructs are rewritten in bash-3.2-compatible
+form: the `DONE_DIRS` dir→host map becomes two parallel indexed arrays
+plus a linear lookup (`install.sh`); the line-to-array reads become
+`while IFS= read -r` loops (`verify.sh`, `scripts/gate/gate.sh` ×6). A CI
+lint step greps for the banned constructs (`declare -A`, `mapfile`,
+`readarray`) in all five scripts so regressions fail fast. The same
+rewrite also guards the empty-array-under-`set -u` abort that bash older
+than 4.4 has (index loops / length guards where an array can be empty).
+`bash -n` runs on all five scripts in CI.
+
+**2. OS dispatch, not removal of the gate.** `install.sh` replaces the
+Linux-only fail with `case "$(uname -s)"` (Linux / Darwin / else-fail
+with a clear message). `verify.sh` gets a matching darwin banner — no
+hard gate: it reports the known macOS gaps up front instead of failing
+confusingly in a later section.
+
+**3. No `timeout` shim.** The existing WARNING + unbounded fallback on
+macOS stays as-is and is documented; CI jobs are bounded with
+`timeout-minutes` instead. (Vendoring a perl/python timeout shim was
+considered and rejected as complexity for a path that already degrades
+gracefully.)
+
+**4. Gitleaks via pinned tarball (deterministic), not Homebrew.** Brew
+rolls forward; the tarball pin is the deterministic route. Darwin asset
+by `uname -m`: `darwin_arm64` /
+`gitleaks_8.30.1_darwin_arm64.tar.gz` (sha256
+`b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5`),
+`darwin_x64` / `gitleaks_8.30.1_darwin_x64.tar.gz` (sha256
+`dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709`) —
+VERIFIED 2026-11-11 from the published checksums file (agree with the
+releases API digests). `sha256sum` falls back to `shasum -a 256` (stock
+macOS has no `sha256sum`), mirroring the `verify.sh` engine-hash
+pattern.
+
+**5. Darwin binaries (Playwright).** The curl fallback gains the
+`mac-arm64`/`mac-x64` URL patterns (both CFT-bucket and
+`cdn.playwright.dev` shapes, chrome + headless-shell +
+`ffmpeg-mac.zip`/`ffmpeg-mac-arm64.zip`), the darwin headless-shell
+derivation, and the darwin exe paths from the CLI 0.1.24 bundle's own
+`lib/coreBundle.js` (`EXECUTABLE_PATHS` — chromium is the app-bundle
+path `chrome-mac-<arch>/Google Chrome for Testing.app/Contents/MacOS/
+Google Chrome for Testing`; the headless shell is NOT a bundle,
+`chrome-headless-shell-mac-<arch>/chrome-headless-shell` — this resolves
+the headless-shell exe suffix that was CHƯA ĐỌC in W-RES-2; ffmpeg
+extracts a top-level `ffmpeg-mac` file on both arches, verified against
+the downloaded zips 2026-11-11). Playwright cache dir per OS:
+`~/Library/Caches/ms-playwright` on Darwin, `~/.cache/ms-playwright`
+on Linux (curl-fallback path only — the CLI knows its own cache dir).
+Chrome candidates in `verify.sh` §9 add the `/Applications/…` bundles,
+mirroring `consistency.mjs` `findChrome`. PENDING texts are
+OS-conditional (`--with-deps` sentence omitted on Darwin;
+`~/.profile` → `~/.zshrc` on Darwin).
+
+**6. CI matrix.** `.github/workflows/ci.yml` (the repo had no workflows):
+pinned labels, never `-latest` — `ubuntu-24.04`, `macos-15`,
+`macos-26`. Each job: checkout the branch under test → `./install.sh`
+→ `./verify.sh --strict` end to end → the gate on a minimal probe build
+(`tests/ci-gate-fixture/`). Plus, in each job, the banned-construct grep
+and `bash -n` on all five scripts. `timeout-minutes: 30` on every job.
+No Homebrew bash in CI — the default bash 3.2 IS the test. No `brew
+install gitleaks` — the installer downloads the pinned tarball; that is
+what is being tested. Node comes preinstalled on the runners (22.23.4 on
+macos-15/ubuntu-24.04, 24.22.2 on macos-26) — the workflow asserts Node
+22+, it does not install node.
+
+**7. Host skills dirs unchanged** (verified identical on macOS), with one
+addition: `cmd` now also writes its native `~/.commandcode/skills/`
+(first — it outranks the shared dir on the documented priority order,
+commandcode.ai/docs/skills, read 2026-11-11), then `~/.agents/skills/`.
+
+**Operative form.** `install.sh` (OS dispatch, bash-3.2 rewrite, darwin
+gitleaks + curl fallback, per-OS cache dir, OS-conditional PENDING
+texts), `verify.sh` (darwin banner, read-loop, `seq` → arithmetic loops,
+`-F`, macOS Chrome candidates, `cmd` native dir), `scripts/gate/gate.sh`
+(read-loops, `mktemp` template, empty-array guards),
+`scripts/check-versions.sh` (portable numeric sort in place of `sort
+-V`), `.github/workflows/ci.yml`, `tests/ci-gate-fixture/`, `AGENTS.md`
+§0 + §5 and `README.md` (macOS supported; Windows still open work).
+
+**Follow-ups (NOT this wave — recorded, not implemented).** (a) Muse
+Code's `$XDG_CONFIG_HOME/muse/skills` is NOT added: Muse Code is not in
+`KNOWN_HOSTS`, and the `muse` host decision (AGENTS.md (g)) is
+deliberate. (b) AGENTS.md (h) OpenCode precedence: the fetched OpenCode
+docs now publish a later-wins rule contradicting (h) — do NOT silently
+overwrite it; the fetched page's version status (stable vs v2 beta)
+needs naming first. (c) The Codex "reads both `~/.codex/skills` and
+`~/.agents/skills`" claim is still NOT primary-verified (official docs
+list only `~/.agents/skills`); the install-to-both hedge stays, the
+docs citation does not change. (d) `cmd skills list --debug` was
+partially verified via the primary CommandCode docs page in W-RES-1
+(the command is named there; it was not run) — AGENTS.md §5 still
+records it as CHƯA ĐỌC until a run confirms it.

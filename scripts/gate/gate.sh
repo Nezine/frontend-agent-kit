@@ -175,7 +175,7 @@ fi
 # HOME's /tmp may be a tiny tmpfs). Single EXIT trap removes it and the
 # self-test dir.
 mkdir -p "$HOME/.cache" 2>/dev/null || true
-detect_log="$(mktemp "$HOME/.cache/gate-detect.XXXXXX.log" 2>/dev/null || mktemp)"
+detect_log="$(mktemp "$HOME/.cache/gate-detect-XXXXXX" 2>/dev/null || mktemp)"
 demo_body="$(mktemp "$HOME/.cache/gate-demo-body.XXXXXX" 2>/dev/null || mktemp)"
 trap 'rm -f "$detect_log" "$demo_body"; [[ "$self_test" == 1 ]] && rm -rf "$work"' EXIT
 
@@ -218,13 +218,18 @@ if [[ -f "$target" ]]; then
     *) html_files=() ;;
   esac
 elif [[ "$target" == */design/variants || "$target" == */design/variants/ ]]; then
-  mapfile -t html_files < <(find "$target" -name '*.html' -type f 2>/dev/null || true)
+  # Bash 3.2 has no line-to-array builtin (stock macOS /bin/bash is 3.2;
+  # the feature arrived in bash 4) — read-loop instead (macOS phase, D12).
+  # Same form at every site below.
+  html_files=()
+  while IFS= read -r _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f 2>/dev/null || true)
 else
   # .taste-skill/ excluded (G-7): the checker's own output dir must never
   # be scanned as build output. design/variants/ + design/demo.html +
   # design/v0.html excluded as before (unpicked alternatives / token-proof
   # artifact / skeleton — none of them is the deliverable).
-  mapfile -t html_files < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' 2>/dev/null || true)
+  html_files=()
+  while IFS= read -r _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' 2>/dev/null || true)
 fi
 
 # --security-only runs ONLY the §6 security section below: legs 1–5 are
@@ -246,11 +251,13 @@ else
   # file the page never uses is not a lock — the build drifted off the
   # locked tokens. The tokens file's own definitions do not count as use:
   # search the built .html files and any local .css other than tokens.css.
-  mapfile -t defined_tokens < <(grep -ohE -- '--[a-zA-Z][a-zA-Z0-9_-]*' "$project_dir/design/tokens.css" 2>/dev/null | sort -u || true)
+  defined_tokens=()
+  while IFS= read -r _t || [[ -n "$_t" ]]; do defined_tokens+=("$_t"); done < <(grep -ohE -- '--[a-zA-Z][a-zA-Z0-9_-]*' "$project_dir/design/tokens.css" 2>/dev/null | sort -u || true)
   if [[ "${#defined_tokens[@]}" -eq 0 ]]; then
     fail "design/tokens.css under $project_dir defines no custom properties (--*) — not a taste lock, no pass"
   else
-    mapfile -t css_files < <(find "$project_dir" -name '*.css' -type f -not -name 'tokens.css' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' 2>/dev/null || true)
+    css_files=()
+    while IFS= read -r _f || [[ -n "$_f" ]]; do css_files+=("$_f"); done < <(find "$project_dir" -name '*.css' -type f -not -name 'tokens.css' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' 2>/dev/null || true)
     used=0
     for tok in "${defined_tokens[@]}"; do
       if [[ "${#html_files[@]}" -gt 0 ]] && grep -qF -- "$tok" "${html_files[@]}" 2>/dev/null; then used=1; break; fi
@@ -271,7 +278,8 @@ fi
 # EXPECTED TOKENS block, or no header comment at all, has no pass
 # criterion to meet and FAILS.
 if [[ -f "$target" && "$target" == */design/demo.html ]]; then
-  mapfile -t expected_tokens < <(awk '/PASS CRITERION/{if(flag) exit} /EXPECTED TOKENS/{flag=1; next} flag' "$target" | grep -ohE -- '--[a-zA-Z][a-zA-Z0-9_-]*' | sort -u || true)
+  expected_tokens=()
+  while IFS= read -r _t || [[ -n "$_t" ]]; do expected_tokens+=("$_t"); done < <(awk '/PASS CRITERION/{if(flag) exit} /EXPECTED TOKENS/{flag=1; next} flag' "$target" | grep -ohE -- '--[a-zA-Z][a-zA-Z0-9_-]*' | sort -u || true)
   if [[ "${#expected_tokens[@]}" -eq 0 ]]; then
     fail "$target: no EXPECTED TOKENS block in the demo header — the demo pass criterion is undeclared, no pass"
   else
@@ -312,7 +320,11 @@ fi
 
 # --- 3. static checks ---------------------------------------------------------
 [[ "${#html_files[@]}" -gt 0 ]] || fail "no .html files under $target"
-for f in "${html_files[@]}"; do
+# Index loop, not `for f in "${html_files[@]}"`: expanding an empty array
+# under `set -u` aborts bash older than 4.4 (stock macOS bash 3.2), and
+# this loop runs after a non-fatal fail above — a target with no .html
+# files must print the FAIL, not abort.
+for ((_fi=0; _fi<${#html_files[@]}; _fi++)); do f="${html_files[$_fi]}"
   grep -qi '<meta[^>]*name=["'"'"']viewport["'"'"']' "$f" || fail "$f: missing viewport meta"
   if grep -qi 'file://' "$f"; then fail "$f: contains file:// link (serve over http, never file://)"; fi
   dir="$(dirname -- "$f")"
@@ -338,7 +350,8 @@ done
 # fixture, self-test fixture). The demo file is already excluded from
 # project-dir html_files above, so this fires on deliverable pages only.
 if [[ -d "$target" ]]; then
-  for f in "${html_files[@]}"; do
+  # Index loop (same empty-array-under-`set -u` reason as §3 above).
+  for ((_fi=0; _fi<${#html_files[@]}; _fi++)); do f="${html_files[$_fi]}"
     if grep -qi '<section[[:space:]>]' "$f" 2>/dev/null; then
       if ! grep -qiE '(<img[[:space:]>]|<picture[[:space:]>]|<video[[:space:]>]|<canvas[[:space:]>]|data-ui)' "$f" 2>/dev/null; then
         fail "$f: page has <section> elements but no real visual marker (<img>, <picture>, <video>, <canvas>, or [data-ui] mock) — small inline SVG icons do not count; gate.mjs no-visual measures >=25% cover per section, and this page would fail it (see skills/frontend-kit/references/layout-doctrine.md)"
@@ -413,10 +426,11 @@ fi
 
 # --- 4. optional validators ---------------------------------------------------
 if command -v html-validate >/dev/null 2>&1; then
-  for f in "${html_files[@]}"; do html-validate "$f" >/dev/null 2>&1 || fail "html-validate failed on $f"; done
+  # Index loops (same empty-array-under-`set -u` reason as §3 above).
+  for ((_fi=0; _fi<${#html_files[@]}; _fi++)); do f="${html_files[$_fi]}"; html-validate "$f" >/dev/null 2>&1 || fail "html-validate failed on $f"; done
 else note "html-validate not installed — skipped (npx html-validate to add it)"; fi
 if command -v pa11y >/dev/null 2>&1; then
-  for f in "${html_files[@]}"; do pa11y --standard WCAG2AA "$f" >/dev/null 2>&1 || fail "pa11y WCAG2AA failed on $f"; done
+  for ((_fi=0; _fi<${#html_files[@]}; _fi++)); do f="${html_files[$_fi]}"; pa11y --standard WCAG2AA "$f" >/dev/null 2>&1 || fail "pa11y WCAG2AA failed on $f"; done
 else note "pa11y not installed — skipped (npx pa11y to add it)"; fi
 
 # --- 5. converge check (P2) ----------------------------------------------------
@@ -482,7 +496,8 @@ secna() { sec_na=$((sec_na+1)); printf 'SECURITY %s: N/A — %s\n' "$1" "$2"; }
 # the rest of the gate) + local .js/.mjs/.css under the project (excluding
 # node_modules, .git, .taste-skill, design/variants) + package.json when
 # present. The built bundle is a scan subject for 1.1 ("or bundle").
-mapfile -t sec_scan_files < <({
+sec_scan_files=()
+while IFS= read -r _f || [[ -n "$_f" ]]; do sec_scan_files+=("$_f"); done < <({
   if [[ "${#html_files[@]}" -gt 0 ]]; then printf '%s\n' "${html_files[@]}"; fi
   find "$project_dir" \( -name '*.js' -o -name '*.mjs' -o -name '*.css' \) -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' 2>/dev/null
   if [[ -f "$project_dir/package.json" ]]; then printf '%s\n' "$project_dir/package.json"; fi
@@ -494,7 +509,12 @@ mapfile -t sec_scan_files < <({
 sec_grep() {
   local files=()
   local f
-  for f in "${sec_scan_files[@]}"; do case "$f" in *.css) ;; *) files+=("$f");; esac; done
+  # Length guard: expanding an empty array under `set -u` aborts bash
+  # older than 4.4 (stock macOS bash 3.2); a project with no scannable
+  # files must return 0 here, not abort the gate.
+  if [[ "${#sec_scan_files[@]}" -gt 0 ]]; then
+    for f in "${sec_scan_files[@]}"; do case "$f" in *.css) ;; *) files+=("$f");; esac; done
+  fi
   [[ "${#files[@]}" -eq 0 ]] && return 0
   grep -HnE "$@" -- "${files[@]}" 2>/dev/null || true
 }

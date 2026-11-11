@@ -70,6 +70,16 @@ done
 fails=0
 warns=0
 unverified=0
+# OS note (macOS phase, D12): Linux and macOS are both supported — no hard
+# OS gate here (install.sh is the gate). On macOS, report the known gaps
+# up front instead of failing confusingly in a later section.
+case "$(uname -s)" in
+  Linux) : ;;
+  Darwin)
+    printf 'verify.sh: running on macOS (Darwin) — supported. Known gaps on this OS: probes run unbounded when timeout(1) is absent (stock macOS has none; CI bounds the job with timeout-minutes), and the Playwright browser cache is ~/Library/Caches/ms-playwright.\n'
+    ;;
+  *) printf 'WARNING: verify.sh: untested OS (%s) — Linux and macOS are the supported targets.\n' "$(uname -s)" >&2 ;;
+esac
 ok()   { printf 'OK: %s\n' "$1"; }
 warn() { warns=$((warns+1)); printf 'WARN: %s\n' "$1"; }
 fail() { fails=$((fails+1)); printf 'FAIL: %s\n' "$1"; }
@@ -91,7 +101,18 @@ declare -a HOSTS=()
 if [[ -n "$hosts_filter" ]]; then
   IFS=',' read -r -a HOSTS <<< "$hosts_filter"
 elif [[ -f "$state_dir/installed-hosts.txt" ]]; then
-  mapfile -t HOSTS < "$state_dir/installed-hosts.txt"
+  # Bash 3.2 has no line-to-array builtin (stock macOS /bin/bash is 3.2;
+  # the feature arrived in bash 4) — read the file with a loop instead
+  # (the house style elsewhere in this file). Blank lines are skipped.
+  while IFS= read -r _h || [[ -n "$_h" ]]; do
+    [[ -n "$_h" ]] && HOSTS+=("$_h")
+  done < "$state_dir/installed-hosts.txt"
+  # An empty/blank record means "no hosts recorded" — fall back to all
+  # hosts (same as a missing file). This also keeps HOSTS non-empty:
+  # expanding an empty array under `set -u` aborts bash older than 4.4.
+  if [[ "${#HOSTS[@]}" -eq 0 ]]; then
+    for h in claude codex opencode gemini hermes copilot muse cmd; do HOSTS+=("$h"); done
+  fi
 else
   for h in claude codex opencode gemini hermes copilot muse cmd; do HOSTS+=("$h"); done
 fi
@@ -105,7 +126,9 @@ skills_dirs_for_host() {
     hermes)   printf '%s\n%s\n' "$user_home/.hermes/skills" "$user_home/.agents/skills" ;;
     copilot)  printf '%s' "$user_home/.copilot/skills" ;;
     muse)     printf '%s' "$user_home/workspace/custom-skills" ;;
-    cmd)      printf '%s' "$user_home/.agents/skills" ;;
+    # CommandCode (cmd): native user dir first, then the shared dir —
+    # see install.sh skills_dirs_for_host (same order, same reason).
+    cmd)      printf '%s\n%s\n' "$user_home/.commandcode/skills" "$user_home/.agents/skills" ;;
   esac
 }
 
@@ -115,7 +138,8 @@ all_skills_dirs() {
   printf '%s\n' "$user_home/.agents/skills" "$user_home/.claude/skills" \
     "$user_home/.config/opencode/skills" "$user_home/.codex/skills" \
     "$user_home/.gemini/skills" "$user_home/.hermes/skills" \
-    "$user_home/.copilot/skills" "$user_home/workspace/custom-skills"
+    "$user_home/.copilot/skills" "$user_home/.commandcode/skills" \
+    "$user_home/workspace/custom-skills"
 }
 
 # Find the Impeccable launcher in ANY installed skills dir. The old
@@ -132,6 +156,7 @@ find_launcher() {
              "$user_home/.gemini/skills/impeccable/scripts/impeccable" \
              "$user_home/.hermes/skills/impeccable/scripts/impeccable" \
              "$user_home/.copilot/skills/impeccable/scripts/impeccable" \
+             "$user_home/.commandcode/skills/impeccable/scripts/impeccable" \
              "$user_home/workspace/custom-skills/impeccable/scripts/impeccable"; do
     if [[ -x "$cand" ]]; then printf '%s' "$cand"; return 0; fi
   done
@@ -201,17 +226,17 @@ for host in "${HOSTS[@]}"; do
 done
 
 # --- 2. stale ${CLAUDE_PLUGIN_ROOT} paths (A3) -----------------------------
-if grep -rIn --fixed-strings '${CLAUDE_PLUGIN_ROOT}' \
+if grep -rInF '${CLAUDE_PLUGIN_ROOT}' \
      "$user_home/.agents/skills" "$user_home/.claude/skills" \
      "$user_home/.config/opencode/skills" "$user_home/.gemini/skills" \
      "$user_home/.hermes/skills" "$user_home/.codex/skills" \
-     "$user_home/.copilot/skills" \
+     "$user_home/.copilot/skills" "$user_home/.commandcode/skills" \
      "$user_home/workspace/custom-skills" 2>/dev/null | head -5; then
   fail "stale \${CLAUDE_PLUGIN_ROOT} path found in an installed skill (clean-env failure A3) — see matches above"
 else
   ok "no stale \${CLAUDE_PLUGIN_ROOT} in installed skills"
 fi
-if grep -rIn --fixed-strings '${CLAUDE_PLUGIN_ROOT}' "$refs_dir" 2>/dev/null | head -3; then
+if grep -rInF '${CLAUDE_PLUGIN_ROOT}' "$refs_dir" 2>/dev/null | head -3; then
   # The matches that fire this are upstream reference-data text, NOT the
   # installed skills (those fail hard in §2 above): the vendored taste
   # tree's hook command cites ${CLAUDE_PLUGIN_ROOT} (it only resolves
@@ -726,7 +751,21 @@ if [[ "$eyes_skipped" == 0 ]]; then
   _pw_have_timeout=0; type -P timeout >/dev/null 2>&1 && _pw_have_timeout=1
   if [[ "$_pw_have_timeout" == 0 ]]; then printf 'WARNING: timeout(1) not found — probes run unbounded (a hung mise/shim can stall the script).\n' >&2; fi
   _pw_timeout30() { if [[ "$_pw_have_timeout" == 1 ]]; then timeout -k 5 30 "$@"; else "$@"; fi; }
-  _pw_canon() { local _c=""; if [[ -n "${1:-}" ]] && command -v readlink >/dev/null 2>&1; then _c="$(readlink -f -- "$1" 2>/dev/null || true)"; fi; printf '%s' "${_c:-$1}"; }
+  _pw_canon() { # <path> — canonical path, or the input unchanged
+    # Portable canonicaliser (macOS phase, D12): GNU readlink -f first,
+    # then python3 realpath (BSD readlink has no -f; python3 is a hard
+    # prereq). If neither works, return the input unchanged — callers
+    # treat that as "unresolved", never as an error. No `--` before the
+    # path argument: with `python3 -c`, `--` lands in sys.argv[1]
+    # instead of being stripped (verified 2026-11-11), so it would
+    # canonicalise the literal `--`. All call sites pass absolute paths.
+    local _c=""
+    if [[ -n "${1:-}" ]]; then
+      if command -v readlink >/dev/null 2>&1; then _c="$(readlink -f -- "$1" 2>/dev/null || true)"; fi
+      if [[ -z "$_c" ]] && command -v python3 >/dev/null 2>&1; then _c="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || true)"; fi
+    fi
+    printf '%s' "${_c:-$1}"
+  }
   _pw_same_file() { # <a> <b>: exit 0 if the same file, by canonical path or inode
     local _a="${1:-}" _b="${2:-}" _ca _cb _ia _ib
     [[ -z "$_a" || -z "$_b" ]] && return 1
@@ -976,30 +1015,31 @@ if [[ "$eyes_skipped" == 0 ]]; then
   fi
   # M1: canonicalise the resolved paths and reject shims. A shim (or a
   # symlink into a shims dir) passes -x, so executability never proved
-  # the binary was real — that was the hole. If readlink -f is
-  # unavailable (or cannot canonicalise), the temp-cwd execution probe
-  # below is the minimum shim check (H3 — already being added).
+  # the binary was real — that was the hole. If no canonicaliser is
+  # available, the temp-cwd execution probe below is the minimum shim
+  # check (H3 — already being added).
   # (M-E: the rejection is ANCHORED to the real mise shims dir —
   # ${MISE_DATA_DIR:-~/.local/share/mise}/shims — not to any path
   # component named "shims" (e.g. /opt/<team>/shims/bin is a real
   # install, not a mise shim). A canonical path under some OTHER
   # shims-like dir is only a SUSPECT: it is rejected only if it also
-  # fails the temp-cwd execution probe just below (M-E fallback). M-D:
-  # if readlink -f returns empty for a non-empty resolved path, that is
-  # warned by name — the M1 gate is skipped for it, not silently.)
-  _pw_readlink_ok=0
-  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then _pw_readlink_ok=1; fi
+  # fails the temp-cwd execution probe just below (M-E fallback).
+  # Canonicaliser (macOS phase, D12): _pw_canon tries GNU readlink -f,
+  # then python3 realpath (BSD readlink has no -f). The gate below tests
+  # whether either exists; when neither does, M1 is skipped and only the
+  # execution probe runs. _pw_canon never returns empty for a non-empty
+  # input (it falls back to the input), so there is no per-path
+  # "could not canonicalise" warning anymore — an unresolved path is
+  # still compared against the shims anchor, and the probe is the
+  # backstop for a symlinked path it cannot see through.)
+  _pw_canon_ok=0
+  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then _pw_canon_ok=1;
+  elif command -v python3 >/dev/null 2>&1; then _pw_canon_ok=1; fi
   _pw_cli_maybe_shim=0; _pw_node_maybe_shim=0
-  if [[ "$_pw_resolve_ok" == 1 && "$_pw_readlink_ok" == 1 ]]; then
+  if [[ "$_pw_resolve_ok" == 1 && "$_pw_canon_ok" == 1 ]]; then
     _pw_cli_real=""; _pw_node_real=""
-    [[ -n "$_pw_cli_resolved" ]] && _pw_cli_real="$(readlink -f -- "$_pw_cli_resolved" 2>/dev/null || true)"
-    [[ -n "$_pw_node_resolved" ]] && _pw_node_real="$(readlink -f -- "$_pw_node_resolved" 2>/dev/null || true)"
-    if [[ -n "$_pw_cli_resolved" && -z "$_pw_cli_real" ]]; then
-      printf 'WARNING: readlink -f could not canonicalise the Playwright CLI path "%s" (loop, permission, or vanished target) — the shim check for it is skipped; the temp-cwd execution probe below is the backstop.\n' "$_pw_cli_resolved" >&2
-    fi
-    if [[ -n "$_pw_node_resolved" && -z "$_pw_node_real" ]]; then
-      printf 'WARNING: readlink -f could not canonicalise the node path "%s" (loop, permission, or vanished target) — the shim check for it is skipped; the temp-cwd execution probe below is the backstop.\n' "$_pw_node_resolved" >&2
-    fi
+    [[ -n "$_pw_cli_resolved" ]] && _pw_cli_real="$(_pw_canon "$_pw_cli_resolved")"
+    [[ -n "$_pw_node_resolved" ]] && _pw_node_real="$(_pw_canon "$_pw_node_resolved")"
     [[ -n "$_pw_cli_real" ]] && printf 'Playwright CLI canonical path: %s\n' "$_pw_cli_real"
     [[ -n "$_pw_node_real" ]] && printf 'Node canonical path: %s\n' "$_pw_node_real"
     # M2: the anchor is the CANONICAL mise shims dir. _pw_mise_data is
@@ -1135,7 +1175,7 @@ if [[ "$eyes_skipped" == 0 ]]; then
       fi
     fi
   elif [[ "$_pw_resolve_ok" == 1 ]]; then
-    printf 'WARNING: readlink -f unavailable — the temp-cwd execution probe below is the only shim check (M1 fallback).\n' >&2
+    printf 'WARNING: no canonicaliser available (neither readlink -f nor python3 realpath) — the temp-cwd execution probe below is the only shim check (M1 fallback).\n' >&2
   fi
   # H1: after BOTH prepends, the node that will run the CLI must be
   # Node 22+ — the kit's hard gate (same as §9). Fail LOUD: a too-old
@@ -1341,8 +1381,9 @@ elif command -v playwright-cli >/dev/null 2>&1; then
     python3 -m http.server "$_port" --bind 127.0.0.1 --directory "$work" >"$work/eyes-attempt-$_attempt-server.log" 2>&1 &
     _server_pid=$!
     # Wait for the server to answer: raw TCP connect, no proxy involved.
+    # Arithmetic loop, not `seq` (GNU coreutils; stock macOS has no seq).
     _server_ready=0
-    for _i in $(seq 1 50); do
+    for ((_i=1; _i<=50; _i++)); do
       if python3 -c 'import socket,sys; s=socket.create_connection(("127.0.0.1",int(sys.argv[1])),timeout=2); s.close()' "$_port" >/dev/null 2>&1; then _server_ready=1; break; fi
       sleep 0.2
     done
@@ -1378,7 +1419,7 @@ elif command -v playwright-cli >/dev/null 2>&1; then
     (cd "$work" && playwright-cli -s="$eyes_session" close-all >/dev/null 2>&1) || true
   else
     fail "Playwright screenshot at 390px failed after $eyes_attempts attempt(s) (open/resize/screenshot; fresh session+port each attempt — last port $eyes_port). The eyes step is broken — see A7: do not grade blind. CLI output from all attempts:"
-    for _a in $(seq 1 "$eyes_attempts"); do
+    for ((_a=1; _a<=eyes_attempts; _a++)); do
       printf -- '--- eyes attempt %s CLI log ---\n' "$_a" >&2
       cat "$work/eyes-attempt-$_a.log" >&2 || true
       if [[ -s "$work/eyes-attempt-$_a-server.log" ]]; then
@@ -1583,10 +1624,15 @@ for _cb in google-chrome google-chrome-stable chromium chromium-browser; do
   if command -v "$_cb" >/dev/null 2>&1; then chrome_bin="$(command -v "$_cb")"; break; fi
 done
 [[ -z "$chrome_bin" && -x /opt/google/chrome/chrome ]] && chrome_bin="/opt/google/chrome/chrome"
+# macOS app-bundle locations (mirror scripts/gate/consistency.mjs
+# findChrome, which already lists these before the Linux paths).
+for _cp in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "/Applications/Chromium.app/Contents/MacOS/Chromium" "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium"; do
+  if [[ -z "$chrome_bin" && -x "$_cp" ]]; then chrome_bin="$_cp"; break; fi
+done
 if [[ -n "$chrome_bin" ]]; then
   ok "system Chrome present ($chrome_bin) — gate.mjs consistency leg can run"
 else
-  warn "no system Chrome found (looked for google-chrome, google-chrome-stable, chromium, chromium-browser on PATH and /opt/google/chrome/chrome) — gate.mjs consistency.mjs browser leg cannot run here; use --skip-browser (which fails closed, H13), and note the browser leg is SKIPPED, not passed. Playwright eyes are unaffected (they use chrome-for-testing)."
+  warn "no system Chrome found (looked for google-chrome, google-chrome-stable, chromium, chromium-browser on PATH, /opt/google/chrome/chrome, and the macOS app bundles /Applications/Google Chrome.app, /Applications/Chromium.app, \$HOME/Applications/…) — gate.mjs consistency.mjs browser leg cannot run here; use --skip-browser (which fails closed, H13), and note the browser leg is SKIPPED, not passed. Playwright eyes are unaffected (they use chrome-for-testing)."
 fi
 
 # --- summary ------------------------------------------------------------------

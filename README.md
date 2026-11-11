@@ -1,13 +1,13 @@
 # Frontend Agent Kit
 
-Bộ skill UI/UX dùng chung cho **Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Hermes Agent, Muse Code, CommandCode (`cmd`) và Cursor** trên Linux. Cài global một lần, dùng trong mọi project.
+Bộ skill UI/UX dùng chung cho **Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Hermes Agent, Muse Code, CommandCode (`cmd`) và Cursor** trên Linux và macOS. Cài global một lần, dùng trong mọi project.
 
 > **Built for daily use.** The flow first: drop the repo link → the agent installs the kit for itself → vague brief ("make it look good, ref kiểu Apple/Anthropic") → build → your feedback. **Acceptance test: vague brief → 60% slop-free output → your feedback.** Host breadth matters, but where a trade-off appears, usability wins over a marginal host's compatibility.
 
 > **Đọc kỹ trước khi hứa hẹn — giới hạn trung thực của v2:**
 >
 > - **Repo-link self-install (dán link repo, agent tự cài cho chính nó) hoạt động với Muse Code và các CLI host khác — KHÔNG hoạt động với Muse app (chat).** Với Muse app, không tồn tại đường cài đặt skill nào: chỉ có **paste packet** (dán nội dung vào từng cuộc trò chuyện, không lưu lại được). Đây là CLAIMED có độ tin cậy cao — 5 nguồn thứ ba độc lập cùng kết luận, **Meta primary chưa được đọc** (xem `research/worker-self-install.md` §7.7). Nếu bạn dùng Muse app hàng ngày, hãy dùng `templates/install/muse-app-pack.md` và đừng kỳ vọng mức 60% như các host CLI.
-> - **Linux-first.** macOS/Windows là công việc mở (open work) — `install.sh` v1 từ chối non-Linux và chưa có gì trong nghiên cứu này kiểm chứng các đường đó.
+> - **Linux và macOS đều hỗ trợ.** Windows là công việc mở (open work) — `install.sh` từ chối non-Linux/macOS và chưa có gì trong nghiên cứu này kiểm chứng đường Windows. (Hỗ trợ macOS thêm 2026-11-11, D12: script tương thích bash 3.2, binary darwin, CI trên macos-15/26.)
 > - **img2threejs chỉ là opt-in.** Lệnh MCP của JP là sai — không tồn tại MCP server nào cho img2threejs. Đừng chạy `claude mcp add img2threejs …` (xem § "Những gì KHÔNG có trong gói").
 > - **Figma chỉ làm được khi có người bấm OAuth.** Không có bước Figma nào chạy unattended được.
 
@@ -117,7 +117,7 @@ Gói chứa **15 skill**: orchestrator `frontend-kit` (mới, v2), judge độc 
 
 **Lưu ý trùng tên `frontend-design`:** kit giữ nguyên tên thư mục upstream (`frontend-design`, frontmatter `name` trùng tên thư mục theo đúng spec) nên bản kit trùng tên với skill chính thức của Anthropic. Cài song song là thừa — kit đã vendor đúng skill đó nguyên văn (commit `2c5958e`, kiểm chứng 2026-11-10). Nếu cả hai cùng được cài, hai bản sẽ collide theo thư mục/tên trên host key theo tên; bản kit thắng vì là bản đã pin (cùng nội dung), và bạn nên gỡ bản chính thức thừa thay vì gỡ bản kit.
 
-Chi tiết nguồn, phiên bản và giấy phép: [SOURCES.md](SOURCES.md). Các skill được lưu trong repo để `./install.sh` không phải tự tải lại nhiều nguồn; engine Impeccable tải đúng binary Linux khi cần (từ 4.8.0, mọi lần tải engine đều được kiểm tra digest kèm theo skill).
+Chi tiết nguồn, phiên bản và giấy phép: [SOURCES.md](SOURCES.md). Các skill được lưu trong repo để `./install.sh` không phải tự tải lại nhiều nguồn; engine Impeccable tải đúng binary Linux/macOS khi cần (từ 4.8.0, mọi lần tải engine đều được kiểm tra digest kèm theo skill).
 
 ### Những gì KHÔNG có trong gói
 
@@ -125,7 +125,7 @@ Chi tiết nguồn, phiên bản và giấy phép: [SOURCES.md](SOURCES.md). Cá
 - **Figma unattended.** Figma MCP hiện là remote server (`https://mcp.figma.com/mcp`) yêu cầu OAuth sign-in trên trình duyệt khi kết nối lần đầu. Mọi bước Figma đều là human-gated: agent phải dừng lại và báo chính xác người dùng cần bấm gì.
 - **img2threejs trong default path (opt-in only).** Lệnh `claude mcp add img2threejs …` của JP là **sai — không tồn tại MCP server img2threejs**. Dạng đúng đã kiểm chứng một phần là skill-clone (`git clone https://github.com/img2threejs/img2threejs.git ~/.claude/skills/img2threejs`, gọi `/img2threejs …`). Không có lệnh harness nào được ship trong kit — img2threejs là opt-in only, CHƯA được test end-to-end trong kit, và KHÔNG có pinned command nào cho nó: bạn phải tự kiểm chứng install + `doctor` flow của upstream trước khi dùng. Chỉ dùng khi bạn chủ động yêu cầu.
 - **Muse app install.** Không tồn tại. Xem giới hạn ở đầu README và `templates/install/muse-app-pack.md`.
-- **macOS/Windows.** Linux-first; các đường macOS/Windows là open work.
+- **macOS.** Đã hỗ trợ (Linux và macOS; xem giới hạn ở đầu README). **Windows.** Open work — chưa hỗ trợ.
 
 ### Buffet mode (chế độ tự chạy + bàn giao qua Figma)
 

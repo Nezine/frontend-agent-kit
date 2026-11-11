@@ -7,7 +7,7 @@
 
 ## 0. What this repo is
 
-A vendored, pinned frontend skill kit (Linux-first) for Claude Code, Codex, OpenCode,
+A vendored, pinned frontend skill kit (Linux/macOS) for Claude Code, Codex, OpenCode,
 Gemini CLI, GitHub Copilot, Hermes Agent, Muse Code, CommandCode (`cmd`) and Cursor.
 Contents: orchestrator skill `frontend-kit`, Impeccable 4.8.2 (engine 0.1.21),
 8 official GSAP skills, `threeui`, `ui-ux-pro-max-reference` (2.15.0),
@@ -410,8 +410,10 @@ build the gate already fails.
   it is served by `~/.agents/skills/`, written for codex/opencode/gemini/hermes/cmd or
   by the no-host fallback. Repo-link self-install works for Muse Code and for the
   Muse agent runtime; it does not work for the Muse app (chat).
-- **Linux-first.** macOS/Windows install paths are open work; `install.sh` v1 refuses
-  non-Linux and nothing in the research verifies those paths.
+- **Linux and macOS are supported.** Windows install paths are open work;
+  `install.sh` refuses non-Linux/macOS and nothing in the research
+  verifies Windows paths. (macOS support landed 2026-11-11, D12:
+  bash-3.2-compatible scripts, darwin binaries, CI on macos-15/26.)
 - **Codex skills dir discrepancy (unresolved):** `~/.agents/skills/` (OpenAI docs,
   impeccable README) vs `~/.codex/skills/` (GSAP README). Install to both until the
   clean-env test resolves it.

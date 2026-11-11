@@ -1,0 +1,71 @@
+# CI — install + verify + gate on Linux and macOS (D12).
+#
+# The kit supports Linux and macOS. Stock macOS ships bash 3.2.57 and the
+# macOS runners default to it — no Homebrew bash is installed here on
+# purpose: the default bash 3.2 IS the test. Likewise no `brew install
+# gitleaks`: the installer downloads the pinned gitleaks tarball, and
+# that is what is being tested. Node comes preinstalled on the runners
+# (22.23.4 on ubuntu-24.04 / macos-15, 24.22.2 on macos-26) — the
+# workflow asserts Node 22+, it does not install node.
+#
+# Labels are pinned, never `-latest`: macos-latest currently maps to
+# macos-26 and migrates over time; ubuntu-latest currently maps to
+# ubuntu-24.04. macos-14 is retired (2026-11-02); macos-13 does not
+# exist. Playwright 1.66 needs macOS 14+ for browser downloads.
+#
+# Every job is bounded with timeout-minutes: stock macOS has no
+# `timeout(1)`, so the scripts' probes run unbounded there and only the
+# job-level bound stops a hung run (D12 decision 3: no timeout shim).
+
+name: CI
+
+on:
+  push:
+    branches: [main, macos-compat]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-26]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert Node 22+
+        shell: bash
+        run: |
+          node --version
+          node -e "const m = parseInt(process.versions.node.split('.')[0], 10); if (m < 22) { console.error('Node 22+ required, found ' + process.versions.node); process.exit(1); } console.log('Node OK: ' + process.versions.node);"
+
+      - name: Lint — no bash-4-only constructs; syntax-check all scripts
+        shell: bash
+        run: |
+          # Bash 3.2 compatibility (D12): stock macOS /bin/bash is 3.2 and
+          # the scripts must run under it. Fail fast on regressions.
+          if grep -rnE 'declare -A|mapfile|readarray' install.sh verify.sh scripts/gate/gate.sh scripts/check-versions.sh scripts/generate-host-variants.sh; then
+            echo "ERROR: bash-4-only construct found (see above) — rewrite it in bash-3.2-compatible form."
+            exit 1
+          fi
+          for f in install.sh verify.sh scripts/gate/gate.sh scripts/check-versions.sh scripts/generate-host-variants.sh; do
+            bash -n "$f" || exit 1
+          done
+          echo "lint OK: no banned constructs, all five scripts parse."
+
+      - name: Install (./install.sh)
+        shell: bash
+        run: ./install.sh
+
+      - name: Verify end to end (./verify.sh --strict)
+        shell: bash
+        run: ./verify.sh --strict
+
+      - name: Gate on a probe build
+        shell: bash
+        run: scripts/gate/gate.sh --target tests/ci-gate-fixture

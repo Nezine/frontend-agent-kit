@@ -19,8 +19,13 @@ command -v git >/dev/null 2>&1 || { printf 'check-versions: git not found — ca
 
 latest_tag() { # <repo-url> [tag-prefix] — highest tag with that prefix
   local url="$1" prefix="${2:-}"
+  # No `sort -V` (GNU-only; BSD sort has no version sort): prefix each
+  # tag with its numeric key (major.minor.patch) and sort that
+  # numerically, then strip the key. BSD + GNU sort both accept -t/-k/-n.
   git ls-remote --tags "$url" 2>/dev/null | awk -F/ '{print $NF}' | sed 's/\^{}$//' \
-    | grep -E "^${prefix}v?[0-9]+\.[0-9]+\.[0-9]+" | sort -V | tail -1
+    | grep -E "^${prefix}v?[0-9]+\.[0-9]+\.[0-9]+" \
+    | sed -E 's/^[^0-9]*([0-9]+)\.([0-9]+)\.([0-9]+).*/\1.\2.\3 &/' \
+    | sort -t. -k1,1n -k2,2n -k3,3n | sed -E 's/^[^ ]+ //' | tail -1
 }
 latest_commit() { git ls-remote "$1" HEAD 2>/dev/null | awk '{print $1}'; }
 
