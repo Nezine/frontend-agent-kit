@@ -14,7 +14,8 @@ synthesis `research_notes/alexander-wang-statements-20261111/REPORT.md`
 checked the four fixed worker reports against two red-team verdicts.
 Each claim carries its source URL and the access date, per council
 rules 1/2/5. **Tier key (the synthesis's):** Tier 1b = third-party
-transcript read in full by the worker — wording approximate at the word
+transcript read by the worker — YC read in full; Lightcone read ~23%
+(lines 0–150 of 654, see Sources) — wording approximate at the word
 level where ASR errors are visible; **no YC quote below was checked
 against video audio.** Paraphrase = labelled as such, never presented
 as a quote. The synthesis is the authority where this file and any
@@ -25,7 +26,7 @@ stays out of the kit (§10).
 
 | Wang's loop (YC 2026, Tier 1b) | Kit's loop (taste-locked deterministic-gate) |
 |---|---|
-| "Mechanically figuring out what the metric is." — the metric/eval first | The lock defines the pass/fail metric (taste criteria + checks) **before** any builder agent runs (step 1.8) |
+| "Mechanically figuring out what the metric is…" — the metric/eval first | The lock defines the pass/fail metric (taste criteria + checks) **before** any builder agent runs (step 1.8) |
 | "the right eval or the right metric for the agents to optimize" — the condition for the swarm claim | The gate IS the eval: agents optimise against the gate, not against a vibe (step 3) |
 | "skills, markdown files, cron jobs" — mundane mechanics after the metric | The kit's skills + markdown + scheduled/triggered runs as the mechanics (§4) |
 | "it's easy to get to ninety percent, very very hard to get to ninety-nine percent" — the last-10% warning | The gate's job is the last 10%: a build that passes at 90% still fails the gate (§3) |
@@ -261,12 +262,12 @@ the taste lock. That is the whole of it — light touch by design.
 - The coding-agents wave-size forecast presented as a measured
   productivity/impact figure (synthesis §1.5 — it is a market-wave-size
   forecast, not measured impact).
-- The nine-figure check anecdote as Wang's words (it is Zuckerberg's
+- The $100B check anecdote as Wang's words (it is Zuckerberg's
   line, synthesis §2.8); the reported social-media quip about a rival
   model (Tier 2, no direct read — it does not belong in the kit); the
   Muse-app build-time story as a Wang-verified fact (secondary-article
   claims only — do not conflate it with Muse Spark's nine-month
-  rebuild, synthesis §2.8/§7).
+  rebuild, synthesis §7.1).
 - Anything that needs the kit to claim Wang endorses it (§2).
 
 ## Sources
