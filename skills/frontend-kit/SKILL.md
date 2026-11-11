@@ -998,7 +998,7 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    (`run-log.mjs brief`, see "Round briefs + per-role context budgets"
    above) and send the fixer the brief + the fix instruction — never the
    full run log, never the previous round's context.
-4. Every fix instruction cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". The fix prompt the orchestrator sends must require the citation field; a fix prompt without it is rejected by the orchestrator (not sent). A fix instruction with no citation is not a fix instruction.
+4. Every fix instruction cites its source — a gate finding, a grader evidence line, or a human instruction — never "improve it". The fix prompt the orchestrator sends must require the citation field; a fix prompt without it is rejected by the orchestrator (not sent). A fix instruction with no citation is not a fix instruction. A fix instruction citing a judge line that repeals a locked rule must carry the token-diff re-expression (D11; rubric, Fix order); a fix prompt without it is rejected by the orchestrator (not sent).
 5. **Round folders + archive.** Each fix round is a change folder, not a
    free-form log line: before fixing, copy
    `templates/design/rounds/_template/` to `design/rounds/<n>/` and fill

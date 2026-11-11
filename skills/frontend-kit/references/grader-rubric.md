@@ -311,6 +311,20 @@ the primary-task destination) enters the fix order by citing its
 require the citation field; a fix prompt without it is rejected by the
 orchestrator.
 
+**Re-expression rule (D11).** A judge fix that repeals a locked structural
+rule is not sent to the builder as written. The orchestrator re-expresses
+it as token diffs first (in the SR-2 case: fill the viewports by the SR-2
+fill rule, `references/layout-doctrine.md` §4). If it cannot be
+re-expressed within the applicable bound, it is not a fix: it is a
+direction / escalation item for the human gate (P6(a) path), never a build
+instruction.
+
+**Token-semantics note.** `--space-section` is per-side section padding;
+the inter-content gap is 2× the token. The token-consistent gap is 2× the
+`--space-section` token (2×96px = 192px) — see `layout-doctrine.md` §4.
+Measured gaps are compared against 2× the token, never against the token
+itself.
+
 ## Pairwise keep/discard + defect-first (P11)
 
 Every graded round outputs BOTH:

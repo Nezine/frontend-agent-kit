@@ -187,6 +187,77 @@ next section on the first screen.
   200px section to 100svh with centring does not fill it; it empties it.
   One heading per section (h2 first in its `.wrap`); the hero holds only
   its h1.
+- **SR-2 fill rule (D11 — judge fix drops `100vh`).** When a judge fix drops
+  the `100vh` rule on `.section` and SR-2 then fails on short sections, the
+  builder resolves it by growing *internal* spacing by minimal token sums
+  until each section's content reaches the one-screen content window (708px
+  at 1440 with 96px pads), keeping non-hero section pads uniform at
+  `--space-section` and non-hero inter-section gaps uniform at 2×
+  `--space-section`. (The hero is governed by SR-1, not SR-2.) Restoring
+  `100vh` is forbidden — it undoes the judge fix. A content-height
+  exemption to SR-2 is forbidden. Per-section bottom pads (candidate A)
+  are a fallback only, when a section has no internal spacing that can
+  grow, and must be declared as such in the round record.
+  - **Bound.** Total shortfall **|S| ≤ 72px** (the doctrine's own add/cut
+    number, `layout-v4.md` §2: "add or cut up to 72px"). The bound governs
+    when the B-pattern applies: a shortfall within it (content in the
+    495–708px window) is filled by the pattern; a shortfall outside it, or
+    content under 495px, is not stretched in a fix round.
+  - **Fix-round vs direction remedies — split by who may apply them,
+    whatever the content band.** Fix-round remedies (builder,
+    D2-compliant — same content, same copy, same section inventory): the
+    B-pattern itself, the candidate-A fallback, `.g2` (structural,
+    inventory unchanged), shrinking internal spacing by token sums.
+    Direction remedies (human gate, re-pick — they change content, copy,
+    or inventory): merge, add a picture/content, cut copy, split into two
+    sections. If no remedy in either class fits, escalate — never stretch.
+  - **Minimal-sum rule.** The growth or cut is the token sum landing the
+    section's content closest to 708px, inside the 706–710px band where a
+    token sum reaches it (height 898–902px, i.e. 900px ± SR-2's 2px
+    tolerance); ties prefer the smaller sum. In the ordinary case that is
+    the smallest sum of `--space-*` token values ≥ S for a shortfall, and
+    the smallest sum cutting to the band for an overshoot — a single token
+    step alone is not the rule (e.g. an overshoot of 28px cut by a single
+    32px step lands at 896px, WARN, where the sum 28 lands exactly at
+    900px). A single growable gap is grown by the minimal-sum rule like any
+    other. **Margin collapse:** adjacent-sibling vertical margins collapse
+    to their max, not their sum — when distributing growth across margins,
+    count the collapsed value, not the sum of the two margins. Prefer
+    row-gap (which does not collapse); the gate verifies the result.
+  - **Tolerance declaration.** The builder records, per section, the
+    shortfall, the token sum, and whether the result is exact or passes by
+    SR-2's 2px tolerance — a tolerance pass (e.g. 901px) must be declared,
+    never silent.
+  - **Contingent cap (not a binding bound).** No per-gap cap applies now.
+    IF a full-shot grade penalises a B-pattern build's internal spacing,
+    the pattern gains a per-gap cap — the recorded candidate is B's 32px
+    (= one `--space-6`) per gap per round, with shortfalls spread across
+    two or more internal gaps — and the verdict is revisited with that
+    grading evidence in hand. If a cap ever applies, a single growable gap
+    that cannot reach the height within the cap falls back to candidate A
+    for the remainder, or escalates.
+  - **Worked instance (probe run-2, R3 → candidate B as-built, gate GREEN
+    0 FAIL 15 WARN — verified, not predicted):** about panel margin 24 →
+    52 (+28 = 16+12); projects grid row-gap 16 → 84 (+68 = 64+4); tools
+    panel margin 32 → 28 (−4). Contents 708/709/708, heights 900/901/900
+    — **the 901px projects height is a DECLARED tolerance pass under
+    SR-2's 2px tolerance** (shortfall 67px has no exact token sum; the
+    smallest sum ≥ 67 is 68). **Caveat, recorded not hidden:** the 84px
+    projects row-gap (against a 16px column gap) is a gate-blind cost —
+    the gate measures section heights and inter-section gaps, not
+    internal-gap proportionality. The next full-shot grade is the check
+    on it.
+
+  Decision table (content c at 1440, px):
+
+  | c | Remedy | Class | Source |
+  |---|---|---|---|
+  | < 360 | merge into the section above, or add the picture it lacks | direction (human gate) | `layout-v4.md` §2 windows |
+  | 360–495 | one screen, with a warning: give it its picture | direction (human gate) | `layout-v4.md` §2 windows |
+  | 495–708, shortfall ≤ 72 | B-pattern: fill internally by token sums | fix-round | D11 |
+  | 495–708, shortfall > 72 | add a picture / merge — do not stretch in a fix round | direction (human gate) | D11 bound + routing (the doctrine prescribes merge/add-picture only for content under 495px; for this band the direction routing is D11's) |
+  | 708–1,320 | `.g2` (fix-round, inventory unchanged); cut copy / split into two sections (direction) | split by remedy | `layout-v4.md` §2 windows + D11 routing |
+  | slightly over 708 | shrink internal spacing by token sums (tools: −4) | fix-round | D11 (minimal-sum, symmetric case) |
 
 ## 5. Visuals — no-visual, empty-area, text-only
 

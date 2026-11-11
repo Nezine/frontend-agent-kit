@@ -1830,7 +1830,7 @@ const checks = [
 ];
 const fixes = {
   'hero-screen': 'make the hero exactly one screen (height: 100svh) with its content between the nav and 24px above the fold',
-  'section-height': 'set every section after the hero to one screen or two (height: calc(var(--h,1) * 100vh)) and fit its content above --padb',
+  'section-height': 'set every section after the hero to one screen or two (D11: grow or shrink its internal spacing by minimal token sums until its content fills the 708px window; height: calc(var(--h,1) * 100vh) only where no judge fix has dropped it) and fit its content above --padb',
   'section-air': 'keep 128-288px of air between sections at desktop widths (KIT PATCH 2026-11-10: was 128-480px; 112-420px on a phone), fill each section to 55% or merge it into the one above, and drop divider rules',
   'one-section': 'make each section exactly one or two screens so a screen shows one section; every block of <main> a <section>, no bands inside one',
   'one-heading': 'give each section one h2, first in its .wrap, and the hero only its h1, so headings sit a screen apart',
@@ -3067,7 +3067,7 @@ const TEST_FIX = {
   'SR-1 T3': "fit the hero's content inside the hero's box: shorten the text or the picture, never let it spill",
   'SR-1 T4': "keep the hero's content between the nav and 24px above the fold (and the action bar): shorten the picture or the text; a docked strip 96px at most",
   'SR-1 T5': "keep the hero's background layer inside the hero (position: absolute; inset: 0 in the section)",
-  'SR-2 T-height': 'set the section to one screen or two (height: calc(var(--h,1) * 100vh), --h 1 or 2) and cut or split its content to fit',
+  'SR-2 T-height': 'set the section to one screen or two (D11: grow or shrink its internal spacing by minimal token sums until its content fills the 708px window; height: calc(var(--h,1) * 100vh), --h 1 or 2, only where no judge fix has dropped it) and cut or split its content to fit',
   'SR-2 T-grid': 'make every section above it exactly one or two screens tall, so this one starts on a whole screen',
   'SR-2 T-fit': "fit the content above the section's bottom padding (--padb), or make it two screens (.g2) in two groups",
   'SR-2 T-total': 'keep a place page at 3 to 6 screens: merge a short block into the section above, or cut a section',
@@ -3498,7 +3498,7 @@ const tilesMod = (() => {
 const id = 'tiles';
 const phase = 'width';
 const checks = [{ id: 'section-tile', sev: 'FAIL', what: "a section not one or two screens tall at 1440x900 (shorter than the screen at 390x844) whose tile, or the screen a whole screen on from its top, shows another section's heading, text or picture (only its ground: WARN)" }];
-const fixes = { 'section-tile': 'set every section after the hero to one screen or two (height: calc(var(--h,1) * 100vh)) and fit its content above --padb' };
+const fixes = { 'section-tile': 'set every section after the hero to one screen or two (D11: grow or shrink its internal spacing by minimal token sums until its content fills the 708px window; height: calc(var(--h,1) * 100vh) only where no judge fix has dropped it) and fit its content above --padb' };
 const summary = [
   '  screens    section-tile (a section tile showing two sections: at 1440x900 a section not one or two screens tall,',
   '             24px either way, whose tile or the screen a whole screen on from its top shows another section\'s',
