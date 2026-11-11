@@ -1,5 +1,7 @@
 # Self-Install Patterns for frontend-agent-kit — Phase 1 Research
 
+> **⚠️ SUPERSEDED — read as history, not as current fact.** This is a phase-1 research note (2026-11-10). Current pins: Impeccable **4.8.2** / engine **0.1.21**, Pro Max **2.15.0**, slop-free bar **60%** (user-ordered 2026-11-10). Version numbers and the 70–80% bar stated below are superseded — the install path is `./install.sh` (+ `verify.sh`), not the versions in this file. See `AGENTS.md` Decisions (d) and (i).
+
 **Worker:** (c) SELF-INSTALL EXPERT · **Date:** 2026-11-10 · **Status:** research only, read-only work
 **Repo under study:** https://github.com/phamTuan207/frontend-agent-kit (public, MIT, created 2026-10-10)
 **Local clone (source of truth for v1 contents):** `~/workspace/frontend-agent-kit/repo`, HEAD `d49b541` ("docs: add frontend skill usage handbook"), clean tree.

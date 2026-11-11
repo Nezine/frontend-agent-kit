@@ -78,7 +78,8 @@
 //   round: { kind, round, grader, independenceBasis, scores, grade,
 //     evidence, gate, gateFindings, variant, tokensHash, fixClass,
 //     outcome, page, trigger, pairwise, pairwiseAgrees, jury, juryMode,
-//     juryVotes, notRegraded, notes, at }. variant is the PICKED variant.
+//     juryVotes, notRegraded, expertMotion, expertMotionEvidence,
+//     expertUx, expertUxEvidence, notes, at }. variant is the PICKED variant.
 //     tokensHash is --tokens-hash, or the sha256 of
 //     <project>/design/tokens.css when present, else null. fixClass is a
 //     free-form fix class (e.g. "tokens:colour"); outcome is one of
@@ -106,6 +107,17 @@
 //     or "none" (a "not re-measured" value in --scores is REJECTED —
 //     parseScores only accepts integers 1-5). The rubric's score table
 //     marks such sections `not re-graded (unchanged since round N)`.
+//     expertMotion / expertUx (Wave 6) are the Motion and UX expert
+//     second-opinion scores (rubric Motion:/UX: lines — `Motion: <1-5>
+//     (motion-expert) — <one-line evidence>`, `UX: <1-5> (ux-expert) —
+//     <one-line evidence>`), each an integer 1-5 with one line of
+//     observable evidence (expertMotionEvidence / expertUxEvidence).
+//     Recorded via --expert-motion / --expert-ux +
+//     --expert-motion-evidence / --expert-ux-evidence on ANY round
+//     record, graded or no-grade (experts can be consulted even when no
+//     independent judge grade exists). ADVISORY to the judge — the judge
+//     keeps the final 4-axis scores; expert scores never change a score,
+//     never trigger the stop rule, and are never a grade.
 //   feedback: { kind, round, from, tokenChange, scoreAfter, grader,
 //     independenceBasis, evidence, fixClass, at }.
 // The round-brief generator (skills/frontend-kit/scripts/round-brief.mjs)
@@ -130,6 +142,10 @@
 //     [--not-regraded "<#section,#section>"]   # sections not re-scored
 //       (unchanged since an earlier round); --scores stays four fresh
 //       integers or "none" — never "not re-measured"
+//     [--expert-motion <1-5>] [--expert-motion-evidence "<observable>"]
+//     [--expert-ux <1-5>] [--expert-ux-evidence "<observable>"]
+//       # Motion/UX expert second opinions (advisory only); allowed on
+//       graded and no-grade records alike
 //   --tokens-hash defaults to the sha256 of <project>/design/tokens.css
 //   when that file exists; --page is the built HTML the round graded
 //   (the round-brief generator needs it to find the best HTML).
@@ -154,10 +170,15 @@
 //   on --gate pass, "gate red, no grade" on --gate fail):
 //   node run-log.mjs --project <dir> record --round N --grader none
 //     --scores none --gate <pass|fail> [--variant <name>] [--notes "..."]
+//     [--expert-motion <1-5>] [--expert-motion-evidence "<observable>"]
+//     [--expert-ux <1-5>] [--expert-ux-evidence "<observable>"]
 //   --grader none is accepted ONLY with --scores none (and no --evidence
 //   score). It records grader: null, grade: "gate green, vision not
 //   available". --grader none with scores is REJECTED (a score needs an
 //   independent judge); omitting --grader entirely is still a usage error.
+//   Expert scores ARE allowed on a no-grade record: an expert second
+//   opinion is not a grade, and experts can be consulted even when no
+//   independent judge grade exists.
 //   node run-log.mjs --project <dir> feedback --from "<human words>"
 //     --change "<token diff>" --round N [--score-after <t,l,c,s>
 //     --grader <judge-subagent|muse-manager|other-model>
@@ -191,7 +212,7 @@
 //     --checker <security-expert|crosscheck-subagent|crosscheck-team>
 //     --basis "<why this checker counts as independent>"
 //   crosscheck records a security/compliance cross-check verdict
-//   (coordination design §13, SKILL.md step 3a). The verdict is DERIVED:
+//   (BUFFET-MODE.md §14, SKILL.md step 3a). The verdict is DERIVED:
 //   clear iff severe == 0 and every warning is fixed-or-waived
 //   (warning == waived). The checker must be independent of the builder
 //   AND the judge for the slice (same two-half basis as a grader).
@@ -331,8 +352,8 @@ function evidenceNamesObservable(evidence) {
 function usage(msg) {
   if (msg) console.error(`run-log: ${msg}`);
   console.error(`usage:
-  node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s|none> --evidence "<...>" --gate <pass|fail> [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>] [--trigger <flat-line|round-1-repick|stagnation>] [--pairwise <keep-incumbent|keep-challenger|tie>] [--pairwise-agrees <yes|no>] [--jury "<t,l,c,s median>"] [--jury-mode <disjoint-3|single-family|single>] [--jury-votes "<v1;v2;v3>"] [--not-regraded "<#section,#section>"]
-  node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--variant <name>] [--notes "..."]  (no-grade round: grade is "gate green, vision not available" when --gate pass, "gate red, no grade" when --gate fail)
+  node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s|none> --evidence "<...>" --gate <pass|fail> [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>] [--trigger <flat-line|round-1-repick|stagnation>] [--pairwise <keep-incumbent|keep-challenger|tie>] [--pairwise-agrees <yes|no>] [--jury "<t,l,c,s median>"] [--jury-mode <disjoint-3|single-family|single>] [--jury-votes "<v1;v2;v3>"] [--not-regraded "<#section,#section>"] [--expert-motion <1-5>] [--expert-motion-evidence "<observable>"] [--expert-ux <1-5>] [--expert-ux-evidence "<observable>"]
+  node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--variant <name>] [--notes "..."] [--expert-motion <1-5>] [--expert-motion-evidence "<observable>"] [--expert-ux <1-5>] [--expert-ux-evidence "<observable>"]  (no-grade round: grade is "gate green, vision not available" when --gate pass, "gate red, no grade" when --gate fail; expert scores allowed)
   node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --evidence "<observable element>"] [--fix-class "<class>"]
   node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"]
   node run-log.mjs --project <dir> replan --action <re-plan|re-pick> --purpose "<revised purpose from PLAN.md>" [--notes "..."]
@@ -498,6 +519,28 @@ function parseNotRegraded(s) {
   return [...new Set(ids)];
 }
 
+// Wave 6 — expert second-opinion scores (Motion/UX, rubric Motion:/UX:
+// lines). One integer 1-5 each; a score without its one-line evidence is
+// a usage error, and evidence without its score is too. Same observable
+// bar as --evidence (evidenceNamesObservable), checked by the caller.
+function parseExpertScore(s, flag) {
+  if (s === undefined) return null;
+  const v = Number(s);
+  if (!Number.isInteger(v) || v < 1 || v > 5) usage(`${flag} must be an integer 1-5`);
+  return v;
+}
+
+function parseExpert(s, evidence, flag, evidenceFlag) {
+  const score = parseExpertScore(s, flag);
+  if (score === null && evidence !== undefined) usage(`${evidenceFlag} needs its ${flag} score`);
+  if (score !== null && evidence === undefined) usage(`${flag} needs its ${evidenceFlag} (one line naming an observable element)`);
+  if (score !== null && !evidenceNamesObservable(evidence)) {
+    console.error(`run-log: REJECTED — ${evidenceFlag} (10+ characters) must name an observable element, e.g. a named element or a measurement — not a generic impression like "x" or "looks good". No entry written.`);
+    process.exit(2);
+  }
+  return { score, evidence: evidence === undefined ? null : evidence.trim() };
+}
+
 function median3(a, b, c) {
   return [a, b, c].sort((x, y) => x - y)[1];
 }
@@ -546,6 +589,12 @@ if (cmd === 'record') {
   const juryVotes = parseJuryVotes(args['jury-votes']);
   const notRegraded = parseNotRegraded(args['not-regraded']);
   checkJuryMedian(jury, juryVotes);
+  // Wave 6 — expert second opinions (Motion/UX). Allowed on any record,
+  // graded or no-grade: an expert opinion is not a grade, and experts can
+  // be consulted even when no independent judge grade exists. NOT added
+  // to the no-grade rejection below.
+  const expertMotion = parseExpert(args['expert-motion'], args['expert-motion-evidence'], '--expert-motion', '--expert-motion-evidence');
+  const expertUx = parseExpert(args['expert-ux'], args['expert-ux-evidence'], '--expert-ux', '--expert-ux-evidence');
   if (noGrade && (pairwise || pairwiseAgrees !== null || jury || juryMode || juryVotes || notRegraded)) {
     console.error('run-log: REJECTED — --pairwise / --pairwise-agrees / --jury / --jury-mode / --jury-votes / --not-regraded need a graded round. A --grader none record has no scores to compare, to take a median of, or to mark sections not re-scored on. No entry written.');
     process.exit(2);
@@ -570,6 +619,8 @@ if (cmd === 'record') {
       trigger,
       pairwise: null, pairwiseAgrees: null, jury: null, juryMode: null, juryVotes: null,
       notRegraded: null,
+      expertMotion: expertMotion.score, expertMotionEvidence: expertMotion.evidence,
+      expertUx: expertUx.score, expertUxEvidence: expertUx.evidence,
       notes: args.notes || null,
       at: new Date().toISOString(),
     };
@@ -611,6 +662,8 @@ if (cmd === 'record') {
     page: args.page || null,
     trigger, pairwise, pairwiseAgrees, jury, juryMode, juryVotes,
     notRegraded,
+    expertMotion: expertMotion.score, expertMotionEvidence: expertMotion.evidence,
+    expertUx: expertUx.score, expertUxEvidence: expertUx.evidence,
     notes: args.notes || null,
     at: new Date().toISOString(),
   };
@@ -708,7 +761,7 @@ if (cmd === 'record') {
   appendLog(args.project, rec);
   console.log(`run-log: purpose fail recorded — action: ${action}; revised purpose: ${rec.purpose}`);
 } else if (cmd === 'crosscheck') {
-  // Security/compliance cross-check verdict (coordination design §13,
+  // Security/compliance cross-check verdict (BUFFET-MODE.md §14,
   // SKILL.md step 3a). The coordinator transcribes the checker's verdict
   // here BEFORE any land is recorded; `land` below refuses to record
   // without a prior clear verdict for the same slice/round.
@@ -749,7 +802,7 @@ if (cmd === 'record') {
   appendLog(args.project, rec);
   console.log(`run-log: cross-check recorded for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} — verdict: ${verdict} (SEVERE ${severe}, WARNING ${warning}, waived ${waived}); report: ${rec.report}`);
 } else if (cmd === 'land') {
-  // Land / ship decision (coordination design §3/§13, SKILL.md step 3a):
+  // Land / ship decision (coordination design §3 / BUFFET-MODE.md §14, SKILL.md step 3a):
   // requires gate green AND a clear cross-check verdict already in the
   // log. A land without a prior clear verdict is REJECTED (exit 2,
   // nothing written) — landing without a cross-check is forbidden,
@@ -798,6 +851,8 @@ if (cmd === 'record') {
       console.log(`round ${r.round} | ${g} | ${s} | grade: ${r.grade} | gate: ${r.gate}${r.variant ? ` | variant: ${r.variant}` : ''}${r.tokensHash ? ` | tokens: ${r.tokensHash.slice(0, 12)}…` : ''}${r.fixClass ? ` | fix-class: ${r.fixClass}` : ''}${r.outcome ? ` | outcome: ${r.outcome}` : ''}${r.trigger ? ` | trigger: ${r.trigger}` : ''}${p}${j}${nr}${r.page ? ` | page: ${r.page}` : ''}${r.notes ? ` | ${r.notes}` : ''}`);
       if (r.gateFindings) console.log(`  gate findings: ${r.gateFindings}`);
       if (r.evidence) console.log(`  evidence: ${r.evidence}`);
+      if (r.expertMotion !== null && r.expertMotion !== undefined) console.log(`  Motion: ${r.expertMotion} (motion-expert) — ${r.expertMotionEvidence || ''}`);
+      if (r.expertUx !== null && r.expertUx !== undefined) console.log(`  UX: ${r.expertUx} (ux-expert) — ${r.expertUxEvidence || ''}`);
     } else if (r.kind === 'feedback') {
       console.log(`feedback (round ${r.round}): "${r.from}" -> ${r.tokenChange}${r.scoreAfter ? ` | after: T${r.scoreAfter.type}/L${r.scoreAfter.layout}/C${r.scoreAfter.colour}/S${r.scoreAfter.space} (grader: ${r.grader || 'MISSING'})` : ''}`);
       if (r.scoreAfter && r.evidence) console.log(`  evidence: ${r.evidence}`);

@@ -2,8 +2,7 @@
 
 > **Status: SEED ONLY — NOT YET BINDING.** The checklist below is the seed
 > from the v2 design (§13). **The FULL checklist is PENDING the gen-11 build
-> from the security-AI swarm synthesis (`research/security-ai/SYNTHESIS.md` —
-> delivered, with `workers/` and three QC verdicts alongside it).**
+> from the security-AI swarm synthesis (`research/security-ai/SYNTHESIS.md` — workspace research note, not shipped in this repo; delivered, with `workers/` and three QC verdicts alongside it).**
 > This checklist becomes binding only after an independent red team verifies
 > it (checking it for completeness and correctness, not just the findings).
 > Until then, no land/ship may cite this file as a complete check.

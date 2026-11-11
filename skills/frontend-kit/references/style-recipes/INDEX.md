@@ -10,9 +10,9 @@ you're using, not the whole catalog.")
 
 ## What this index adds that the expert pack does not
 
-The expert pack (`references/expert-pack.md`, 10 domain briefs) JUDGES:
+The expert pack (`references/expert-pack.md`, 12 domain briefs) JUDGES:
 typography, colour, layout, motion, accessibility, copy, imagery,
-design systems, performance, responsive. A judge needs a direction to
+design systems, performance, responsive, UX, security. A judge needs a direction to
 judge against; it does not supply one. These recipes SUPPLY named
 directions: an anchor (a real design language with a known character),
 a school, a best-for, signature moves, and anti-patterns — so step 1

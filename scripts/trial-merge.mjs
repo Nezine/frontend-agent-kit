@@ -9,6 +9,7 @@
 //
 // Usage:
 //   node scripts/trial-merge.mjs --base <ref> --a <ref> --b <ref> [--worktree <dir>] [--json]
+//   [--attempt-log <path> --attempt-key <key>]
 //   --base     merge base (usually `git merge-base <a> <b>`; pass it explicitly
 //              so the trial is deterministic and reproducible in the run log)
 //   --a, --b   the two branches to trial-merge (e.g. buffet/mie buffet/migga)
@@ -18,10 +19,21 @@
 //              cross-check + grade — the cross-check runs on the merged tree
 //              in the trial worktree, so it must survive through it)
 //   --json     print the result as one JSON object (for the run log)
+//   --attempt-log + --attempt-key  neutral-merger 1-attempt cap (BUFFET-MODE.md
+//              §5, M5): when BOTH are given, the script exits 2 if <key> already
+//              exists in the log file (same pair-state = same a+b+base — a
+//              branch change is a new pair-state, hence a new key, hence a
+//              fresh attempt), and otherwise appends one JSON line
+//              {key, base, a, b, tree, clean, at} after the merge. Early-detection
+//              trials pass NEITHER flag and never consume an attempt; a git
+//              failure (exit 2) never appends. The key is the coordinator's
+//              to mint, e.g. `<a>+<b>@<base>`.
 //
 // Exit codes: 0 = clean merge (no conflicts); 1 = conflicts (do NOT land —
 //   hand the pair to the neutral merger, BUFFET-MODE.md §5); 2 = usage error
-//   or a git failure (refs missing, not a repo, merge-tree itself errored).
+//   or a git failure (refs missing, not a repo, merge-tree itself errored),
+//   or the attempt key already exists in the attempt log, or the attempt
+//   could not be recorded in the log.
 //
 // The trial merge writes exactly one tree object into .git/objects
 // (`git merge-tree --write-tree`); it never moves a branch, never touches the
@@ -30,11 +42,11 @@
 // is traceable to the exact merged tree.
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
 function usage(exitCode) {
   process.stderr.write(
-    "usage: node scripts/trial-merge.mjs --base <ref> --a <ref> --b <ref> [--worktree <dir>] [--json]\n",
+    "usage: node scripts/trial-merge.mjs --base <ref> --a <ref> --b <ref> [--worktree <dir>] [--json] [--attempt-log <path> --attempt-key <key>]\n",
   );
   process.exit(exitCode);
 }
@@ -45,7 +57,7 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--json") {
       out.json = true;
-    } else if (arg === "--base" || arg === "--a" || arg === "--b" || arg === "--worktree") {
+    } else if (arg === "--base" || arg === "--a" || arg === "--b" || arg === "--worktree" || arg === "--attempt-log" || arg === "--attempt-key") {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) usage(2);
       out[arg.slice(2)] = value;
@@ -54,7 +66,29 @@ function parseArgs(argv) {
     }
   }
   if (!out.base || !out.a || !out.b) usage(2);
+  // The cap needs both halves: a log without a key (or a key without a
+  // log) is a usage error, not a silent no-op.
+  if ((out["attempt-log"] === undefined) !== (out["attempt-key"] === undefined)) usage(2);
   return out;
+}
+
+// M5: the neutral-merger 1-attempt cap, enforced as an append-only JSONL
+// ledger. One line per consumed attempt: {key, base, a, b, tree, clean, at}.
+function attemptExists(logPath, key) {
+  if (!existsSync(logPath)) return false;
+  for (const line of readFileSync(logPath, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      if (JSON.parse(line).key === key) return true;
+    } catch {
+      // Unparseable line: not our key — skip, never fail the trial on it.
+    }
+  }
+  return false;
+}
+
+function recordAttempt(logPath, entry) {
+  appendFileSync(logPath, `${JSON.stringify(entry)}\n`, "utf8");
 }
 
 function git(args, { allowNonZero = false } = {}) {
@@ -83,7 +117,15 @@ function git(args, { allowNonZero = false } = {}) {
 }
 
 function main() {
-  const { base, a, b, worktree, json } = parseArgs(process.argv.slice(2));
+  const { base, a, b, worktree, json, "attempt-log": attemptLog, "attempt-key": attemptKey } = parseArgs(process.argv.slice(2));
+
+  // M5: refuse a second attempt on the same pair-state before doing any
+  // merge work. A key already in the log means the capped attempt was
+  // consumed; only a new pair-state (new key) earns a fresh attempt.
+  if (attemptLog !== undefined && attemptExists(attemptLog, attemptKey)) {
+    process.stderr.write(`attempt already consumed: key ${attemptKey} exists in ${attemptLog} (1-attempt cap, BUFFET-MODE.md §5)\n`);
+    process.exit(2);
+  }
 
   // Resolve refs first so a typo fails here, not inside merge-tree.
   for (const ref of [base, a, b]) {
@@ -129,6 +171,20 @@ function main() {
   const infoSection = blankAt === -1 ? lines.slice(1) : lines.slice(1, blankAt);
   const conflicts = infoSection.filter((line) => line.length > 0);
   const clean = merged.code === 0 && conflicts.length === 0;
+
+  // M5: record the consumed attempt AFTER the merge, for both outcomes
+  // (clean or conflicted — the attempt is the trial of the resolution).
+  // Never on a git failure: every exit(2) above returns before this line.
+  // If the ledger cannot be written, the attempt is NOT recorded — exit 2
+  // rather than report a trial whose cap state is unknown.
+  if (attemptLog !== undefined) {
+    try {
+      recordAttempt(attemptLog, { key: attemptKey, base, a, b, tree, clean, at: new Date().toISOString() });
+    } catch (err) {
+      process.stderr.write(`attempt NOT recorded: cannot append to ${attemptLog}: ${err.message}\n`);
+      process.exit(2);
+    }
+  }
 
   let worktreeDir = null;
   if (worktree) {

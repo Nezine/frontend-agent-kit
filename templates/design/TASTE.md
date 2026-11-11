@@ -9,7 +9,7 @@ Gate notes (from the kit's own templates — keep these in mind while locking
 taste, so the locked tokens can pass the kit's own gate):
 - Default faces in tokens.css are gate-clean (Newsreader / IBM Plex Sans /
   IBM Plex Mono, verified against `impeccable detect` engine 0.1.21 —
-  re-verified 2026-11-10 from the 0.1.19 check). If the
+  re-verified 2026-11-10 from the 0.1.21 check). If the
   locked reference uses another face, check it against the detector's
   overused-font list first — Inter, Roboto, Fraunces, Geist (any variant),
   Instrument Serif/Sans and the rest of that list fail the gate on sight.

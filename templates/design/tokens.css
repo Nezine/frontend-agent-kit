@@ -18,7 +18,7 @@
  * default sans and call it the same system.
  *
  * GATE-CLEAN DEFAULTS (verified 2026-11-10 against `impeccable detect`,
- * engine 0.1.21, pinned launcher — re-verified from the 0.1.19 check: all 12
+ * engine 0.1.21, pinned launcher — re-verified from the 0.1.21 check: all 12
  * faces on the list below still flag as primary fonts, Newsreader / IBM Plex
  * faces stay clean): the previous defaults — Instrument Serif /
  * Instrument Sans / Geist Mono — are ALL on the detector's overused-font list,
@@ -33,7 +33,7 @@
  * Spectral italic h1 at 64px both flag; roman does not).
  *
  * LEADING RULE (detector quirk, verified 2026-11-10, engine 0.1.21 — re-verified
- * from the 0.1.19 check: inherited unitless 1.55 on 20px text still measures
+ * from the 0.1.21 check: inherited unitless 1.55 on 20px text still measures
  * 1.24x and flags tight-leading):
  * set line-height EXPLICITLY on every text element whose font-size differs
  * from --text-body — never rely on inheritance. The detector resolves an

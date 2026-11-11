@@ -24,7 +24,7 @@ where a trade-off appears, usability wins over a marginal host's compatibility.
 ## Decisions (recorded 2026-11-10, v2 fix round R3)
 
 Short record of the worker contradictions decided here. The phase-1
-`research/SYNTHESIS.md` is a historical record and is NOT edited — where it
+`research/SYNTHESIS.md` (workspace research note, not shipped in this repo) is a historical record and is NOT edited — where it
 disagrees with a decision below, the decision below governs and the synthesis
 sentence is marked SUPERSEDED here.
 
@@ -91,7 +91,7 @@ sentence is marked SUPERSEDED here.
   history, no shared context with the builder). The orchestrator's grade
   step dispatches to it by name; fallback order: fresh judge sub-agent →
   `other-model` judge → `muse-manager` judge → no grade ("gate green,
-  vision not available"). `scripts/run-log.mjs` enforces the rule: a
+  vision not available"). `skills/frontend-kit/scripts/run-log.mjs` enforces the rule: a
   grader entry is accepted only with an independence basis stating BOTH
   fresh/separate context (or a different agent instance) AND no production
   history — "fresh context" alone is NOT enough.

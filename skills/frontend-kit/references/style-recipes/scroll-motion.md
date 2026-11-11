@@ -250,6 +250,12 @@ page is a tool, not a film.
   `prefers-reduced-motion` automatically (never start it when the
   setting is on). Skip Lenis on dashboards, docs and data tables —
   readers there expect the page to stop the instant their finger does.
+  **Kind-scope warning:** on place/service/non-technical-product pages
+  the textual Lenis signal FAILs effect-kind `scroll`
+  (`scripts/gate/consistency.mjs:1215`) — a Lenis mention on such a
+  page is not evidence of scroll motion, and "skip on dashboards,
+  docs and data tables" is not the whole scope; do not route Pattern 7
+  on kind alone (see `SKILL.md` Pattern 7 routing).
 - **Build it:** Lenis only, never Lenis + `scroll-behavior: smooth`
   (the CSS property only affects navigation scrolls, not user
   scrolls, and the two fight). If the page has no scrubbed pattern

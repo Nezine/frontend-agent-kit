@@ -1,7 +1,7 @@
 # UX checklist — heuristics + approved crawler rules
 
 A vendored reference for the UX expert (`skills/frontend-kit/experts/ux.md`).
-Every rule below is council-approved (`research/ux/SYNTHESIS.md` §8 UX-E,
+Every rule below is council-approved (`research/ux/SYNTHESIS.md` §8 UX-E — workspace research note, not shipped in this repo,
 2026-11-10). Each rule names what to look at and what counts as a pass,
 with a concrete example. Rules are grouped by source corner; the
 `→ UX-N` tag maps a rule to the criterion it evidences in `ux.md`.
@@ -9,7 +9,7 @@ Access date for all web sources: 2026-11-10.
 
 **What this file is not:** it is not a second expert brief and it adds no
 score. The 14 criteria in `ux.md` govern; this file is the checkable
-detail behind them. Anything in `research/ux/SYNTHESIS.md` §6 PARKED
+detail behind them. Anything in `research/ux/SYNTHESIS.md` (workspace research note, not shipped in this repo) §6 PARKED
 or §7 KILLED stays out — see "Deliberately excluded" at the end.
 
 ## 1. Nielsen Norman Group — top 8 (read in full)

@@ -52,7 +52,7 @@ trigger count: one.
 
 **D2 dependency (P6(a)).** (a) depends on P10 having landed: the variant set is 5 canonical
 + 1 break-frame = 6 variants (`references/variant-briefs.md` §6;
-`scripts/variant-picker.mjs`), and the break-frame is the structural variant (a) re-picks
+`skills/frontend-kit/scripts/variant-picker.mjs`), and the break-frame is the structural variant (a) re-picks
 to. Vague briefs always have one; a tight brief may skip the break-frame, in which case
 (a) cannot fire (see trigger 1 above).
 
@@ -111,7 +111,7 @@ Present all of these together, then wait:
 - The recommended next command, ending with `polish`.
 
 The human's pick or adjective maps through the token dictionary
-(`scripts/token-dictionary.mjs`) and re-enters at step 5 — never as a
+(`skills/frontend-kit/scripts/token-dictionary.mjs`) and re-enters at step 5 — never as a
 rebuild. After human approval, save the 3-width screenshots as the
 pixel-diff baseline so later feedback rounds cannot silently regress it.
 
@@ -139,6 +139,16 @@ label is INVALID.
 
 Text-only local models run steps 0–3 and 5 and stop; the human gate then
 carries the full taste judgement.
+
+**Hook-enforcement scope (P4, council decision D8-era — see
+`references/decisions.md`).** Stop-hook enforcement exists only where the
+host supports it (Claude Code / Codex verified; see `BUFFET-MODE.md` F7
+— the coordinator cannot set caps on another agent's host). Elsewhere
+the same rules are enforced by prose instruction in the skill only,
+labelled `prose-only`, never `DEGRADED` — the DEGRADED rung does not
+exist. Stop-hook run-log verification and the Cursor `.mdc` are NOT
+wired in this kit (open gap, Wave 6 — needs host verification + new
+install surface, not a doc edit).
 
 ## What a degradation is NOT
 

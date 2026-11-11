@@ -1,6 +1,6 @@
 ---
 name: frontend-kit
-description: "Build or redesign a frontend from a vague brief through a taste-locked loop: lock tokens against references, generate 5 structurally divergent variants, then build, run the deterministic gate, grade 1–5 on Type/Layout/Colour/Space, fix the top 2, and stop at the human gate. Use for landing pages, dashboards, and redesigns when the user wants a verified result, not a first draft."
+description: "Build or redesign a frontend from a vague brief through a taste-locked loop: lock tokens against references, generate 5 structurally divergent variants + 1 break-frame variant (6 total), then build, run the deterministic gate, grade 1–5 on Type/Layout/Colour/Space, fix the top 2, and stop at the human gate. Use for landing pages, dashboards, and redesigns when the user wants a verified result, not a first draft."
 license: MIT
 compatibility: Claude Code, Codex CLI, OpenCode, Gemini CLI, GitHub Copilot, Hermes Agent, Muse Code, CommandCode, Cursor. Full loop needs a shell, Node 22+, and system Chrome; without them it degrades per references/stop-rules.md, never by faking a grade.
 metadata:
@@ -26,11 +26,12 @@ brief — never mandatory, never a grading input. The animated-icons
 free-source reference lives in `references/animated-icons.md`: an
 optional step-1 effect source, used only when one animated icon earns
 its place within the page's dealt-moment budget — never mandatory, never a grading input.
-The 5 variants as concrete token directions live in
+The 5 structural variants + 1 break-frame variant (6 total) as concrete token directions live in
 `references/variant-briefs.md`; the variant scoring procedure
 (blind, random order, play first) lives in
 `references/variant-scoring.md`. The human-gate question bank lives in
-`references/human-gate-pack.md`. The converge checklist lives in
+`references/human-gate-pack.md`. The council decisions D1–D8 (P3 split, judge-input
+whitelist, agreement log) live in `references/decisions.md`. The converge checklist lives in
 `references/converge-checklist.md`; the anti-cliché blocklist in
 `references/anti-cliche.md`; the anchored style recipes in
 `references/style-recipes/` (read the INDEX first, then only the one
@@ -175,7 +176,7 @@ prompt for discussion.
    - Pattern 1 (condensing wordmark) → none — a vanilla class toggle (`scroll-motion.md:95–101`); no implementation skill.
    - Patterns 2, 3, 6, 8 → `vendor/gsap/gsap-scrolltrigger/SKILL.md` (scrub / pin / parallax). Pattern 3 is "Hero settle: scale-on-scroll" — the routing is a scrub because its Build-it text says the scale is "scrubbed to scroll over the hero's own height" (`scroll-motion.md:147–149`).
    - Pattern 5 (reveal) → `vendor/gsap/gsap-scrolltrigger/SKILL.md` by default; vanilla `IntersectionObserver` only when no other named pattern uses GSAP, so the page does not load GSAP for one reveal — record the reason on the same line.
-   - Pattern 7 (Lenis smooth scroll) → the upstream Lenis docs at https://github.com/darkroomengineering/lenis (no vendored Lenis doc exists in the kit), plus `vendor/gsap/gsap-scrolltrigger/SKILL.md` only if combined with a scrubbed pattern (2, 3, 6, 8).
+   - Pattern 7 (Lenis smooth scroll) → the upstream Lenis docs at https://github.com/darkroomengineering/lenis (no vendored Lenis doc exists in the kit), plus `vendor/gsap/gsap-scrolltrigger/SKILL.md` only if combined with a scrubbed pattern (2, 3, 6, 8). **Kind-scope warning:** on place/service/non-technical-product pages the textual Lenis signal FAILs effect-kind `scroll` (`scripts/gate/consistency.mjs:1215`) — a Lenis mention on such a page is not evidence of scroll motion, and the recipe's "Skip Lenis on dashboards, docs and data tables" is not the whole scope; do not route Pattern 7 on kind alone.
    When the brief asks for a 3D or shader hero, name the component and record it on its own line: `3D: <component from the ThreeUI catalog> — implementation skill: skills/threeui/SKILL.md`. threeui covers catalog components only — its trigger forbids general Three.js work, and custom 3D/shader work has no skill at all; say so instead of misrouting it to threeui. When a free GetLayers AI design tool supplies an effect (not a scroll pattern), name the tool on its own line: `Effect source: GetLayers <tool name> — free in-browser tool (references/getlayers.md §3)`. The effect still counts as one of the page's 1–2 dealt moments and still obeys the restraint rules in `references/style-recipes/scroll-motion.md`. When an animated icon supplies the effect, name the icon on its own line instead, in this format: `Effect source: <source> <icon name> — <licence>, <player/route> (references/animated-icons.md §3)` — one worked example per authorised source: `Effect source: useAnimations arrow-right — MIT, Lottie JSON inlined via lottie-web 5.13.0`; `Effect source: LottieFiles <icon name> — Lottie Simple License, Lottie JSON via dotLottie-wc / DotLottie JS API (free account required to download)`; `Effect source: Lordicon <icon name> — free licence based on CC BY-ND 4.0 (modified), @lordicon/element, self-hosted JSON — attribution link in the footer: <a href="https://lordicon.com/">Animated icons by Lordicon.com</a>`. The icon still counts as one unit of the page's 1–2 dealt-moment budget (animated-icons.md §4) but does not satisfy the gate's dealt-moment requirement (the gate counts only [data-moment] sections mounted by moments.js). A Design Read that names a pattern or a 3D component without its implementation skill or an explicit 'none' is incomplete — the round-brief generator fails loudly on it (see "Round briefs + per-role context budgets" below). Copy the dials into `design/PLAN.md`
    § Design Read. (Adapted from garden-skills `web-design-engineer`
    Step 2b — five dials, categorical here instead of its 1–10 numbers;
@@ -259,7 +260,7 @@ prompt for discussion.
    do not match the locked references, the workflow has a hole, not a feature.
    **"Commit" means exactly this (no more, no less):** (a) the files are
    saved under `design/` in the project, AND (b) the lock is recorded in
-   the run log with `node scripts/run-log.mjs --project <dir> lock
+   the run log with `node skills/frontend-kit/scripts/run-log.mjs --project <dir> lock
    --tokens design/tokens.css --refs <chosen DESIGN.md + reference
    screenshots> [--version N] [--approved-by "<approval basis>"]`. If
    the project is a git repo, ALSO run `git add design/
@@ -419,7 +420,7 @@ not on Standards Track.
   Aliases in the Figma file become `var(--...)` references in Layer 2.
 - Plan gate: Figma Starter has ONE variable mode; modes (light/dark)
   need Pro+. Never tell a Starter user to "just add a Dark mode"
-  (verified 2026-11-10, see `research/figma-integration/SYNTHESIS.md`).
+  (verified 2026-11-10, see `research/figma-integration/SYNTHESIS.md` — workspace research note, not shipped in this repo).
 
 **Converter status — honest.** The converter script
 (`scripts/figma-tokens-to-css.mjs`) is NOT built yet (recorded in
@@ -512,8 +513,8 @@ per-round gate/scores/evidence/fix-class/outcome), and the brief is
 assembled from it.
 
 1. **Assemble the brief with the generator, every round.**
-   `node scripts/run-log.mjs --project <dir> brief [--round N]` (or
-   `node scripts/round-brief.mjs --project <dir> [--round N]` directly).
+   `node skills/frontend-kit/scripts/run-log.mjs --project <dir> brief [--round N]` (or
+   `node skills/frontend-kit/scripts/round-brief.mjs --project <dir> [--round N]` directly).
    The brief contains, and nothing else: the 5-line lock summary, the
    Purpose lock field + the Design Read's motion/3D routing lines
    (patterns + implementation skill, 3D component + threeui — step 2.1a;
@@ -590,7 +591,7 @@ assembled from it.
    that drops or adds a section FAILS) and identical copy (a variant
    that changes, adds, or drops a line FAILS), and ACCEPTS structurally
    different variants with identical inventory + copy. Run
-   `scripts/variant-picker.mjs` to list them and record the pick.
+   `skills/frontend-kit/scripts/variant-picker.mjs` to list them and record the pick.
 3. **Step 2a — the human picks one variant.** The pick IS the feedback.
    Never re-argue direction in prose. Build on the picked variant only.
    The pick is blind and in random order: screenshots are shown without
@@ -672,7 +673,7 @@ every planned section/state exists in the build). All four fail the
 gate like any leg-1 finding; the converge check additionally blocks
 the human gate (step 6.1). Leg 1 also runs the security stage
 (`gate.sh` §6): the deterministic Stage 1 checks 1.1–1.12 from
-`research/security-ai/SYNTHESIS.md` §3 — secret scan, sink greps,
+`research/security-ai/SYNTHESIS.md` §3 (workspace research note, not shipped in this repo) — secret scan, sink greps,
 dependency existence/pinning, CVE, headers, weak crypto, licence scan,
 rate limits, lifecycle scripts. A security FAIL blocks the round like
 any leg-1 finding; a check that cannot run fails the section, never
@@ -763,7 +764,7 @@ to step 4 with a red gate.
 ## Step 3a — Security/compliance cross-check (after the gate, before any vision grade)
 
 The cross-check is a MANDATORY stage on the same level as the deterministic
-gate (coordination design §13 — user order 2026-11-11, EXTREMELY important).
+gate (BUFFET-MODE.md §14 — user order 2026-11-11, EXTREMELY important).
 It runs twice: (i) **pre-land, per slice** — after the step-3 gate, before
 the step-4 grade, on the merged tree (buffet mode) or the gated build
 (solo run); (ii) **pre-ship, once** — on the shipping version (the mainline
@@ -775,7 +776,7 @@ tip at stop / the best version), before the human-gate packet is prepared
    of the slice, NEVER the design judge for that slice. The security expert
    (`experts/security.md`, the 12th expert in `references/expert-pack.md`)
    is the checker. Its checklist is `references/security-checklist.md`
-   (Stages 0–6 from `research/security-ai/SYNTHESIS.md` §3; Stage 1 checks
+   (Stages 0–6 from `research/security-ai/SYNTHESIS.md` §3 — workspace research note, not shipped in this repo; Stage 1 checks
    1.1–1.12 are the deterministic [GATE] half and already run inside
    `gate.sh` §6 — the checker re-runs them with its own tools and its own
    verdict; the builder's scan results are evidence, never the verdict).
@@ -792,7 +793,7 @@ tip at stop / the best version), before the human-gate packet is prepared
    `design/crosscheck/round-<n>.md`) whose path is recorded with the
    verdict. Findings carry severity + evidence (file:line, what, why,
    suggested fix). The coordinator transcribes the verdict with
-   `node scripts/run-log.mjs --project <dir> crosscheck --slice <id>
+   `node skills/frontend-kit/scripts/run-log.mjs --project <dir> crosscheck --slice <id>
    --severe N --warning N [--waived N] --report <path> --checker
    <security-expert|crosscheck-subagent|crosscheck-team> --basis "<fresh
    context, no production history>"` — BEFORE any land is recorded. A land
@@ -810,6 +811,37 @@ tip at stop / the best version), before the human-gate packet is prepared
    never reaches the judge at all.
 
 Do not proceed to step 4 with a red gate OR an unclear cross-check.
+
+## Step 3b — Builder self-check (post-gate, 1 pass, visual-P0-only, report-only) [P3 split, D7]
+
+The builder looks at its own rendered page once, after the gate is green
+and the cross-check is clear, before the independent grade. This is the
+reworked P3 (council decision D7, `references/decisions.md`): a
+**report-only** self-check, not a grade and not a second gate.
+
+1. **When.** Exactly once per round, after step 3 + step 3a, before step 4.
+   One pass only — a second look is the gate's and the judge's job, not
+   the builder's.
+2. **Scope — visual P0 defects only.** Overflow, broken layout, missing
+   images, unreadable text — as seen on the rendered page (the step-4
+   capture, or the gate's own crops). No taste judgement, no axis
+   judgement, no score.
+3. **Report-only.** Record what was seen in the run log on the round's
+   record (`run-log.mjs record … --notes "self-check: <findings, or none>"`).
+   The record NEVER changes a score, NEVER triggers the stop rule, NEVER
+   substitutes for the independent grade, and is NEVER a judge input (D8
+   whitelist — the judge receives only the gate bit and the cross-check
+   bit, `references/grader-rubric.md`).
+4. **If it finds a P0 defect.** Fix it as a normal fix (the same as a gate
+   finding would be), re-run the gate from the top, and do NOT run the
+   self-check again that round. A clean self-check never means "≥4" and
+   never appears in the score table; a self-check with findings never
+   lowers any score.
+5. **What it is not.** It is not a grade, not a critique pass, and not a
+   substitute for the human gate. Human feedback at step 6 may arrive as
+   an annotated screenshot — see step 6 / `references/human-gate-pack.md`
+   for the annotation mechanism; annotations are human instructions to the
+   fix step, never judge inputs.
 
 ## Step 4 — Eyes + grade (Playwright CLI)
 
@@ -872,12 +904,17 @@ Do not proceed to step 4 with a red gate OR an unclear cross-check.
    the judge: the judge keeps the final Type/Layout/Colour/Space scores;
    the expert's top defects enter the fix list. An accessibility REWORK
    (1–2) blocks shipping even when the 4 axes are ≥4.
-5. Record the round with `scripts/run-log.mjs`: scores per round, grader
+5. Record the round with `skills/frontend-kit/scripts/run-log.mjs`: scores per round, grader
    identity + independence basis per round, gate result, gate findings
    (`--gate-findings`), fix class (`--fix-class`), outcome
    (`--outcome kept|discarded|re-pick|stopped|escalated|pending`), and
    the built page (`--page`) — the tokens hash is recorded automatically
-   from `design/tokens.css`. The run-log script
+   from `design/tokens.css`. Motion/UX expert second opinions are recorded
+   on the same record (`--expert-motion <1-5>` +
+   `--expert-motion-evidence "<observable>"`, `--expert-ux <1-5>` +
+   `--expert-ux-evidence "<observable>"`) — advisory only, allowed on
+   graded and no-grade records alike; the judge keeps the final 4-axis
+   scores. The run-log script
    REJECTS any entry whose grader is the builder. The log is the memory
    that stops rejected directions from being re-proposed, and it is the
    only run state the next round's brief is assembled from — record the
@@ -896,12 +933,12 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    (human gate). No fix round.
 2. **Round-1 re-pick (a).** Only after round 1: if Layout or Space ≤ 3 AND the judge's
    evidence lines cite the failure (not a bare score) — check with
-   `scripts/stuck-detector.mjs` — then re-pick from the kept variants, NOT fix-top-2,
+   `skills/frontend-kit/scripts/stuck-detector.mjs` — then re-pick from the kept variants, NOT fix-top-2,
    but ONLY if a structural (break-frame) variant exists among them. If all kept variants
    are CSS-only, (a) does NOT fire: escalate — end work on the direction, present the best
    version + blocker at the human gate (step 6). A re-pick under (a) consumes one of the
    2 re-picks and creates a NEW lock version (step 1.8).
-3. **Flat-line (b).** After any fix round (round 2+): run `scripts/stuck-detector.mjs`. A
+3. **Flat-line (b).** After any fix round (round 2+): run `skills/frontend-kit/scripts/stuck-detector.mjs`. A
    round that improves NO axis AND the gate adds no new finding ends work on the direction:
    re-pick if re-picks remain, else stop and present the best version at the human gate.
    Gate-progress exception: scores flat but the gate fixed a finding is NOT flat. Confirm
@@ -934,7 +971,7 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    move), `delta.md` (token diffs, ADDED / MODIFIED / REMOVED), and
    `tasks.md` (the top-2 list, each task citing its source). After the
    round, the ARCHIVE step merges the delta into PLAN.md § Amendments,
-   into the token dictionary (`scripts/token-dictionary.mjs`), and into
+   into the token dictionary (`skills/frontend-kit/scripts/token-dictionary.mjs`), and into
    the run log's notes — NEVER into TASTE.md or `tokens.css` mid-loop.
    The lock is immutable within a direction. A lessons merge into
    TASTE.md happens only once, after the human gate approves the build
@@ -990,7 +1027,7 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    cross-check once on the shipping version (the mainline tip at stop /
    the best version) before the human-gate packet is prepared. A SEVERE
    finding stops the ship exactly as a gate FAIL does; record the verdict
-   with `run-log.mjs crosscheck` and attach the report to the human-gate
+   with `skills/frontend-kit/scripts/run-log.mjs crosscheck` and attach the report to the human-gate
    packet.
 3. Present the human gate: the score table, the 3-width screenshots, 2–4
    targeted questions with concrete options (pick them from
@@ -1000,8 +1037,11 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    the ≥4-on-every-axis stop above is unchanged — the % is the human-eye
    bar for the vague-brief acceptance test, the 4-axis scores are the
    per-round gate). The human's pick or adjective maps through
-   the token dictionary (`scripts/token-dictionary.mjs`) and re-enters at
-   step 5 — never as a rebuild. The human-gate pack states the converge
+   the token dictionary (`skills/frontend-kit/scripts/token-dictionary.mjs`) and re-enters at
+   step 5 — never as a rebuild. An annotated screenshot from the human
+   maps the same way (see `references/human-gate-pack.md`): each
+   annotation + one sentence becomes a fix-list item via the token
+   dictionary. The human-gate pack states the converge
    result in one line: "Converge: green — N sections present, M states
    evidenced, K uncheckable (judge's call, step 4)".
 4. After human approval: save the 3-width screenshots as the pixel-diff
@@ -1048,7 +1088,7 @@ repeated here: one copy, at the top, is the rule.
 | Human-gate questions + next commands | `references/human-gate-pack.md` | Ask open-ended "what do you think?" |
 | Plan, Design Read, design-system declaration | `templates/design/PLAN.md`, `DESIGN-READ.md`, `DESIGN-SYSTEM.md` (filled in at step 1) | Build on an unapproved plan; put token values in DESIGN-SYSTEM.md |
 | Converge check (section/state presence) | `references/converge-checklist.md` + `scripts/gate/converge-check.mjs` | Present a human gate on a red converge; silently pass an uncheckable item |
-| Round brief (fresh context per round) | `scripts/run-log.mjs brief` / `scripts/round-brief.mjs` (lock + best HTML + gate findings + evidence lines + run state) | Paste the full run log into a builder/fixer prompt; carry a score from an earlier round |
+| Round brief (fresh context per round) | `skills/frontend-kit/scripts/run-log.mjs brief` / `skills/frontend-kit/scripts/round-brief.mjs` (lock + best HTML + gate findings + evidence lines + run state) | Paste the full run log into a builder/fixer prompt; carry a score from an earlier round |
 | Anti-cliché blocklist | `references/anti-cliche.md` + `scripts/gate/anti-cliche.mjs` (AC-1, AC-2) | Promote a checklist item to the gate without a script that checks it |
 | Anchored style recipes (one file only) | `references/style-recipes/` (INDEX first, then the one named file) | Load the whole recipe catalog; invent a direction from priors |
 

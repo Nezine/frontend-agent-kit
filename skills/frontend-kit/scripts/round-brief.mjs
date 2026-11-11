@@ -8,6 +8,7 @@
 // in a file, not in context (context rot: quality falls as input length
 // grows, and the lock sits mid-context where attention sags — see the
 // P7 evidence in research/workflow-optimization/worker-failure-modes.md
+// (workspace research note, not shipped in this repo)
 // F4/F6/F15; the Liu "Lost in the Middle" primary itself is CHƯA ĐỌC,
 // cited via convergent secondaries, never presented as read).
 //

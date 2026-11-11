@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deterministic gate for frontend-agent-kit (SYNTHESIS.md §1 step 3),
+# Deterministic gate for frontend-agent-kit (phase-1 research/SYNTHESIS.md §1 step 3 — workspace research note, not shipped in this repo),
 # LEG 1 of 2 (reconciled 2026-11-10, probe 2): leg 1 is this file (taste
 # lock + impeccable detect + static checks); leg 2 is gate.mjs (copy-lint
 # + consistency browser leg). A "gate pass" means BOTH legs green on the
@@ -105,8 +105,9 @@
 #      converge-checklist.md). Never on a variants-dir target (the
 #      unpicked alternatives are not the deliverable) and never on the
 #      demo single-file target.
-#   6. Security stage (2026-11-11, cross-check §13): the deterministic
+#   6. Security stage (2026-11-11, cross-check §14): the deterministic
 #      Stage 1 checks 1.1–1.12 from research/security-ai/SYNTHESIS.md §3
+#      (workspace research note, not shipped in this repo)
 #      — 1.1 secret scan (gitleaks/trufflehog), 1.2–1.5 sink greps
 #      (innerHTML/eval/template-injection/unvalidated URLs), 1.6
 #      dependency existence + pinning + lockfile + integrity (npm view),

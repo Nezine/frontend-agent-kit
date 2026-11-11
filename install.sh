@@ -11,7 +11,7 @@
 #   ./install.sh [--hosts=claude,codex,opencode,...] [--dry-run] [--no-warm]
 #                [--skip-hooks] [--skip-mcp] [--skip-eyes]
 #
-# Contract (SYNTHESIS.md §3.3): clone -> read AGENTS.md -> run this script ->
+# Contract (phase-1 research/SYNTHESIS.md §3.3 — workspace research note, not shipped in this repo): clone -> read AGENTS.md -> run this script ->
 # restart/reload the host -> verify in the NEW session -> report.
 # NEVER auto-upgrades vendored pins at install time; scripts/check-versions.sh
 # only warns about drift (A4). Figma is EXCLUDED from unattended install
@@ -145,7 +145,7 @@ for arg in "$@"; do
   esac
 done
 
-[[ "$(uname -s)" == Linux ]] || fail "This package currently supports Linux only. macOS/Windows install paths are open work, not verified — see SYNTHESIS.md §7."
+[[ "$(uname -s)" == Linux ]] || fail "This package currently supports Linux only. macOS/Windows install paths are open work, not verified — see phase-1 research/SYNTHESIS.md §7 (workspace research note, not shipped in this repo)."
 
 # --- prerequisites: hard for the copy path, soft (warn) for node ----------
 # DECISION (5c, recorded 2026-11-10): python3 and git stay HARD prereqs
@@ -879,8 +879,11 @@ elif [[ "$skip_eyes" == 0 ]]; then
 fi
 
 # --- Impeccable hook (best-effort) ----------------------------------------
-# Provider tokens VERIFIED from the upstream README: claude, codex, cursor.
-# No verified token exists for opencode/gemini/hermes/copilot in the
+# Provider tokens verified AND passed by this script: claude, codex only.
+# The upstream README also names a cursor token, but this script never
+# passes it (the providers loop below builds claude/codex only) and does
+# not verify cursor hook wiring — cursor is recorded, not passed. No
+# verified token exists for opencode/gemini/hermes/copilot in the
 # --providers list, so those hosts get the manual command instead of a guess.
 if [[ "$skip_hooks" == 1 ]]; then
   mkdir -p "$state_dir"

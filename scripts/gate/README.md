@@ -50,7 +50,13 @@ the taste-skill tree (MIT).
   onto the first screen (hero-fill FAIL). The kit file returns early when
   `vw < 1024`, so hero-fill fires only at desktop widths; below 1024px the
   hero's height follows its content (doctrine §4) and the peek is normal
-  tablet/phone UX. Those three patches are the ONLY kit edits to the file.
+  tablet/phone UX. (4) the effect-kind comment-strip patch (Wave 6, bug 3).
+`effectSignals` matched its scroll-library regex against raw file text, so a
+word in a comment (e.g. "Lenis" in a linked stylesheet comment) FAILed
+effect-kind on no-effect pages. The kit file strips comments before that one
+match (JS via scanJs `noComments`, CSS/page via a /* */ strip); real library
+use (imports, constructors, live CSS scroll timelines) still matches. Those
+four patches are the ONLY kit edits to the file.
 `consistency.mjs` optionally reads `../assets/moments/index.json` (two
 `try/catch` reads); the file is absent here, so those reads fail silently
 and the checker runs without the moments data. That is upstream behaviour,
@@ -261,7 +267,9 @@ Resolution (read 2026-11-10, taste-skill 2.5.1 clone):
 
 ## Training regression corpus
 
-The deterministic gate consumes ASVS 5.0.0 requirement IDs (`v5.0.0-x.y.z`, L1 floor / L2 for auth/PII/money/secrets) as its pass/fail checklist, the XSS/DOM-XSS cheat sheets as its sink rules, and the 77 ground-truth training cases in `research/security-ai/training/ground-truth.md` (25 code pairs, 24 agent-loop cases, 28 supply-chain/licence/ToS cases) as its regression corpus — the gate's own tests must run them. Training cases only: the 20 held-out cases are sealed, checker-only, and never enter the gate's tests.
+The deterministic gate consumes ASVS 5.0.0 requirement IDs (`v5.0.0-x.y.z`, L1 floor / L2 for auth/PII/money/secrets) as its pass/fail checklist, the XSS/DOM-XSS cheat sheets as its sink rules, and the 77 ground-truth training cases in `research/security-ai/training/ground-truth.md` (workspace research material, not shipped in this repo; 25 code pairs, 24 agent-loop cases, 28 supply-chain/licence/ToS cases) as its regression corpus — the gate's own tests must run them. Training cases only: the 20 held-out cases are sealed, checker-only, and never enter the gate's tests.
+
+**Runner status (Wave 6): no test runner exists yet that runs these 77 cases against the gate — the corpus is prose in the sealed training material; a runner needs per-case fixtures + a case→gate-check mapping, which is unwired work, not built here. "The gate's own tests must run them" is a requirement on the gate's own tests, not a claim that they run today.**
 
 **Status: ASSEMBLED — awaiting dedicated red-team verification before delivery. Do not use for graduation until the red team passes it.** The training material is wired in, but GRADUATION USE IS BLOCKED until the package passes its dedicated red-team verification (still owed — open item).
 

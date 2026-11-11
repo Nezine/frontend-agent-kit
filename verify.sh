@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # frontend-agent-kit — verifier v2.
 #
-# Verifies the LOOP, not just files (SYNTHESIS.md §3.1, §6 A10/A7/A3):
+# Verifies the LOOP, not just files (phase-1 research/SYNTHESIS.md §3.1, §6 A10/A7/A3 — workspace research note, not shipped in this repo):
 #   1. every expected skill present in every installed host's skills dir,
 #      with frontmatter name == directory name (catches double-nesting);
 #   2. no stale ${CLAUDE_PLUGIN_ROOT} paths in installed skills (A3);

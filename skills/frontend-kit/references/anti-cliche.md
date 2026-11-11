@@ -28,7 +28,8 @@ These two are enforced by `scripts/gate/anti-cliche.mjs`. A finding
 fails the gate like any leg-1 finding. Each finding is labelled
 SEEDED: the items are a labelled seed list from garden-skills, NOT
 grown from an observed failure in this kit's probe builds. The gate
-grows only from observed failures (P8's gate-growth rule governs);
+grows only from observed failures (the gate-growth rule governs — this
+is not P8 the proposal; see `references/decisions.md`);
 this seed list is the exception, and a seeded item that never fires
 on a real build is a candidate for removal.
 

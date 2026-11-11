@@ -23,7 +23,7 @@ Hermes specifics for this session:
   project root. Global skills need no trust step.
 - After install, confirm with `hermes skills list` in the new session.
 - Hook (VERIFIED available): `hermes plugins enable impeccable-design-hook` once
-  (Impeccable 4.8.1 changelog + README). Run it and confirm the hook is enabled.
+  (Impeccable 4.8.2 changelog + README). Run it and confirm the hook is enabled.
 - MCP: mcp_servers: in ~/.hermes/config.yaml; `hermes mcp` handles install/config/OAuth 2.1.
 - Vision caveat: the full loop (screenshot grading) depends on whether the model
   Hermes is pointed at has vision — that is NOT verified for this host. If your model
@@ -48,7 +48,7 @@ When done, report in this format:
 
 - Skills dir `~/.hermes/skills/`, `skills.external_dirs`, trust step, `hermes skills list`:
   VERIFIED from Hermes docs/guides (see `research/worker-self-install.md` §7).
-- Hook command: VERIFIED (Impeccable 4.8.1 changelog + README).
+- Hook command: VERIFIED (Impeccable 4.8.2 changelog + README).
 - Vision capability: NOT verified (open question — see SYNTHESIS §6).
 - ≥64K-context / false-memory-claim warnings: CLAIMED from secondary guides
   (checked against repo/docs 2026-09-28/30) — re-verify against current Hermes docs.

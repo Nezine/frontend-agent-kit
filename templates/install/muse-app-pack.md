@@ -46,9 +46,9 @@
    If yes, the plan is generic; fix the plan, not the build. **Do not write page HTML
    until the tokens are locked and shown to me.**
 2. **Build.** One HTML file, tokens only — no inline styles, no ad-hoc colours or sizes.
-   If my brief is vague on direction: give me **5 CSS-only variants** (same content,
-   same copy, same HTML — only CSS changes: Editorial / Dark / Warm brutalist / Glassy /
-   Minimal) and let me pick one. My pick IS the feedback — never re-argue direction
+   If my brief is vague on direction: give me **5 structural variants + 1 break-frame = 6 variants** (same content,
+   same copy, same section inventory — structure may differ; tokens stay locked: Editorial / Dark / Warm brutalist / Glassy /
+   Minimal + break-frame) and let me pick one. My pick IS the feedback — never re-argue direction
    in prose.
 3. **Hand checklist (by hand — no scripts run here; this is a human
    checklist, NOT a deterministic gate).** Before showing me a

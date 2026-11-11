@@ -4,7 +4,7 @@
 at the end of step 1, BEFORE tokens are locked. The Design Read is a
 one-block summary of the brief that makes the direction DISCUSSABLE
 ("variance High, motion Low") before anything is built — cheaper than
-five variants and earlier than the v0 checkpoint. It is adapted from
+six variants and earlier than the v0 checkpoint. It is adapted from
 garden-skills `web-design-engineer` (SKILL.md Step 2b, read in full
 2026-11-10, commit 08150e75, MIT): the five dials are the same five
 (variance / motion / density / asset / fidelity), but the scale is

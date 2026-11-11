@@ -633,7 +633,12 @@ function effectSignals(scan) {
     shaderStrings: scan.files.reduce((n, f) => n + shadersOf(f).length, 0),
     // (a dealt moment's own files follow the scroll inside its section: effect-kind judges the moment. Only the kit's own
     // files count as one: assets/moments/<id>/moment.js or .css, lib.js and moments.js; a builder's js/moments/app.js is the page's)
-    scrollStrong: [...new Set([...(scan.files.filter((f) => f.isPage || !KIT_MOMENT_FILE.test(urlPath(f.ref))).map((f) => f.text).join('\n')).matchAll(/ScrollTrigger|ScrollSmoother|\bLenis\b|locomotive-scroll|scroll-timeline|animation-timeline\s*:\s*(?:scroll|view)|view-timeline|scrollama/g)].map((m) => m[0]))],
+    // KIT PATCH (Wave 6, bug 3): comment text is not code — strip comments before the scroll-library scan, so a mere
+    // mention (e.g. "Lenis" in a CSS comment) no longer FAILs effect-kind. JS files use the scanner's noComments
+    // (scanJs, blanked length-preserving); CSS and the page use a /* */ strip (HTML comments are already blanked
+    // by staticScan). Residual, NOT fixed here: a // comment inside an inline <script> in the page HTML, and a
+    // mention inside a string literal or body copy — still matched (see assessment §3.4).
+    scrollStrong: [...new Set([...(scan.files.filter((f) => f.isPage || !KIT_MOMENT_FILE.test(urlPath(f.ref))).map((f) => (f.kind === 'js' && f.scan ? f.scan.noComments : f.text.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length)))).join('\n')).matchAll(/ScrollTrigger|ScrollSmoother|\bLenis\b|locomotive-scroll|scroll-timeline|animation-timeline\s*:\s*(?:scroll|view)|view-timeline|scrollama/g)].map((m) => m[0]))],
     particleLibs: [...new Set([...all.matchAll(/tsparticles|particlesJS|new\s+Particle\s*\(|class\s+Particle\b|particleCount|THREE\.Points|numParticles|particles\.push\(/g)].map((m) => m[0]))],
     externalLibs: scan.external.filter((e) => !/\.css(?:[?#]|$)|fonts\.(?:googleapis|gstatic)\.com/i.test(e) && EXTERNAL_LIBS.test(e)),
     reducedMotion: /prefers-reduced-motion/.test(all + '\n' + css),

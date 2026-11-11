@@ -25,14 +25,14 @@ is SUPERSEDED by coordinator decision, recorded in the repo `AGENTS.md`
 guise, is the builder instance grading its own work: same instance, same
 thread, a "fresh pass" inside the build thread, or a `muse-manager`
 invocation that shares the builder's context or production history. The
-run-log script (`scripts/run-log.mjs`) enforces this: a grader entry is
+run-log script (`skills/frontend-kit/scripts/run-log.mjs`) enforces this: a grader entry is
 accepted only with an independence basis stating BOTH fresh context AND
 no production history — "fresh context" alone is NOT enough.
 
 **Any score without a named independent grader label is INVALID.** A score
 table that lists a grader of `builder`, `self`, or no grader at all must be
 thrown out and re-graded by an allowed judge. The run-log script
-(`scripts/run-log.mjs`) rejects log entries whose grader is the builder.
+(`skills/frontend-kit/scripts/run-log.mjs`) rejects log entries whose grader is the builder.
 
 **The executable grader is `skills/frontend-judge/`** — a complete judge
 skill (SKILL.md + `references/invocation.md` with the fresh-sub-agent
@@ -76,6 +76,13 @@ information the judge receives — no findings, no severity counts, no report
 text, no checker identity. The D8 whitelist is unchanged by this:
 cross-check findings are forbidden judge inputs, exactly as gate findings
 are.
+
+**Not judge inputs.** The builder's step-3b self-check (P3 reworked form —
+1 pass, post-gate, visual-P0-only, report-only) is never a judge input, and
+never appears in the score table. A human annotated screenshot from the
+human gate is a fix instruction to the builder (via the token dictionary
+into the step-5 fix list, `references/human-gate-pack.md`), never a judge
+input — the judge grades the rebuilt page fresh.
 
 There is no builder-graded path, and builder grading can never trigger the
 stop rule. Any score without a named independent grader label
@@ -404,18 +411,22 @@ FIRST, pixels second: a score contradicting a tool measurement is invalid
 helper is `skills/frontend-kit/scripts/crop-sections.mjs` (council-A's
 name; council-B's `crop-helper.mjs` is the not-used alias).
 
-**Fresh scores every round — carried scores are abolished.** Every round
-produces FRESH per-axis scores for the whole page, from the new
-screenshots, for every axis it grades. The cheap grade sends fewer
-PIXELS, not fewer scores. A section the round does not re-score (unchanged
-since an earlier round) is marked `not re-graded (unchanged since round N)`
-in the score table — an explicit ABSENCE, never a score. The run log
-records such sections via `--not-regraded "<#section,#section>"` on the
-round's record (`scripts/run-log.mjs`); `--scores` always carries four
+**Fresh scores every round — carried scores are abolished.** Every graded
+round re-judges the four per-axis integers FRESH from that round's inputs
+(the 390 full-page shot + changed-section crops + tool checks). The cheap
+grade sends fewer PIXELS, not fewer scores. The whole page IS freshly
+observed every round at 390 (Variant B is a full-page 390 shot). A section
+the round does not re-examine at pixel level at 1440/768 (unchanged since
+an earlier round — its 390 rendering was still freshly observed that round)
+is marked `not re-graded (unchanged since round N)` in the score table —
+an explicit ABSENCE, never a score. The run log records such sections via
+`--not-regraded "<#section,#section>"` on the round's record
+(`skills/frontend-kit/scripts/run-log.mjs`); `--scores` always carries four
 fresh integers or `none` — a `not re-measured` value in `--scores` is
 rejected by the tool (W-LOOP fix, 2026-11-11: the rubric's old
 "run-log value `not re-measured`" could not be executed as written).
-P6 flat-line detection and P8's agreement log use fresh scores only. The
+P6 flat-line detection and the agreement log (P8, defined in
+`references/decisions.md`) consume the four fresh integers only. The
 stop round is always a full fresh grade — that rule lives in
 `stop-rules.md` (cross-referenced here, not restated as a second rule).
 
@@ -552,14 +563,19 @@ docs — NOT verified against Anthropic's official docs):** image tokens ≈
 `min(width × height / 750, 1,568)` per image, standard tier (long edge
 1,568px, cap ~1,568 tokens/image). **Formula input dimensions are SENT
 dimensions** — width × height of the image as sent, after the loop's
-downscale rules: full 3-width shots are sent as captured (no downscale
-rule is stated for them, so sent dims = as-captured dims, capped at
-1,568 by the formula); locked refs are downscaled to 720px long edge
-before sending; the cheap 390 full shot and crops are downscaled to
-1,568px long edge before sending. The old table applied the formula to
-as-captured dims on the R2 390-full line (1,560) while the cheap-grade
-rule downscales that shot first (97×1568 → 203) — that is the error
-corrected below. **Tier assumption, stated on every number below:
+downscale rules: full 3-width shots are downscaled to 1,568px long edge
+before sending, per the Downscale rule (ALL judge images — the earlier
+"sent as captured" reading was the error corrected below); locked refs are
+downscaled to 720px long edge before sending; the cheap 390 full shot and
+crops are downscaled to 1,568px long edge before sending. The old table
+applied the formula to as-captured dims on the R2 390-full line (1,560)
+while the cheap-grade rule downscales that shot first (97×1568 → 203) —
+and on the R1 full-shot lines (4,704) while the Downscale rule downscales
+those too. The R1 Variant B lines below are RE-DERIVED from the sensitivity
+note's exacts (2,584.6 run-1 / 2,647.3 run-2 on a 2-ref basis, incl. 864
+refs) — a derivation, not a fresh instrumented run: the probe sent
+as-captured, so a re-measurement with downscaled sends is still owed (one
+instrumented probe build). **Tier assumption, stated on every number below:
 standard tier.** On a Claude 4.7+ high-res tier the same shots cost ~3×
 per image (same PNG 1,578 → 4,744 tokens; same three full-page shots
 ~8,000–9,500). The enforceable defence is downscaling to 1,568px long
@@ -567,14 +583,14 @@ edge before sending, not a model pin.
 
 | Images per round (standard tier) | Current loop | With P12+P13, Variant A (390 viewport) | With P12+P13, Variant B (390 full-page) |
 |---|---|---|---|
-| Round 1: build shots (1440 + 768 + 390 full-page) | ~4,700 DERIVED (1,568 + 1,568 + 1,560) | ~4,700 | ~4,700 (MEASURED 4,704 in both runs — 3 × 1,568, as-captured, capped; +0.1% vs derived) |
+| Round 1: build shots (1440 + 768 + 390 full-page) | ~4,700 DERIVED (1,568 + 1,568 + 1,560) | ~4,700 | Run-1 1,721 / run-2 1,783 RE-DERIVED (full shots downscaled to 1,568px long edge before sending; run-1 components 1,050 + 468 + 203, exact 1,720.6; run-2 exact 1,783.3, rounded components 1,050 + 510 + 224 sum to 1,784) |
 | Round 1: reference shots (1–3 locked refs, 720px long edge) | 0 (the hole P12 fixes) | +~1,400 (3 refs × ~470) | +~1,400 (3 refs × ~470 DERIVED; MEASURED 432 per ref in both runs, −8%) |
-| **Round 1 images total** | **~4,700** | **~6,100** | **~6,100 (MEASURED 5,568 with the probe's 2 refs in both runs; 3-ref measured-equivalent 6,000, −1.6% vs derived)** |
+| **Round 1 images total** | **~4,700** | **~6,100** | **Run-1 3,017 / run-2 3,079 RE-DERIVED (3-ref basis: build 1,721/1,783 + 1,296 refs at 432 each; 2-ref: 2,585 / 2,647)** |
 | Rounds 2–3: build images | ~4,700 | ~1,100 (390 viewport 439 + crops 432 + 260) | Run-1 913 MEASURED (390 full 203 + 1 outermost crop 710; pre-dedupe 1,436 = 203 + 1,233) · run-2 836 MEASURED (390 full 224 + 1 crop 612; exact 835.2) |
 | Rounds 2–3: reference shots | 0 | +~1,400 | +~1,400 (3 refs × ~470 DERIVED; MEASURED 432 each in both runs) |
 | **Rounds 2–3 images total (each)** | **~4,700** | **~2,500 (E3's figure — viewport reading only)** | **Run-1 2,209 / run-2 2,132 MEASURED (3-ref basis: build + 1,296 refs at 432 each; 2-ref: 1,777 / 1,700)** |
-| Images / build, 3 rounds | ~14,100 | ~11,100 (−21%) | ~10,300–10,400 MEASURED (3-ref: run-1 10,418, run-2 10,264; −26.1% to −27.2%) |
-| Images / build, 2 rounds (typical, flat-line stop) | ~9,400 | ~8,600 (−9%) | ~8,100–8,200 MEASURED (3-ref: run-1 8,209, run-2 8,132; −12.7% to −13.5%) |
+| Images / build, 3 rounds | ~14,100 | ~11,100 (−21%) | Run-1 7,435 / run-2 7,343 RE-DERIVED (3-ref; −47.3% / −47.9% vs current 14,100) |
+| Images / build, 2 rounds (typical, flat-line stop) | ~9,400 | ~8,600 (−9%) | Run-1 5,226 / run-2 5,211 RE-DERIVED (3-ref; −44.4% / −44.6% vs current 9,400) |
 
 **Crops counting rule (MEASURED, W-LOOP fix 2026-11-11, confirmed in
 run-2).** The old table assumed 2 crops (432 + 260 = 692). The exercise
@@ -601,7 +617,8 @@ Reference shots cost **+~1,400 image tokens/round** for 3 downscaled refs
 (range ~1,300–2,100 depending on aspect; 1 ref ≈ 470 DERIVED, 432
 MEASURED in both runs). Table totals are labelled for 3 refs; the probe
 locked 2 refs in both runs, so its measured round totals are 864 for refs
-(R1 images 5,568 in both runs; R2 images run-1 pre-dedupe 2,300,
+(R1 images 2,585 run-1 / 2,647 run-2 on the 2-ref basis, downscaled full
+shots — the old as-captured 5,568 is superseded; R2 images run-1 pre-dedupe 2,300,
 post-dedupe 1,777; run-2 1,700).
 
 **Text context (MEASURED, replacing the old ~4k estimate — a range by
@@ -654,10 +671,14 @@ only a few percent.
 docs); the high-res-tier multiplier for full-page shots; and the sample
 itself — every MEASURED figure above is n=1 build × 2 runs (one probe
 build, one lock from the vendored DESIGN.md, 2 locked refs), not a
-multi-build average. Sensitivity note on the R1 line: the table's basis is
-full shots sent as captured (no downscale rule stated for them). If the
-1,568px downscale were applied to full shots too, R1 measured would be
-2,585 in run-1 (exact 2,584.6; rounded components 1,050 + 468 + 203 +
-864) and 2,647 in run-2 (exact 2,647.3; rounded components 1,050 + 510 +
-224 + 864 sum to 2,648) — the rubric should state the downscale rule
-for full shots explicitly before that reading is used.
+multi-build average. Sensitivity note on the R1 line (retired as a
+hypothetical — now the adopted reading): the table's basis WAS full shots
+sent as captured (no downscale rule stated for them). The Downscale rule
+(ALL judge images) now states it explicitly: full shots are downscaled to
+1,568px before sending, and the R1 Variant B lines above are re-derived
+from that reading — R1 total 2,585 in run-1 (exact 2,584.6; rounded
+components 1,050 + 468 + 203 + 864) and 2,647 in run-2 (exact 2,647.3;
+rounded components 1,050 + 510 + 224 + 864 sum to 2,648). Under the old
+as-captured reading R1 measured would have been 4,704 build shots
+(3 × 1,568 capped) and R1 total 5,568 (2-ref) / 6,000 (3-ref) — those
+figures are superseded.

@@ -7,7 +7,7 @@
 > `research/ux/SYNTHESIS.md` §8 UX-A) of the Nielsen-heuristics
 > proposal (`research/ux/expert-1-heuristics.md`, E1) and the
 > probe-derived slop checklist
-> (`research/ux/expert-3-slop-grading.md`, E3) into one 14-item
+> (`research/ux/expert-3-slop-grading.md`, E3 — workspace research notes, not shipped in this repo) into one 14-item
 > criterion set — one criterion per defect class. E1 and E3 must not
 > coexist as two experts.
 
@@ -310,7 +310,7 @@ Gate: PASS (detect 0 findings, consistency 0 FAIL, copy-lint 0 FAIL)
   (accessed 2026-11-10).
 - Probe evidence for criteria 6, 10–14: three probe builds graded
   2026-11-10 (one landing page, one dashboard, one portfolio);
-  see `research/ux/expert-3-slop-grading.md` §1 (tells T1–T7).
+  see `research/ux/expert-3-slop-grading.md` §1 (tells T1–T7; workspace research note, not shipped in this repo).
 - Heuristics checklist and approved crawler rules with concrete
   examples: `skills/frontend-kit/references/ux-checklist.md`.
 

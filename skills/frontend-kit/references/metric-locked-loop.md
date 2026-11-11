@@ -8,8 +8,7 @@ of his words, not his description of the kit: **nothing in this file
 implies Wang endorses the kit. He does not, anywhere in the sources
 read.**
 
-**Verification basis.** Every Wang quote below comes from the research
-synthesis `research_notes/alexander-wang-statements-20261111/REPORT.md`
+**Verification basis.** Every Wang quote below comes from the research synthesis `research_notes/alexander-wang-statements-20261111/REPORT.md` (workspace research note, not shipped in this repo)
 (synthesis date / access date for all sources: **2026-11-11**), which
 checked the four fixed worker reports against two red-team verdicts.
 Each claim carries its source URL and the access date, per council
@@ -274,8 +273,10 @@ the taste lock. That is the whole of it — light touch by design.
 
 - Synthesis (authority for tiers, verdicts, and the §7 gaps list):
   `research_notes/alexander-wang-statements-20261111/REPORT.md`
-  (2026-11-11). Worker reports + red-team verdicts:
-  `research_notes/alexander-wang-statements-20261111/workers/`.
+  (2026-11-11) — workspace research note, not shipped in this repo.
+  Worker reports + red-team verdicts:
+  `research_notes/alexander-wang-statements-20261111/workers/` — workspace
+  research notes, not shipped in this repo.
 - YC Startup School 2026 video (primary event):
   https://www.youtube.com/watch?v=sJ4VJWycX9M (published
   2026-07-29; accessed 2026-11-11). Transcript (YC-endorsed link,

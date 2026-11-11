@@ -17,7 +17,7 @@ is missing.
 
 Claude Code specifics for this session:
 - Install target: ~/.claude/skills/ and ~/.agents/skills/ (install.sh covers both).
-- Fast path (same result, one command): /plugin marketplace add phamTuan207/frontend-agent-kit
+- Fast path (UNVERIFIED — no cold-verification record; the verified route is `./install.sh`): /plugin marketplace add phamTuan207/frontend-agent-kit
   then /plugin install frontend-agent-kit@frontend-agent-kit
   (note: a plugin can be installed-but-off via `defaultEnabled` — check /plugin → Installed).
 - After install, run /reload-skills (or start a new session) and confirm with /skills.

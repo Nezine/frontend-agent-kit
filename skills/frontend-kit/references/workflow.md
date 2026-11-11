@@ -1,10 +1,12 @@
 # Workflow spec — the taste-locked deterministic-gate loop (condensed §1)
 
-Source: `research/SYNTHESIS.md` §1 (frontend-agent-kit v2, 2026-11-10).
+Source: `research/SYNTHESIS.md` §1 (frontend-agent-kit v2, 2026-11-10) — workspace research note, not shipped in this repo.
 Evidence labels: **VERIFIED** = a primary source was read (URL + date);
 **CLAIMED** = a source says so, not independently checked; **CHƯA ĐỌC** =
 not read, never presented as read. This file condenses the loop; the
 orchestrator SKILL.md is the route map and this file is the detailed record.
+Council decisions D1–D8 (including the P3 split and the agreement-log
+definition) live in `references/decisions.md`.
 
 **Grader rule (user direction, 2026-11-10, non-negotiable — resolves
 red-team risk A1): the builder NEVER grades its own work.** The grade step
@@ -176,7 +178,7 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   BEFORE any HTML is written. If the output's tokens do not match the locked
   references, the workflow has a hole, not a feature. **"Commit" means
   exactly:** (a) the files are saved under `design/` in the project, AND
-  (b) the lock is recorded in the run log (`node scripts/run-log.mjs
+  (b) the lock is recorded in the run log (`node skills/frontend-kit/scripts/run-log.mjs
   --project <dir> lock --tokens design/tokens.css --refs <chosen DESIGN.md
   + reference screenshots> [--version N] [--approved-by "<approval basis>"]`).
   `--version` defaults to the existing lock count + 1; a re-pick records a NEW
@@ -214,7 +216,7 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   whose tokens match the locked `design/tokens.css` most closely (count of
   locked `--name: value` declarations reproduced exactly; ties broken
   alphabetically). No quality verdict. **"Play first, critique later":**
-  all five variants are generated before any critique. The v0 checkpoint
+  all six variants are generated before any critique. The v0 checkpoint
   below governs the PICKED variant's build only — never mid-generation.
 - **v0 draft checkpoint (step 2.4, on the picked variant only).** Before
   writing full components, build a viewable v0 skeleton at
@@ -338,6 +340,23 @@ every brief:**
 `taste-reference` stays the default taste lens on every build; what is
 scoped here is the GATE checks, not the lens.
 
+## 3b. Builder self-check (post-gate, 1 pass, visual-P0-only, report-only) [P3 split, D7]
+
+After the gate is green and the cross-check is clear, before the step-4
+grade, the builder looks at its own rendered page once — the reworked P3
+(council decision D7, `references/decisions.md`). Scope is visual P0 defects
+only: overflow, broken layout, missing images, unreadable text. Report-only:
+record what was seen in the run log on the round's record
+(`--notes "self-check: <findings, or none>"`). The record NEVER changes a
+score, NEVER triggers the stop rule, NEVER substitutes for the independent
+grade, and is NEVER a judge input (D8 whitelist — the judge receives only the
+gate bit and the cross-check bit). If it finds a P0 defect, fix it as a normal
+fix, re-run the gate from the top, and do NOT run the self-check again that
+round. A clean self-check never means "≥4" and never appears in the score
+table. Human feedback at step 6 may arrive as an annotated screenshot — see
+`references/human-gate-pack.md` for the annotation mechanism; annotations are
+human instructions to the step-5 fix list, never judge inputs.
+
 ## 4. Eyes + grade (Playwright CLI)
 
 - Serve the page over http (never file:// — module scripts don't run).
@@ -380,13 +399,18 @@ scoped here is the GATE checks, not the lens.
   context 35,784 run-1 / 31,414 run-2; whole-round saving 5.9–7.2%
   run-1 / 7.1–8.3% run-2). Downscale ALL judge images to
   1,568px long edge before sending (host note for Claude Code: this avoids
-  the high-res tier); model selection is not a loop rule. Every round
-  produces FRESH per-axis scores for the whole page from the new
-  screenshots, for every axis it grades — carried scores are abolished;
-  an unchanged SECTION not re-scored is marked `not re-graded (unchanged
-  since round N)` in the score table and recorded in the run log via
-  `--not-regraded "<section ids>"`, an explicit absence, never a score. P6 flat-line detection and P8's agreement log
-  use fresh scores only. The stop round is always a full fresh grade
+  the high-res tier); model selection is not a loop rule. Full 3-width
+  shots are downscaled to 1,568px before sending too — they are NOT sent
+  as captured. Every graded round re-judges the four per-axis integers
+  FRESH from that round's inputs (the 390 full-page shot +
+  changed-section crops + tool checks) — carried scores are abolished;
+  the whole page IS freshly observed every round at 390 (Variant B is a
+  full-page 390 shot). `not re-graded` marks a section not re-examined at
+  pixel level at 1440/768 — its 390 rendering was still freshly observed
+  that round — and is written as `not re-graded (unchanged since round N)`
+  in the score table and recorded in the run log via
+  `--not-regraded "<section ids>"`, an explicit absence, never a score. P6 flat-line detection and the agreement log (P8,
+  defined in `references/decisions.md`) consume the four fresh integers only. The stop round is always a full fresh grade
   (rule in `references/stop-rules.md`). Precedence: P5's classification
   runs first (token-only fix → gate-only, no grade); P13's cheap grade
   applies only to rounds that get a grade (structural rounds 2–3); when
@@ -419,7 +443,7 @@ scoped here is the GATE checks, not the lens.
   instruction cites its source — a gate finding, a grader evidence line,
   or a human instruction — never "improve it". After the round, the
   ARCHIVE step merges the delta into PLAN.md § Amendments, into the
-  token dictionary (`scripts/token-dictionary.mjs`), and into the run
+  token dictionary (`skills/frontend-kit/scripts/token-dictionary.mjs`), and into the run
   log's notes — NEVER into TASTE.md or `tokens.css` mid-loop. The lock
   is immutable within a direction. A lessons merge into TASTE.md happens
   only once, after the human gate approves the build (step 6.4). The
@@ -504,7 +528,11 @@ scoped here is the GATE checks, not the lens.
   `--pairwise-agrees yes | no`), the stop-round jury (`--jury "<t,l,c,s
   median>"` + `--jury-mode disjoint-3 | single-family | single` +
   `--jury-votes "<v1;v2;v3>"`), outcome (`--outcome kept | discarded | re-pick |
-  stopped | escalated | pending`, default `pending`), and the built page
+  stopped | escalated | pending`, default `pending`), Motion/UX expert
+  second opinions (`--expert-motion <1-5>` +
+  `--expert-motion-evidence "<observable>"`, `--expert-ux <1-5>` +
+  `--expert-ux-evidence "<observable>"` — advisory only, allowed on graded
+  and no-grade records alike), and the built page
   graded (`--page`); `tokensHash` is recorded automatically as the sha256
   of `design/tokens.css` when present, else null. The plan's approval basis
   (human approval, or "approved-by: converge-check + round-1 grade (no human
@@ -515,8 +543,8 @@ scoped here is the GATE checks, not the lens.
   rejected, exit 2) with `--approved-by` carrying the step-1.7 approval basis
   on human-less runs (omit on solo runs — approval lives in PLAN.md).
   **Round brief (fresh context per round):** each round after round 1 starts
-  from the minimal brief assembled by `node scripts/run-log.mjs --project
-  <dir> brief [--round N]` (or `node scripts/round-brief.mjs` directly) —
+  from the minimal brief assembled by `node skills/frontend-kit/scripts/run-log.mjs --project
+  <dir> brief [--round N]` (or `node skills/frontend-kit/scripts/round-brief.mjs` directly) —
   lock + best HTML + gate findings + grader evidence lines + one-line-per-round
   run state, and nothing else; all axes start "ungraded", the lock is restated
   at the end. Never paste the full run log into a builder/fixer prompt.

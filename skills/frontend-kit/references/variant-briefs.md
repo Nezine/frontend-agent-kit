@@ -5,7 +5,8 @@ structural variants before building further (same content, same copy,
 same section inventory — structure may differ; tokens stay locked;
 Editorial / Dark / Warm brutalist / Glassy / Minimal, plus one
 deliberately divergent break-frame variant, §6). Each gets its own
-tokens and its own screenshot at the same width; the human picks one,
+`tokens.css` file (reproducing the locked tokens — tokens stay locked,
+see the contract below) and its own screenshot at the same width; the human picks one,
 and the pick IS the feedback.
 
 **The contract (D2, council decision 2026-11-10): "same content, same
@@ -33,10 +34,10 @@ later work orbits it — the first structure's features get reproduced,
 flaws included. CSS-only variants share one structure, so the loop
 could spend 3 rounds polishing the wrong direction and then restart.
 Structural divergence is the only divergence mechanism that prevents
-that whole-loop cost. Evidence note: the design-fixation primary (Jansson & Smith, "Design fixation", Design Studies 12(1), 3–11, 1991, doi:10.1016/0142-694X(91)90003-F) was read in full 2026-11-10 (user-supplied copy; verification report `build-notes/w-p10-primary.md`). Definition: "a blind, and sometimes counterproductive, adherence to a limited set of ideas in the design process" (p. 4). Four control-vs-example experiments (n = 25 / 31 / 35 / 13 professionals): total output barely changes while conformity to the example's features jumps sharply (e.g. suction cups 6%→54%, straws 1%→17% despite an explicit no-straws instruction; flexibility 0.95→0.85, originality 0.64→0.53), including in professionals. The paper demonstrates fixation; it does not test structural-variant generation as a remedy — the variant mechanism remains a design decision inferred from these findings. No significance tests are reported in the paper (descriptive means/percentages only).
+that whole-loop cost. Evidence note: the design-fixation primary (Jansson & Smith, "Design fixation", Design Studies 12(1), 3–11, 1991, doi:10.1016/0142-694X(91)90003-F) was read in full 2026-11-10 (user-supplied copy; verification report `build-notes/w-p10-primary.md`). Definition: "a blind, and sometimes counterproductive, adherence to a limited set of ideas in the design process" (p. 4). Four control-vs-example experiments (n = 25 / 31 / 35 students / 13 professionals): total output barely changes while conformity to the example's features jumps sharply (e.g. suction cups 6%→54%, straws 1%→17% despite an explicit no-straws instruction; flexibility 0.95→0.85, originality 0.64→0.53), including in professionals. The paper demonstrates fixation; it does not test structural-variant generation as a remedy — the variant mechanism remains a design decision inferred from these findings. No significance tests are reported in the paper (descriptive means/percentages only).
 
 This file is the kit's ready-to-use brief for each variant: what it
-means as tokens AND as structure, so the builder does not invent five
+means as structure on the locked tokens, so the builder does not invent five
 directions from priors. These are kit-authored starter directions,
 derived from the variant names in the workflow (JP seed,
 CLAIMED-via-local-summary) and the kit's own token scales (VERIFIED
@@ -56,11 +57,12 @@ same section inventory — structure may differ).
 - **Structure:** Container doctrine — one centred column, sections in
   brief order (hero → features → pricing → footer). Hero form: stacked
   — display headline over a full-width visual, copy below, one CTA.
-- **Type:** Display serif roman (kit starter: Newsreader) at the top of
-  the scale; body serif or quiet sans; tight display tracking (−0.03em);
-  generous measure, calm line length (~68ch).
-- **Colour:** Paper ground (`#ffffff` / `#f6f6f4`), near-black ink
-  (`#0a0f1e`), one restrained accent used twice per screen at most.
+- **Type:** The locked display face at the top of the scale; the locked
+  body role; the lock's display tracking; generous measure, calm line
+  length (~68ch).
+- **Colour:** The locked ground/ink/accent roles as-is (light ground,
+  near-black ink per the lock); one restrained accent used twice per
+  screen at most — no new colour values.
 - **Space:** Large section gaps (upper end of 128–288px), airy card
   padding; hairline rules instead of borders or shadows.
 - **Radius / motion:** Small radii (2/6px); still, quiet motion
@@ -76,12 +78,13 @@ same section inventory — structure may differ).
   visual right); sections in brief order, but features as a dense
   two-column grid instead of Editorial's single column. Hero form:
   split, visual-led on the right.
-- **Type:** Same scale as the locked tokens; display face kept, weights
-  one step lighter than the light variants (dark grounds make heavy type
-  shout).
-- **Colour:** Inverted roles — dark bg, light ink; muted text re-measured
-  (the 7:1 body rule still applies, against the dark ground); accent kept
-  single and slightly brightened so it survives the inversion.
+- **Type:** Same scale and weights as the locked tokens; display face
+  kept as locked — no lightening step.
+- **Colour:** The locked roles as-is — no inversion, no brightened
+  accent; the variant diverges by structure (split hero, dense grid),
+  not by palette. A dark ground would be a lock change (new lock version,
+  step 1.8), never a per-variant override. Muted text re-measured: the
+  7:1 body rule still applies, against the lock's ground.
 - **Space:** Same gaps as the locked tokens; panels as flat dark surfaces
   with hairline borders, never glow.
 - **Radius / motion:** Same radii as the locked tokens; motion unchanged.
@@ -97,12 +100,15 @@ same section inventory — structure may differ).
   offer lands first (hero → pricing → features → footer: the price is
   the argument, the features are the proof). Hero form: poster — huge
   display type, no visual, CTA as a solid bordered block.
-- **Type:** Heavy display weight, large display sizes, tight leading;
-  mono labels in all-caps where the locked voice allows them.
-- **Colour:** Warm ground (cream/paper-warm), ink near-black, one loud
-  warm accent (ochre/rust) used sparingly — loud does not mean everywhere.
-- **Space:** Tighter section gaps (lower end of 128–288px), dense cards,
-  visible borders (1–2px solid ink), no shadows, no rounding beyond 2px.
+- **Type:** The lock's heaviest display weight at large display sizes,
+  tight leading; mono labels in all-caps where the locked voice allows them.
+- **Colour:** The locked ground/ink/accent roles as-is; warmth comes
+  from the structure (poster hero, bordered blocks), not from a new warm
+  ground or a loud accent — a warm ground or a new accent is a lock
+  change, not a variant change.
+- **Space:** Dense cards, visible borders (1–2px solid ink), no shadows,
+  no rounding beyond 2px — density from the full-bleed block structure,
+  gaps from the lock's space scale.
 - **Radius / motion:** Radius 2px throughout; motion minimal and blunt
   (120ms, no easing theatre).
 - **Purpose line:** This structure serves the primary task "decide whether this offer is worth the price" by putting pricing first, so the price — the argument — is judged before the features that prove it.
@@ -119,14 +125,15 @@ same section inventory — structure may differ).
   → footer stays, but features open with the visual first, copy second
   — the reverse of Editorial). Hero form: overlapping panel — copy
   floats over the visual instead of sitting above or beside it.
-- **Type:** Light display weight, airy tracking; body sans with generous
-  leading.
-- **Colour:** Light ground with one cool accent; panels as translucent
-  surfaces over a flat ground (no gradient grounds — flat colour only,
-  per the taste rules; translucency is a panel treatment, never a
-  background).
-- **Space:** Large gaps, large radii (12/20px), soft hairlines, generous
-  card padding.
+- **Type:** The locked display face with airy tracking; the locked body
+  role with generous leading.
+- **Colour:** The locked ground/accent roles as-is; panels use the lock's
+  surface treatment (translucency is a panel treatment over the locked
+  ground, never a new ground or a new accent; no gradient grounds — flat
+  colour only, per the taste rules).
+- **Space:** Generous card padding, soft hairlines; radii and gaps from
+  the lock's scales (the lock's large radii, generous gaps) — no invented
+  values.
 - **Radius / motion:** Radii at the top of the scale; motion smooth and
   slow (220/420ms), one reveal per section at most.
 - **Purpose line:** This structure serves the primary task "see what the service feels like before reading about it" by opening features visual-first under an overlapping hero panel, so the look of the product is judged before its claims.
@@ -146,10 +153,11 @@ same section inventory — structure may differ).
 - **Type:** One family only (display + body from the same family, weight
   doing the hierarchy work); smallest scale that still reads; no display
   face for decoration.
-- **Colour:** Two colours total (ink + one accent) on a flat ground; muted
-  text is ink at reduced opacity only where contrast still passes 7:1.
-- **Space:** The most air of the five; one visual beat per page at most
-  (or zero — the page must also work with zero).
+- **Colour:** The locked ink + accent roles only — no third colour;
+  muted text is ink at reduced opacity only where contrast still passes 7:1.
+- **Space:** Air from whitespace alone (no cards, no rules, no panels);
+  one visual beat per page at most (or zero — the page must also work
+  with zero).
 - **Radius / motion:** Radius 2/6px; motion 120ms or none.
 - **Purpose line:** This structure serves the primary task "make one decision" by stripping the page to a single narrow column that ends on the action, so nothing competes with the step the user must take last.
 - **Motion patterns:** none — no scroll-motion pattern; motion is 120ms or none.

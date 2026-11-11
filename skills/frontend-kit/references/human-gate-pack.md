@@ -7,12 +7,33 @@ ready-to-use question bank so the orchestrator does not invent questions
 from priors. Pick 2–4 questions per gate, from the section matching the
 brief type, plus at most one from "Any brief". Never ask an open-ended
 "what do you think?" — every question carries concrete options, and every
-option maps to a token diff (via `scripts/token-dictionary.mjs`), never to
+option maps to a token diff (via `skills/frontend-kit/scripts/token-dictionary.mjs`), never to
 a rebuild.
 
 The human's pick or adjective maps through the token dictionary and
 re-enters at step 5 — never as a rebuild. After human approval, save the
 3-width screenshots as the pixel-diff baseline.
+
+## Annotated screenshots (P3 annotation, D7)
+
+The human may answer with an annotated screenshot instead of (or in addition
+to) picking an option: circle/sketch on the screenshot + one sentence per
+annotation. Each annotation becomes a fix-list item:
+
+1. The orchestrator maps the circled element to a token diff via the token
+   dictionary (element → token role → diff) and records the annotation +
+   sentence + mapped diff in the run log.
+2. The fix enters the step-5 fix list with the annotation cited as its
+   source — a fix instruction still needs a citation (gate finding /
+   grader evidence line / human instruction), and the annotation IS the
+   human instruction.
+3. If an annotation cannot be mapped to a token diff (e.g. it asks for a
+   new section), it is recorded as a human instruction for step 5 with the
+   element named; the builder fixes it in HTML only if the gate still fails
+   after the token change (step-5 rule).
+
+Annotations are never judge inputs and never change a score; the judge
+grades the rebuilt page fresh (D8 whitelist, `references/grader-rubric.md`).
 
 ## Landing page
 

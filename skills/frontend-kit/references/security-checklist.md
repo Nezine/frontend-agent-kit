@@ -3,6 +3,7 @@
 A vendored reference for the security/compliance cross-check team
 (`research/coordination/buffet-mode-coordination-v2.md` §13).
 Every check below is taken from `research/security-ai/SYNTHESIS.md`
+(workspace research note, not shipped in this repo)
 §3 (the ordered runbook, Stages 0–6), §5 (never-automate list),
 and §7 (tooling), all dated 2026-11-11. Check IDs are the
 synthesis IDs (0.1–0.6, 1.1–1.12, 2.1–2.6, 3.1–3.10, 4.1–4.11)
@@ -39,7 +40,9 @@ human-gate packet.
 
 ## Regression corpus (deterministic gate)
 
-The 77 ground-truth training cases in `research/security-ai/training/ground-truth.md` (25 code pairs, 24 agent-loop cases, 28 supply-chain/licence/ToS cases) are the deterministic gate's regression corpus: the gate's own tests must run them. The gate consumes ASVS 5.0.0 requirement IDs as its pass/fail checklist, the XSS/DOM-XSS cheat sheets as its sink rules, and these 77 cases as the regression corpus for its own tests. Training cases only — the 20 held-out cases in `research/security-ai/training/held-out/` are sealed, checker-only, and never enter the gate's tests or the guard's training material.
+The 77 ground-truth training cases in `research/security-ai/training/ground-truth.md` (workspace research material, not shipped in this repo; 25 code pairs, 24 agent-loop cases, 28 supply-chain/licence/ToS cases) are the deterministic gate's regression corpus: the gate's own tests must run them. The gate consumes ASVS 5.0.0 requirement IDs as its pass/fail checklist, the XSS/DOM-XSS cheat sheets as its sink rules, and these 77 cases as the regression corpus for its own tests. Training cases only — the 20 held-out cases in `research/security-ai/training/held-out/` are sealed, checker-only, and never enter the gate's tests or the guard's training material.
+
+**Runner status (Wave 6): no test runner exists yet that runs these 77 cases against the gate — the corpus is prose in the sealed training material; a runner needs per-case fixtures + a case→gate-check mapping, which is unwired work, not built here. "The gate's own tests must run them" is a requirement on the gate's own tests, not a claim that they run today.**
 
 **Status: ASSEMBLED — awaiting dedicated red-team verification before delivery. Do not use for graduation until the red team passes it.** The training material is wired in, but GRADUATION USE IS BLOCKED until the package passes its dedicated red-team verification (still owed — open item).
 
@@ -97,7 +100,7 @@ attribution. (Synthesis header.)
 | 2 | **LLM security review is non-repeatable.** Best LLM reached only 75.4% F1 vs deterministic SAST; **49.7% of LLM-only findings appeared in just 1 of 5 identical runs**; best model scored only 40% F1 on the largest app-like fixture. A single LLM pass is never a gate decision. | Snyk VulnBench JS 1.0 (2026-06-29), read in full — https://snyk.io/blog/snyk-vulnbench-js-1-0-llm-security-review-repeatability/ |
 | 3 | **~1 in 5 AI-recommended packages do not exist.** **19.7% of AI-recommended packages** (576,000 samples, 16 models) were hallucinated names; 43% of hallucinated names reappeared on every single run when identical prompts were repeated 10 times, so attackers can pre-register them. | Spracklen et al., USENIX Security 2025, abstract + introduction read — https://arxiv.org/html/2406.10279v1 ; the 43% repeat figure is via TechTarget, read in full by W-SUPPLY-COMPL |
 | 4 | **Prompt injection has no reliable prevention.** A USENIX Security 2026 paper cited by OWASP (Nasr et al.) tested 12 recent defenses; adaptive attackers who tuned attacks to each defense succeeded more than 90% of the time **against most of them**. Assume injection will succeed and limit what a fooled model can reach. Underlying study not opened in this session (arXiv:2510.09023); do not cite the >90% figure as established. | Via OWASP/Anaconda secondary, read in full — https://www.anaconda.com/blog/owasp-top-10-llm-applications-agents-how-to-check |
-| 5 | **Zero-click injection is proven, not theoretical.** EchoLeak (Microsoft 365 Copilot, CVE-2025-32711, CVSS 9.3, June 2025): a crafted email exfiltrated tenant data with no click. | **Secondary-sourced — verify against NVD before citing as established.** CVE record not read; see `research/security-ai/workers/w-leak-inj.md` F5. |
+| 5 | **Zero-click injection is proven, not theoretical.** EchoLeak (Microsoft 365 Copilot, CVE-2025-32711, CVSS 9.3, June 2025): a crafted email exfiltrated tenant data with no click. | **Secondary-sourced — verify against NVD before citing as established.** CVE record not read; see `research/security-ai/workers/w-leak-inj.md` F5 (workspace research note, not shipped in this repo). |
 
 Corollaries the team works from (same sources): the builder's
 model cannot be trusted to write secure code, and no single AI
@@ -171,7 +174,7 @@ and belong in the kit's deterministic gate.
   untrusted data in `onclick` / event-handler attributes or
   JS-code contexts. Where: diff. Grep:
   `grep -rInE '\beval\s*\(|new Function\s*\(|setTimeout\s*\(\s*["'"'"'`]|setInterval\s*\(\s*["'"'"'`]|on(click|load|error|submit)\s*=' -- <diff files>`.
-  Severity: BLOCK. Anchor: OWASP LLM10:2026; ASI05; ASVS v5.0.0-1.2.3, v5.0.0-1.3.2.
+  Severity: BLOCK. Anchor: OWASP LLM10:2026; ASVS v5.0.0-1.2.3, v5.0.0-1.3.2 (the BLOCK rests on these). ASI05 is a [CHƯA ĐỌC] cross-reference hint only — the Agentic Top 10 list was NOT verified; never the authority for this BLOCK.
 - [ ] **1.4 — No model output into code execution.** What to look
   for: model output interpolated into SQL / shell / template
   engines, or passed to code execution, without
@@ -179,7 +182,7 @@ and belong in the kit's deterministic gate.
   takes model output as an argument to a query, shell, or template
   render). Tool: manual review of each such call site — no
   deterministic scanner named by the synthesis for this check.
-  Severity: BLOCK. Anchor: OWASP LLM10:2026; ASI05; ASVS v5.0.0-1.2.4, v5.0.0-1.2.5.
+  Severity: BLOCK. Anchor: OWASP LLM10:2026; ASVS v5.0.0-1.2.4, v5.0.0-1.2.5 (the BLOCK rests on these). ASI05 is a [CHƯA ĐỌC] cross-reference hint only — the Agentic Top 10 list was NOT verified; never the authority for this BLOCK.
 - [ ] **1.5 — Unvalidated URLs from untrusted/model data.** What
   to look for: untrusted or model data reaching `href` / `src` /
   `iframe src` without an allow-list of http/https only and a
@@ -318,7 +321,7 @@ fresh cross-checker).
   channel in one session — including rendering remote images/links
   or a `fetch_url` carrying a query string. Fix by splitting the
   agent or removing a leg. Severity: BLOCK.
-  Anchor: Willison trifecta; OWASP ASI01/ASI02.
+  Anchor: Willison trifecta (the BLOCK rests on this). OWASP ASI01/ASI02 are [CHƯA ĐỌC] cross-reference hints only — the Agentic Top 10 list was NOT verified; never the authority for this BLOCK.
 - [ ] **3.2 — Instruction-shaped text in an untrusted channel
   acted on.** What to look for: a fetched page, README, comment,
   tool output, or rules file containing instruction-shaped text
@@ -347,14 +350,14 @@ fresh cross-checker).
   outside the allowlist, with an argument failing its schema, with
   a tainted value in a sensitive argument, or against another
   tenant/user's data. Where: agent transcript / tool-call log.
-  Severity: BLOCK. Anchor: OWASP ASI02/ASI03; Beurer-Kellner
-  patterns.
+  Severity: BLOCK. Anchor: Beurer-Kellner
+  patterns (the BLOCK rests on these). OWASP ASI02/ASI03 are [CHƯA ĐỌC] cross-reference hints only — the Agentic Top 10 list was NOT verified; never the authority for this BLOCK.
 - [ ] **3.6 — Consequential action from tainted content.** What
   to look for: merge, publish/deploy, delete/overwrite outside the
   worktree, external send, permission/credential change, where any
   argument came from untrusted content. Where: agent transcript.
-  Severity: BLOCK. Anchor: OWASP ASI01/ASI02; dual-LLM/quarantine
-  pattern.
+  Severity: BLOCK. Anchor: dual-LLM/quarantine
+  pattern (the BLOCK rests on this). OWASP ASI01/ASI02 are [CHƯA ĐỌC] cross-reference hints only — the Agentic Top 10 list was NOT verified; never the authority for this BLOCK.
 - [ ] **3.7 — Consequential action from trusted content.**
   What to look for: merge to main, deploy/publish, delete,
   permission change, secret access, external send — any of these
@@ -366,12 +369,12 @@ fresh cross-checker).
 - [ ] **3.8 — Goal-changing action proposed mid-run.** What to
   look for: a brief, scope, or taste-lock change proposed mid-run,
   especially if triggered by content the agent read. Where: agent
-  transcript. Severity: PAUSE. Anchor: OWASP ASI01 mitigation.
+  transcript. Severity: PAUSE. Anchor: human confirmation on the exact change before execution (the PAUSE rests on this — same principle as 3.7's Google human confirmation). OWASP ASI01 is a [CHƯA ĐỌC] cross-reference hint only — the Agentic Top 10 list was NOT verified; never the authority for this PAUSE.
 - [ ] **3.9 — Inter-agent handoff without provenance.** What to
   look for: a handoff with no sender, no source label, no schema —
   spoof/replay risk. Where: handoff messages / board rows.
   Severity: WARN now; **BLOCK if a handoff carries an instruction
-  that changes the goal or a tool call**. Anchor: OWASP ASI07.
+  that changes the goal or a tool call**. Anchor: the handoff provenance rule itself — a handoff with no sender, no source label, no schema is untrusted (the WARN/BLOCK rests on this). OWASP ASI07 is a [CHƯA ĐỌC] cross-reference hint only — the Agentic Top 10 list was NOT verified; never the authority for this verdict.
 - [ ] **3.10 — Prompt-side defences only.** What to look for: a
   system-prompt line, delimiters/spotlighting alone, with no
   deterministic gate behind them. "We added a guardrail prompt"
@@ -631,7 +634,7 @@ re-run. (W-APPSEC.)
 
 Tools are listed only where a source named them. Status follows
 the worker that reported them; see
-`research/security-ai/workers/w-*.md` for read status per tool.
+`research/security-ai/workers/w-*.md` (workspace research notes, not shipped in this repo) for read status per tool.
 (Synthesis §7.)
 
 | Purpose | Tools / commands | Notes |
@@ -654,7 +657,7 @@ the worker that reported them; see
   Project resource page + press release 2026-09-02 + repo
   `2026/final/` file listing + Preface + LLM08 entry, all read
   2026-11-11; see
-  `research/security-ai/owasp-asvs-verification.md` §1). This
+  `research/security-ai/owasp-asvs-verification.md` §1 — workspace research note, not shipped in this repo). This
   checklist now cites the 2026 edition, released 3–4 August 2026
   (resource page 3 Aug, PDF cover 4 Aug), announced 1–2 September
   2026; Scanverra's "2025 is still current" is contradicted by
@@ -667,7 +670,7 @@ the worker that reported them; see
 - **ASVS 5.0 as the pass/fail checklist layer — ADOPTED
   2026-11-11 (ASVS 5.0.0, Levels 1–2). Status: PARTIAL — V1 and V3 read in full (verification 2026-11-11); V5/V6 sampled; V7–V17 unread. L1 floor / L2 for auth/PII/money/secrets; cite IDs as `v5.0.0-x.y.z`.** Verified against the
   primary (levels + assessment chapters and V1/V3 read in full;
-  see `research/security-ai/owasp-asvs-verification.md` §2). The
+  see `research/security-ai/owasp-asvs-verification.md` §2 — workspace research note, not shipped in this repo). The
   intended shape, confirmed by the primary itself: Top 10 for
   prioritisation → ASVS 5.0 L1/L2 as the checklist → Cheat Sheets
   for the fix → WSTG/ZAP for testing. ASVS requirement IDs are
@@ -683,7 +686,7 @@ the worker that reported them; see
   citations in this file (ASI01/ASI02/ASI03/ASI05/ASI07) were not
   verified in the 2026-11-11 verification task; verify the
   Agentic Top 10 from its primary before citing ASI IDs as
-  settled.
+  settled. **No BLOCK (or PAUSE/WARN) verdict in this file rests on an ASI ID:** every verdict rests on the accompanying verified anchor (LLM Top 10 2026, ASVS 5.0.0, Willison trifecta, Beurer-Kellner patterns, dual-LLM/quarantine, Google human confirmation, or the check's own stated rule); ASI IDs are cross-reference hints only.
 - **Snippet-only items — NOT verified, do not present as
   verified:**
   - The licence-compatibility pairs in check 4.5 (GPL-2.0-only +
@@ -745,14 +748,3 @@ the worker that reported them; see
   - SP 1353 (draft, CHƯA ĐỌC primary): AI-generated CSF analysis
     must be human-reviewed before it drives decisions — directly
     applicable: an AI checker may not self-approve.
-
-## Bài học
-
-Dùng AI làm security thì phải nhớ hai chiều của nó cùng lúc: AI
-tìm lỗi giỏi hơn người ở quy mô lớn, nhưng code do AI viết ra lại
-sai bảo mật gần một nửa thời gian, và chính AI chấm code cũng sai
-gần một nửa số phát hiện của nó. Nên quy tắc sống còn là: máy đề
-xuất và đưa bằng chứng, người quyết định và chịu trách nhiệm; cái
-gì chặn được bằng quy tắc cứng (grep, scan, hash, allowlist) thì
-đừng bao giờ giao cho model phán xét; và đừng bao giờ để một agent
-tự chấm bài của chính nó.

@@ -19,7 +19,7 @@ Codex specifics for this session:
 - Install target: ~/.agents/skills/ AND ~/.codex/skills/ (install.sh covers both — the
   two primary sources disagree on the Codex skills dir, so install to both until the
   clean-env test resolves it).
-- Fast path (same result, one command): codex plugin marketplace add phamTuan207/frontend-agent-kit
+- Fast path (UNVERIFIED — no cold-verification record; the verified route is `./install.sh`): codex plugin marketplace add phamTuan207/frontend-agent-kit
   then codex plugin add frontend-agent-kit@frontend-agent-kit, then start a NEW session
   with /new before using the plugin's skills.
 - After install, confirm with $ or /skills in the new session; check plugins with /plugins.
