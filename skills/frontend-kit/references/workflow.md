@@ -187,6 +187,11 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   design/ && git commit -m "Taste lock: <direction>"`; if it is not a git
   repo, (a) + (b) alone ARE the commit — never create a repo just for this,
   and never treat "saved the file" without the run-log lock as committed.
+- **Metric-locked loop (step 1.8 / step 3):** the lock defines the
+  metric/eval before any builder runs, the gate IS the eval, and the
+  gate's job is the last 10% — see `references/metric-locked-loop.md`
+  for the mapping, the binding wording discipline, and what stays out
+  of the kit.
 
 ## 2. Build (one HTML file, tokens only — no inline style drift)
 
@@ -247,7 +252,10 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
 ## 3. Deterministic gate (runs BEFORE any vision grade)
 
 **The gate is TWO legs, BOTH required — a pass means both green on the
-same build.** Leg 1 is `gate.sh` (taste lock + `impeccable detect` + static
+same build.** The gate IS the eval (`references/metric-locked-loop.md`
+§3): the lock defines the metric before any builder runs, and the gate's
+job is the last 10% — a build that passes at 90% still fails the gate.
+Leg 1 is `gate.sh` (taste lock + `impeccable detect` + static
 checks); leg 2 is `gate.mjs` (copy-lint + consistency browser leg). A
 `gate.sh` PASS alone is only leg 1, never a gate pass.
 

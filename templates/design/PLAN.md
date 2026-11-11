@@ -37,6 +37,7 @@ what the page is and is not. One line each, with the reason. -->
 - Direction: [e.g. Linear-style dark developer tool — see DESIGN-SYSTEM.md]
 - Brief type: [landing / dashboard-app / redesign]
 - [Decision]: [reason]
+- Conviction (optional, light touch — an invitation, never a requirement, never a gate): [one belief about how this page's world should look in five to ten years that nobody else agrees with — see `skills/frontend-kit/references/metric-locked-loop.md` §8]
 
 ## Assumptions
 
