@@ -209,6 +209,59 @@ case "$project_dir" in
   */design) project_dir="${project_dir%/design}" ;;
 esac
 
+# --- nested kit-clone exclusion (D14, GAP-12) -------------------------------
+# A directory nested inside the project that IS the kit's own repo clone
+# (it carries BOTH install.sh AND skills/frontend-kit/SKILL.md at its
+# root) is install source, not project content: the probe-3 trap was a
+# gate that scanned the clone sitting inside the project dir (leg 1
+# failed on 333 clone/vendor issues, none about the built page). The
+# exclusion is LOCATION + IDENTITY, never content or filename, so D9
+# holds: a lab/demo/catalog file genuinely copied into the project
+# (outside the nested clone) is still scanned and still fails.
+# The exclusion NEVER fires on $project_dir itself (the detection walk
+# uses -mindepth 1): when the target IS the kit repo (kit development,
+# CI), the gate scans it whole. A SYMLINKED clone is not excluded: it
+# fails the §6 symlink check by design (copy the real dir in).
+# Each excluded clone is announced with note(), so the leg-1 log shows
+# what was skipped — a silent exclusion would be unauditable.
+# Gitleaks is deliberately NOT excluded (it scans $project_dir whole):
+# it PASSED over the clone in probe 3, and a secret inside the clone
+# is a true positive about the kit tree.
+# Depth: any depth under $project_dir (one find walk; the gate already
+# runs several full-tree finds). A found clone's subdirs are skipped in
+# the loop — they can never be a second clone worth a second note.
+# Bash 3.2 (macOS phase, D12): expanding an empty array under `set -u`
+# is an error, so every use site below expands clone_excludes via the
+# ${arr[@]+"${arr[@]}"} idiom, never bare "${arr[@]}".
+clone_dirs=()
+clone_excludes=()
+while IFS= read -r -d '' _cd || [[ -n "$_cd" ]]; do
+  _inside_clone=0
+  for _prev in ${clone_dirs[@]+"${clone_dirs[@]}"}; do
+    case "$_cd" in "$_prev"/*) _inside_clone=1; break ;; esac
+  done
+  [[ "$_inside_clone" == 1 ]] && continue
+  if [[ -f "$_cd/install.sh" && -f "$_cd/skills/frontend-kit/SKILL.md" ]]; then
+    clone_dirs+=("$_cd")
+    # find -path is a GLOB, not a literal prefix: a clone dir whose name
+    # holds *, ?, [ or ] would make an unescaped pattern match the wrong
+    # paths (red-team S1: unescaped `a*` over-excluded sibling `assets/`
+    # and hid a real project sink — a D9 violation; `we[ird]`
+    # under-excluded while the note claimed success). Escape the
+    # metacharacters in the dir so the pattern matches it literally;
+    # the trailing /* stays a glob (everything under the clone).
+    # (The case pattern above needs no escaping: "$_prev" is quoted,
+    # and a quoted portion of a case pattern is matched literally.)
+    _esc="${_cd//\\/\\\\}"
+    _esc="${_esc//\*/\\*}"
+    _esc="${_esc//\?/\\?}"
+    _esc="${_esc//\[/\\[}"
+    _esc="${_esc//\]/\\]}"
+    clone_excludes+=(-not -path "$_esc/*")
+    note "nested kit clone excluded from gate scans: $_cd (install source, not project content — D14, GAP-12)"
+  fi
+done < <(find "$project_dir" -mindepth 1 -type d -print0 2>/dev/null || true)
+
 # --- built .html files (computed once, used by detect AND static checks) ---
 # design/variants/ holds the 5 unpicked CSS-only alternatives, not the
 # deliverable: scanning them fails the gate on files the human never
@@ -238,7 +291,7 @@ else
   # design/v0.html excluded as before (unpicked alternatives / token-proof
   # artifact / skeleton — none of them is the deliverable).
   html_files=()
-  while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' -print0 2>/dev/null || true)
+  while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' ${clone_excludes[@]+"${clone_excludes[@]}"} -print0 2>/dev/null || true)
 fi
 
 # --security-only runs ONLY the §6 security section below: legs 1–5 are
@@ -266,7 +319,7 @@ else
     fail "design/tokens.css under $project_dir defines no custom properties (--*) — not a taste lock, no pass"
   else
     css_files=()
-    while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do css_files+=("$_f"); done < <(find "$project_dir" -name '*.css' -type f -not -name 'tokens.css' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -print0 2>/dev/null || true)
+    while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do css_files+=("$_f"); done < <(find "$project_dir" -name '*.css' -type f -not -name 'tokens.css' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' ${clone_excludes[@]+"${clone_excludes[@]}"} -print0 2>/dev/null || true)
     used=0
     for tok in "${defined_tokens[@]}"; do
       if [[ "${#html_files[@]}" -gt 0 ]] && grep -qF -- "$tok" "${html_files[@]}" 2>/dev/null; then used=1; break; fi
@@ -514,8 +567,9 @@ secna() { sec_na=$((sec_na+1)); printf 'SECURITY %s: N/A — %s\n' "$1" "$2"; }
 # that closes both.
 # Scope, named explicitly (the FAIL message below says the same — the old
 # message claimed "symlink(s) under %s" with no qualification while dirs
-# were excluded): the project tree MINUS node_modules, .git and
-# .taste-skill. design/variants is NOT excluded here (re-QC defect 2):
+# were excluded): the project tree MINUS node_modules, .git,
+# .taste-skill, and any excluded nested kit clone (D14, GAP-12 — a clone
+# dir's own symlinks, e.g. its .hermes link, are not reported either). design/variants is NOT excluded here (re-QC defect 2):
 # variants are kit-owned, never legitimately symlinked, and the gate can be
 # run explicitly against a variants dir — so a symlink in design/variants
 # fails, even though a REGULAR sink file there still passes 1.2 by the
@@ -541,18 +595,19 @@ secna() { sec_na=$((sec_na+1)); printf 'SECURITY %s: N/A — %s\n' "$1" "$2"; }
 # (The seed backstop below still follows a symlinked seed file via its
 # glob + -f test — that asymmetry is now moot, since any symlink fails
 # here first.)
-sec_symlinks="$(find "$project_dir" -type l -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' 2>/dev/null | sort || true)"
+sec_symlinks="$(find "$project_dir" -type l -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' ${clone_excludes[@]+"${clone_excludes[@]}"} 2>/dev/null | sort || true)"
 if [[ -L "$project_dir" ]]; then sec_symlinks="$project_dir"$'\n'"$sec_symlinks"; fi
 if [[ -n "$sec_symlinks" ]]; then
   sec_fail_n=$((sec_fail_n+1))
-  printf 'SECURITY symlink: FAIL — symlink(s) under %s outside node_modules/.git/.taste-skill (the gate scans regular files only; a symlinked file or directory is invisible to the 1.1–1.12 greps and to gitleaks — remove the link(s) or copy the real file(s) in):\n' "$project_dir"
+  printf 'SECURITY symlink: FAIL — symlink(s) under %s outside node_modules/.git/.taste-skill and outside any excluded nested kit clone (the gate scans regular files only; a symlinked file or directory is invisible to the 1.1–1.12 greps and to gitleaks — remove the link(s) or copy the real file(s) in):\n' "$project_dir"
   printf '%s\n' "$sec_symlinks" | head -20
-  fail "security symlink: symlink(s) under $project_dir outside node_modules/.git/.taste-skill are not scanned (find -type f + gitleaks both skip symlinks) — see SECURITY symlink lines above"
+  fail "security symlink: symlink(s) under $project_dir outside node_modules/.git/.taste-skill and outside any excluded nested kit clone are not scanned (find -type f + gitleaks both skip symlinks) — see SECURITY symlink lines above"
 fi
 
 # Files the sink/secret greps scan: the built .html files (the same set as
 # the rest of the gate) + local .js/.mjs/.css under the project (excluding
-# node_modules, .git, .taste-skill, design/variants) + package.json when
+# node_modules, .git, .taste-skill, design/variants, and any excluded
+# nested kit clone — D14, GAP-12) + package.json when
 # present. The built bundle is a scan subject for 1.1 ("or bundle").
 # RR4-04 (fix round 5): NUL-delimited throughout - a newline in a filename
 # must not split the list (find -print0, sort -z, read -d '' — no mapfile:
@@ -560,7 +615,7 @@ fi
 sec_scan_files=()
 while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_scan_files+=("$_f"); done < <({
   if [[ "${#html_files[@]}" -gt 0 ]]; then printf '%s\0' "${html_files[@]}"; fi
-  find "$project_dir" \( -name '*.js' -o -name '*.mjs' -o -name '*.css' \) -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -print0 2>/dev/null
+  find "$project_dir" \( -name '*.js' -o -name '*.mjs' -o -name '*.css' \) -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' ${clone_excludes[@]+"${clone_excludes[@]}"} -print0 2>/dev/null
   if [[ -f "$project_dir/package.json" ]]; then printf '%s\0' "$project_dir/package.json"; fi
 } | sort -z -u || true)
 
@@ -928,7 +983,7 @@ sec_11_text_grep() {
 # RR4-04 (fix round 5): NUL-delimited — a newline in a filename must not
 # split the list (find -print0, sort -z, read -d '').
 sec_11_text_files=()
-while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/gate-leg1.log' -not -path '*/design/gate-leg2.log' -print0 2>/dev/null | sort -z -u || true)
+while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/gate-leg1.log' -not -path '*/design/gate-leg2.log' ${clone_excludes[@]+"${clone_excludes[@]}"} -print0 2>/dev/null | sort -z -u || true)
 if [[ "${#sec_11_text_files[@]}" -gt 0 ]]; then
   sec_11_text_hits="$(sec_11_text_grep "$sec_11_pat" -i | sec_11_keep_unless_example_only "$sec_11_pat" || true)"
   sec_11_text_assign="$(sec_11_text_grep "$sec_11_assign_pat" -i | sec_11_keep_unless_example_only "$sec_11_assign_pat" || true)"

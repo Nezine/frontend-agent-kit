@@ -73,7 +73,7 @@ sentence is marked SUPERSEDED here.
   Grotesk all flag as primary fonts; Newsreader / IBM Plex Sans /
   IBM Plex Mono are clean; italic Newsreader/Spectral h1 at 64px flags
   (italic-serif-display); inherited unitless 1.55 on 20px text measures
-  1.24x and flags (tight-leading). `templates/design/tokens.css` records
+  1.24x and flags (tight-leading). `skills/frontend-kit/templates/design/tokens.css` records
   this; the numeric scales (12→64px, tracking −0.03em, light
   #ffffff/#f6f6f4/#0a0f1e, space 4→96px, radius 2/6/12/20px, motion
   120/220/420ms, max-width 1120px) still match §3.1 exactly.
@@ -183,6 +183,11 @@ Fallback if `git` is missing or the clone fails: download the `main` tarball
 (`https://github.com/phamTuan207/frontend-agent-kit/archive/refs/heads/main.tar.gz`),
 extract it, and continue from the extracted directory. If neither works, stop and
 report the exact error — do not invent another download source.
+Clone OUTSIDE the project dir: the project you build must not contain the kit's
+own clone (`frontend-agent-kit/` from this step) — the gate excludes a nested
+kit clone from its scans (D14, GAP-12), so a build inside the clone's parent dir
+gates an incomplete tree. If the gate fails on files under such a clone, move the
+clone out of the project and re-run.
 
 ### Step 3 — Run the installer (non-interactive)
 ```bash
@@ -300,7 +305,7 @@ The default path is the **taste-locked deterministic-gate loop**, driven by the
    "third-party analysis, not official", `design/screenshots/`, `design/variants/`.
 1. **Brief → taste lock (no build yet):** read brief + `TASTE.md` + chosen DESIGN.md;
    pick the reference direction; write `tokens.css`; build a 1-page demo proving the
-   tokens work (`templates/design/demo.html` → `design/demo.html`; pass criterion:
+   tokens work (`skills/frontend-kit/templates/design/demo.html` → `design/demo.html`; pass criterion:
    every expected token renders visibly AND the demo passes the gate on its own).
    Counterfactual plan check: plan first (4–6 named colours, type roles,
    ASCII wireframes), then ask — worked through a similar prompt, would you arrive

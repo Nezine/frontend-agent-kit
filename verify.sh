@@ -526,6 +526,52 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
 done < <(all_skills_dirs)
 [[ "$checked_2e" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D13 §2e cannot check gate presence)"
 [[ "$checked_2e" != 0 && "$fails" == "$fails_2e_before" ]] && ok "installed gate present in $checked_2e frontend-kit copy/copies (all 16 files, gate.sh executable, D13 content anchors present)"
+
+# --- 2f. installed-copy template presence anchors (D14, GAP-12) --------------
+# The design templates live INSIDE the skill now
+# (skills/frontend-kit/templates/design/), so every installed frontend-kit
+# copy must carry them — a copy without the templates cannot perform
+# Step 0 as written (the GAP-12 defect: the installed skill cited
+# templates/design/ paths that did not exist in the installed copy, and
+# the probe agent wrote stubs instead — TASTE.md 587 B vs template
+# 3,872 B; the stub PLAN.md had no Section inventory table, which made
+# converge-check a no-op). FAIL per missing file per copy, in the §2b
+# every-copy pattern. Presence alone cannot catch a stub, so two content
+# anchors are checked per copy: PLAN.md must contain a
+# `## Section inventory` heading, and TASTE.md must be at least 1KB
+# (the demonstrated stub was 587 B; the template is 3,872 B). No hashes:
+# they would churn on every legitimate template edit. The motion
+# reference PNGs are checked as a non-empty directory, not by filename —
+# filenames may change, the tree must not go missing.
+template_files=(
+  templates/design/TASTE.md templates/design/tokens.css
+  templates/design/PLAN.md templates/design/DESIGN-READ.md
+  templates/design/DESIGN-SYSTEM.md templates/design/demo.html
+  templates/design/primitives.css
+  templates/design/rounds/README.md
+  templates/design/rounds/_template/proposal.md
+  templates/design/rounds/_template/delta.md
+  templates/design/rounds/_template/tasks.md
+  templates/design/references/DESIGN.md/README.md
+  templates/design/references/DESIGN.md/claude.md
+  templates/design/references/DESIGN.md/linear.md
+  templates/design/references/DESIGN.md/vercel.md
+)
+checked_2f=0
+fails_2f_before="$fails"
+while IFS= read -r sd || [[ -n "$sd" ]]; do
+  tdir="$sd/frontend-kit/templates/design"
+  [[ -f "$sd/frontend-kit/SKILL.md" ]] || continue
+  checked_2f=$((checked_2f+1))
+  for tf in "${template_files[@]}"; do
+    [[ -f "$sd/frontend-kit/$tf" ]] || fail "installed template file missing: $sd/frontend-kit/$tf (D14 — the installed skill cannot perform Step 0)"
+  done
+  [[ -n "$(find "$tdir/references/motion" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]] || fail "installed template motion refs missing: no PNG under $tdir/references/motion (D14 — re-run ./install.sh)"
+  grep -qF '## Section inventory' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  [[ "$(wc -c < "$tdir/TASTE.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/TASTE.md (D14 — re-run ./install.sh)"
+done < <(all_skills_dirs)
+[[ "$checked_2f" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D14 §2f cannot check template presence)"
+[[ "$checked_2f" != 0 && "$fails" == "$fails_2f_before" ]] && ok "installed templates present in $checked_2f frontend-kit copy/copies (15 files + motion refs, D14 content anchors present)"
 # --- 3. Impeccable engine lockstep (A10) — FAIL LOUDLY on mismatch --------
 # The expected engine comes from the REPO pin, not from the installed
 # tree (F4/QC F8): installed-vs-installed lockstep passes a jointly

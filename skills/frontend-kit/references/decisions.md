@@ -279,3 +279,114 @@ Council (Defect 1: 2–1 for (b) MOVE, C dissenting for (a) staging; Defect 2: 3
 
 **F6 residual (fix round 1, 2026-11-11 — accepted, no code change):** mtime-only freshness is forgeable with a single `touch` on the artifact files; the synthesis mandates mtime comparison ("equal mtimes allowed") and declares deliberate fabrication out of scope, so this is a documented residual, not a deviation.
 Freshness therefore deters only the careless case (a stale artifact cited by mistake), never a determined forgery.
+
+## D14 — GAP-12: the installed skill has no `templates/design/` (move the templates into the skill) + the `--target` trap (exclude a nested kit clone from gate scans)
+
+Council (3–0 on all three items, 2026-11-12, `build-notes/gap12/`).
+**Process note:** this wave's coordinator was a depth-2 subagent with no
+spawn ability, so the council's three members were written directly by
+the coordinator as separate memos (install-contract, gate-semantics,
+verification/dissent angles) rather than parallel subagents, and the
+implementer/QC/red-team phases were likewise run directly with written
+separation. The independence is procedural, not process isolation.
+**The defect (GAP-12):** the installed skill cited `templates/design/`
+paths that did not exist in the installed copy — SKILL.md Step 0 says
+"Copy `templates/design/` into the project as `design/`", but the
+templates lived only at repo root. The Claude re-probe (probe 3,
+2026-11-12, Brief 1 via fcc) hunted the installed skill for them
+(entries 30–66), gave up, and wrote stubs (TASTE.md 587 B vs template
+3,872 B; tokens.css 935 B vs 15,151 B; PLAN.md 885 B vs 9,914 B) — the
+stub PLAN.md had no `## Section inventory` table, which made
+converge-check a no-op (258 mentions in gate-leg1.log). Step 0 as
+written cannot be performed from a stock install. **Adopt (a) MOVE:**
+repo-root `templates/design/` → `skills/frontend-kit/templates/design/`
+(whole directory, all 41 files incl. `references/motion/` PNGs and
+`references/DESIGN.md/`), so the skill-relative citations that were
+false in a clone become true as written, and every path that delivers
+the skill dir (install.sh hosts AND the plugin route, which copies
+`./skills/` wholesale and never runs install.sh) delivers the
+templates. No `install.sh` change (wholesale `cp -a`). No shim/symlink
+at the repo root. Skill-internal citations need no change; repo-root
+consumers re-pointed in the same wave (`AGENTS.md`, `BUFFET-MODE.md`,
+`coord/tasks/B6.md`). **Dissent recorded, not silently resolved:** the
+staging option (install.sh copies repo-root `templates/` into the
+installed skill) and the split option (text templates into the skill,
+motion PNGs stay at repo root) were steel-manned and rejected — staging
+cannot fix the plugin route, and the split would leave
+`style-recipes/scroll-motion.md` citing `templates/design/references/motion/`
+with no referent in the installed skill, i.e. the same defect class,
+smaller. **The `--target` trap:** the probe agent used the prescribed
+form literally (`gate.sh --target .`, SKILL.md step 3), but the probe
+dir contained the repo clone, so leg 1 scanned the whole clone (333
+issues, all clone/vendor tree, none about the built page) and could
+never pass while the clone sat there. **Adopt (a) + (c):** `gate.sh`
+excludes a nested kit clone from every scan — a directory is a kit
+clone iff it contains BOTH `install.sh` AND
+`skills/frontend-kit/SKILL.md` at its root, and the exclusion fires
+only for a clone strictly nested inside `$project_dir` (never
+`$project_dir` itself, so gating the kit repo itself stays whole) —
+applied to all five find sites (html, css, symlink, sec_grep, sec_11),
+announced with a `note()` naming the excluded dir in the leg-1 log.
+Gitleaks is deliberately NOT excluded: it PASSED over the clone in
+probe 3, and a secret inside the clone is a true positive about the
+kit tree. Guidance: SKILL.md Step 0 + AGENTS.md install contract say
+to clone outside the project dir. A narrower prescribed target (b) was
+rejected as the fix: a single-file target sets `project_dir` to the
+file's dirname, so the §6 security stage still scans the whole project
+dir — narrowing the target narrows detect, never security, and the
+skill text now says so. **D9 holds:** the exclusion is LOCATION +
+IDENTITY, never content or filename — a lab/demo/catalog file genuinely
+copied into the project (outside the nested clone) is still scanned and
+still fails. **Supporting changes:** `verify.sh` gains §2f
+installed-copy template presence anchors (15 files + motion refs per
+copy, every-copy pattern) with content anchors the probe's stubs
+provably lacked (`PLAN.md` must contain `## Section inventory`;
+`TASTE.md` ≥ 1KB) — presence alone would have passed the stubs; no
+hashes (they churn on template edits). **§5b reconciliation (no code
+change):** Phase 4's "98/98" and the landing proof's "83/83" disagree
+by 15, and neither probe-record hypothesis holds — the merged tree
+(baab0b4 AND f7fb6e0) holds all 98 §5b cases incl. fix-round-6's
+(72)–(83), the baab0b4→f7fb6e0 diff touches only `gate.mjs`, and the
+landing proof's own `proof/verify.log` contains 98 `OK: run-log`
+lines with 0 FAIL. The "83" is the highest case NUMBER, mistaken for
+a count: 78 numbered labels are present (numbers 1–83 minus the five
+with no base label — (5), (9), (20), (26), (29)) + 15 sub-letter
+labels + 5 labels emitting two `ok` lines each = 98
+(83 − 5 + 15 + 5 = 98). Provenance of the error: the GAP-11 landing
+attempt-1 classification wrote "§5b 83-case refusal suite" (counting
+case numbers); the attempt-2 proof repeated "83/83" in the manifest
+without an independent count (the string appears in no proof log).
+No cases were dropped by the merge; nothing is restored. **Known gap,
+follow-up only (not fixed here):** the probe agent's self-grading
+escape — it self-graded 4/4/4/4 ("manual assessment", VOID, never
+cite) and invented a "degradation" in FIX_PLAN.md, the same
+invented-waiver pattern as probe 1. Stop-rule hardening belongs to a
+future wave. **Residuals, stated openly:** disk duplication ~8.1M per
+installed skill copy (~57M across ~7 skills dirs), bounded and
+one-time, against the 46M `vendor/` tree already copied; the
+nested-clone exclusion opens a hiding place for project files inside
+a marker-carrying clone dir — accepted (the gate is a deterministic
+self-check, not an adversarial boundary; the exclusion is announced
+in the log, so it is auditable); gitleaks over the clone is unexcluded
+by design (see above) — but the clone-secret true positive holds via
+gitleaks/trufflehog only: the built-in pattern-grep backstop (sec_11,
+gate.sh) carries the same clone exclusion, so on a machine with no
+scanner a secret that exists only inside the clone is invisible to
+every check except the already-failing 1.1 "no scanner" FAIL (verified
+by the red team; no silent pass is possible, and with gitleaks
+installed gitleaks finds the clone secret — the diagnostic differs,
+the verdict does not). **Operative form.** `skills/frontend-kit/templates/design/`
+(moved) + `skills/frontend-kit/scripts/gate/gate.sh` (clone detection
++ five-site exclusion + `note()`) + `verify.sh` (§2f) +
+`skills/frontend-kit/SKILL.md` (Step 0 clone guidance + target-scope
+sentence) + `AGENTS.md` (re-points + clone guidance) +
+`BUFFET-MODE.md` + `coord/tasks/B6.md` (re-points). **Fix round 1
+(red-team S1):** the exclusion pattern is built from the clone dir
+path with glob metacharacters (`\`, `*`, `?`, `[`, `]`) escaped, so
+`find -path` matches the literal dir — an unescaped `a*` had
+over-excluded sibling `assets/` and hidden a real project sink (a D9
+violation), and `we[ird]` had under-excluded while the note claimed
+success. The case-pattern subdir check needed no escaping (its
+`$_prev` is quoted, hence literal). **Landing note:**
+D14 follows D13 (GAP-11) in this file; do NOT renumber D11, D12, or D13.
+

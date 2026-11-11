@@ -107,7 +107,12 @@ prompt for discussion.
    `design/DESIGN-SYSTEM.md`, and the round-folder scaffold
    `design/rounds/` (README + `_template/`) are copied with them and
    filled in at step 1 (plan, Design Read, declaration) and step 5
-   (one `design/rounds/<n>/` per fix round).
+   (one `design/rounds/<n>/` per fix round). Clone the kit OUTSIDE the
+   project dir: the project dir must not contain the kit's own clone
+   (`frontend-agent-kit/` from the install step) — the gate excludes a
+   nested kit clone from its scans (D14, GAP-12), so do not build inside
+   the clone's parent dir; if the gate fails on files under such a clone,
+   move the clone out and re-run.
 2. Fill in `design/TASTE.md` from the brief and from the user: one-paragraph
    intent, likes, dislikes, hard rules. If the user names sites they love,
    save 8–15 screenshots of them in `design/references/`, named by site
@@ -730,7 +735,16 @@ A `--gate pass` is recorded ONLY with both artifacts:
 Without both artifacts the run log REFUSES the pass (exit 2, nothing
 written) — a pass with no artifact is a self-assertion, not a record.
 `--gate fail` needs no artifact. Degraded rungs record `--gate fail`
-+ notes, never a pass. **"Skill base"** in this skill means the
++ notes, never a pass. **Target scope (D14, GAP-12):** gate the project
+dir (`gate.sh --target <dir>`). A nested copy of the kit's own repo clone
+(`frontend-agent-kit/` from the install step) is NOT project content:
+the gate excludes it from every scan and says so in the leg-1 log — if
+the gate fails on files under such a clone, move the clone out of the
+project and re-run; do not treat its findings as project findings and do
+not self-grade around them. Narrowing the target to one page
+(`--target <page.html>`) narrows detect, never the §6 security stage,
+which still scans the whole project dir — it is never a way around a
+security FAIL. **"Skill base"** in this skill means the
 installed skill directory (e.g. `~/.claude/skills/frontend-kit/` on
 Claude Code, or the equivalent skills-dir copy on the host) — every
 `scripts/gate/...` path in this skill is relative to the skill base,

@@ -81,7 +81,7 @@
   Fraunces, Geist (any variant), Instrument Serif/Sans, Montserrat,
   Open Sans, Arial, Helvetica, Mona Sans, Plus Jakarta Sans or Space Grotesk
   — all sit on the detector's overused-font list and fail the gate on sight
-  (verified against engine 0.1.21; re-checked 2026-11-10 — see `templates/design/tokens.css`).
+  (verified against engine 0.1.21; re-checked 2026-11-10 — see `skills/frontend-kit/templates/design/tokens.css`).
 - Every text element whose size differs from body text needs its OWN explicit
   line-height (never inherit): an inherited unitless leading measures as
   1.24x on 20px text and fails the gate. And never set line-height on a bare
