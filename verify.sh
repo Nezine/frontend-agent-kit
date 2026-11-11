@@ -666,6 +666,28 @@ eyes_skipped=0
 if [[ -f "$state_dir/skipped-subsystems.txt" ]] && grep -qx 'eyes' "$state_dir/skipped-subsystems.txt" 2>/dev/null; then
   eyes_skipped=1
 fi
+if [[ "$eyes_skipped" == 0 ]]; then
+  # Re-resolve the CLI before the check below (clean-env 2026-11-11,
+  # GAP-5): on mise-managed machines the shim can be transiently
+  # unresolvable right after install, so `command -v` is false even
+  # though the CLI is installed. Reshim + npm-prefix PATH before
+  # deciding the CLI is missing. PATH is restored after the §6 block
+  # (red-team H7): the prepend is for the eyes step only.
+  _pw_saved_path="$PATH"
+  hash -r
+  if ! command -v playwright-cli >/dev/null 2>&1 && command -v mise >/dev/null 2>&1; then
+    # mise reshim takes no tool argument — it rebuilds shims for ALL
+    # mise tools. Documented behaviour; the PATH restore below bounds
+    # its effect on later steps.
+    mise reshim >/dev/null 2>&1 || true; hash -r
+  fi
+  if ! command -v playwright-cli >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    _pw_npm_prefix="$(npm config get prefix 2>/dev/null || true)"
+    if [[ -n "$_pw_npm_prefix" && -x "$_pw_npm_prefix/bin/playwright-cli" ]]; then
+      PATH="$_pw_npm_prefix/bin:$PATH"; hash -r
+    fi
+  fi
+fi
 if [[ "$eyes_skipped" == 1 ]]; then
   pending_msg "Playwright eyes skipped at install (--skip-eyes) — eyes step not run (no browser expected). Run: npm install -g @playwright/cli@0.1.24, then playwright-cli install-browser chrome-for-testing"
 elif command -v playwright-cli >/dev/null 2>&1; then
@@ -769,6 +791,8 @@ else
     unverified "playwright-cli not on PATH — eyes step not verified. Install the pinned CLI: npm install -g @playwright/cli@0.1.24, then playwright-cli install-browser chrome-for-testing"
   fi
 fi
+# Restore PATH (red-team H7) — see the resolve block above.
+if [[ -n "${_pw_saved_path:-}" ]]; then PATH="$_pw_saved_path"; hash -r; fi
 
 # --- 7. Pro Max search smoke (v1 behaviour kept) -----------------------------
 if [[ -f "$refs_dir/ui-ux-pro-max/scripts/search.py" ]]; then
@@ -824,15 +848,20 @@ mcp_manual_for_host() { # <host>
   esac
 }
 hook_config_for_host() { # <host> — prints candidate hook-manifest paths
+  # Hermes is NOT listed here: it is checked via `hermes plugins list`
+  # in the hook loop below (S4 — directory presence is not verification).
   case "$1" in
     claude)   printf '%s\n%s\n' "$user_home/.claude/settings.json" "$user_home/.claude/settings.local.json" ;;
-    codex)    printf '%s\n%s\n' "$user_home/.codex/hooks.json" "$user_home/.codex/config.toml" ;;
-    hermes)   printf '%s' "$user_home/.hermes/plugins" ;;
+    # The project path is a fallback candidate only: install.sh promotes
+    # the upstream installer's project hook to the global file, so a
+    # fresh install has the global one. A project-only hook is reported
+    # as PENDING (S3), never as wired; both present is warned (M2).
+    codex)    printf '%s\n%s\n%s\n' "$user_home/.codex/hooks.json" "$user_home/.codex/config.toml" "$root/.codex/hooks.json" ;;
   esac
 }
 hook_manual_for_host() { # <host> — the exact manual command for that host
   case "$1" in
-    hermes) printf '%s' "hermes plugins enable impeccable-design-hook" ;;
+    hermes) printf '%s' "hermes plugins enable --no-allow-tool-override impeccable-design-hook" ;;
     *)      printf '%s' "npx --yes impeccable@4.8.2 install --providers=$1 --scope=global (accept the hook, then restart the host)" ;;
   esac
 }
@@ -848,25 +877,56 @@ for host in "${HOSTS[@]}"; do
     if [[ "$_mcp_found" == 1 ]]; then
       ok "Playwright MCP registered for $host (playwright entry in host config)"
     elif [[ "$_mcp_seen" == 1 ]]; then
-      pending_msg "Playwright MCP NOT registered for $host (host config exists but has no playwright entry — an 'mcp add' that exited 0 without writing anything does NOT count as wired; H6). Run: $(mcp_manual_for_host "$host")"
+      pending_msg "Playwright MCP NOT registered for $host (host config exists but has no playwright entry — nothing was registered there, whether the add failed silently or was never attempted; H6). Run: $(mcp_manual_for_host "$host")"
     else
       pending_msg "Playwright MCP presence not verifiable for $host (no readable host config at $(printf '%s' "$_mc" | tr '\n' ' ') — nothing was registered there, or the host was never configured). Run: $(mcp_manual_for_host "$host")"
     fi
   fi
   # Impeccable hook presence (H5/H6).
-  if _hc="$(hook_config_for_host "$host")" && [[ -n "$_hc" ]]; then
-    _hook_found=0; _hook_seen=0
+  # Hermes is checked via `hermes plugins list`, not directory presence
+  # (S4): install.sh copies the plugin there, so `ls` succeeds by
+  # construction even if the plugin is disabled. The "not enabled" row
+  # contains the word "enabled", so exclude it first.
+  if [[ "$host" == hermes ]]; then
+    if command -v hermes >/dev/null 2>&1; then
+      if hermes plugins list 2>/dev/null | grep -i 'impeccable' | grep -vi 'not enabled' | grep -qi 'enabled'; then
+        ok "Impeccable hook wired for hermes (plugin listed as enabled)"
+      elif ls "$user_home/.hermes/plugins" 2>/dev/null | grep -qi 'impeccable'; then
+        pending_msg "Impeccable hook NOT wired for hermes (plugin is installed under ~/.hermes/plugins but not listed as enabled). Run: hermes plugins enable --no-allow-tool-override impeccable-design-hook"
+      else
+        pending_msg "Impeccable hook NOT wired for hermes (no impeccable plugin under ~/.hermes/plugins). Run: cp -r $root/vendor/impeccable/skill/hermes-plugin ~/.hermes/plugins/impeccable-design-hook, then hermes plugins enable --no-allow-tool-override impeccable-design-hook"
+      fi
+    else
+      pending_msg "Impeccable hook presence not verifiable for hermes (hermes not on PATH). Run: hermes plugins enable --no-allow-tool-override impeccable-design-hook"
+    fi
+  elif _hc="$(hook_config_for_host "$host")" && [[ -n "$_hc" ]]; then
+    _hook_found=0; _hook_seen=0; _hook_file=""; _hook_project=0
     while IFS= read -r _hf || [[ -n "$_hf" ]]; do
       if [[ -d "$_hf" ]]; then
         _hook_seen=1
-        ls "$_hf" 2>/dev/null | grep -qi 'impeccable' && _hook_found=1
+        if ls "$_hf" 2>/dev/null | grep -qi 'impeccable'; then _hook_found=1; [[ -z "$_hook_file" ]] && _hook_file="$_hf"; fi
       elif [[ -f "$_hf" ]]; then
         _hook_seen=1
-        grep -qi 'impeccable' "$_hf" && _hook_found=1
+        if grep -qi 'impeccable' "$_hf"; then
+          _hook_found=1; [[ -z "$_hook_file" ]] && _hook_file="$_hf"
+          [[ "$_hf" == "$root/.codex/hooks.json" ]] && _hook_project=1
+        fi
       fi
     done <<< "$_hc"
     if [[ "$_hook_found" == 1 ]]; then
-      ok "Impeccable hook wired for $host (impeccable entry in host hook config)"
+      if [[ "$_hook_file" == "$root/.codex/hooks.json" ]]; then
+        # S3: a project-only hook is NOT "wired" — it does not fire in
+        # the user's real projects and needs trust + /hooks approval.
+        # The install asked for --scope=global, so this is PENDING.
+        pending_msg "Impeccable hook for $host is project-scoped only ($root/.codex/hooks.json — fires only when codex runs in that repo, after trust + /hooks approval). Promote it: cp $root/.codex/hooks.json ~/.codex/hooks.json (or re-run ./install.sh)."
+      else
+        ok "Impeccable hook wired for $host (impeccable entry in host hook config)"
+        # M2: a project copy alongside the global one means codex fires
+        # the hook twice in this repo — surface it, don't hide it.
+        if [[ "$_hook_project" == 1 ]]; then
+          warn "Duplicate Codex hook: $root/.codex/hooks.json also contains an impeccable entry — codex will fire the hook twice in this repo; remove the project copy (the global ~/.codex/hooks.json already covers it)."
+        fi
+      fi
     elif [[ "$_hook_seen" == 1 ]]; then
       pending_msg "Impeccable hook NOT wired for $host (host hook config exists but has no impeccable entry). Run: $(hook_manual_for_host "$host")"
     else

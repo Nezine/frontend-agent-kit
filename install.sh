@@ -427,8 +427,11 @@ declare -A DONE_DIRS=()
 for host in $hosts; do
   while IFS= read -r dir || [[ -n "$dir" ]]; do
     [[ -z "$dir" ]] && continue
-    case " ${DONE_DIRS[$dir]:-} " in *done*) continue ;; esac
-    DONE_DIRS["$dir"]=done
+    # Record WHICH host claimed the dir (not just "done"): the post-hook
+    # restore below needs the variant each dir was installed from
+    # (clean-env 2026-11-11, GAP-2/3).
+    [[ -n "${DONE_DIRS[$dir]:-}" ]] && continue
+    DONE_DIRS["$dir"]="$host"
     for name in "${CANON_SKILLS[@]}"; do
       install_dir "$root/skills/$name" "$dir/$name"
     done
@@ -599,6 +602,59 @@ hook_wired() { # 0 if any known hook manifest mentions impeccable (same list as 
   ls "$user_home/.hermes/plugins" 2>/dev/null | grep -qi 'impeccable' && return 0
   return 1
 }
+promote_codex_hook() { # move the upstream installer's project hook to global scope (GAP-6)
+  # Clean-env 2026-11-11: the upstream installer writes the Codex hook as
+  # a PROJECT hook (<repo>/.codex/hooks.json), which fires only when codex
+  # runs inside this repo (and only after project trust + /hooks approval),
+  # even though install.sh asked for --scope=global. ~/.codex/hooks.json
+  # is a real user-global location (Codex loads it for all projects
+  # regardless of project trust), so promote the file there, then remove
+  # the now-redundant project copy so the hook does not fire twice in
+  # this repo. Never overwrite an existing global hooks file; if one
+  # exists and differs, leave both and PENDING. Idempotent: a second
+  # call finds no project file and does nothing (the installer recreates
+  # it on every run, so re-running ./install.sh dedupes it again).
+  # Dry-run moves nothing (QC 2026-11-11).
+  [[ "$dry_run" == 0 ]] || return 0
+  local proj="$root/.codex/hooks.json" glob="$user_home/.codex/hooks.json"
+  [[ -f "$proj" ]] || return 0
+  case " $hosts " in *" codex "*) ;; *) return 0 ;; esac
+  # Only touch the file if it is the installer's (red-team S1): a
+  # project hooks.json that does not mention impeccable belongs to the
+  # user (or another tool) — leave it alone, never move it to global
+  # scope and never delete it.
+  grep -qi 'impeccable' "$proj" || return 0
+  # Mark that this function acted, so the catch-all below does not run
+  # it a second time and duplicate its PENDING (red-team H1).
+  _promote_codex_ran=1
+  if [[ ! -f "$glob" ]]; then
+    mkdir -p "$user_home/.codex" || { printf 'WARNING: could not create %s — the Codex hook stays project-scoped.\n' "$user_home/.codex" >&2; return 0; }
+    if cp -- "$proj" "$glob"; then
+      # Back up the project file before removing it (red-team S1). The
+      # global copy already holds the same bytes; this is the restore
+      # copy under $backup.
+      mkdir -p "$backup/codex" 2>/dev/null || true
+      cp -- "$proj" "$backup/codex/hooks.json" 2>/dev/null || true
+      if rm -- "$proj"; then
+        printf 'Codex hook promoted to global: %s (project copy removed — the hook now fires in all projects)\n' "$glob"
+      else
+        printf 'WARNING: Codex hook copied to %s but the project copy at %s could not be removed — the hook may fire twice when codex runs in this repo; remove the project file by hand.\n' "$glob" "$proj" >&2
+      fi
+    else
+      printf 'WARNING: could not copy the Codex project hook %s to %s — the hook stays project-scoped (fires only in this repo).\n' "$proj" "$glob" >&2
+    fi
+  elif cmp -s -- "$proj" "$glob"; then
+    mkdir -p "$backup/codex" 2>/dev/null || true
+    cp -- "$proj" "$backup/codex/hooks.json" 2>/dev/null || true
+    if rm -- "$proj"; then
+      printf 'Codex hook: project copy identical to the global one — removed the duplicate (global %s already wired).\n' "$glob"
+    else
+      printf 'WARNING: could not remove the duplicate Codex project hook %s — the hook may fire twice when codex runs in this repo; remove it by hand.\n' "$proj" >&2
+    fi
+  else
+    note_pending "Codex hook: the installer wrote a project hook at $proj but $glob already exists with different content — NOT merged automatically (merging would risk overwriting your hooks). Copy the impeccable entry into $glob by hand, or delete the project file if the global one already covers it."
+  fi
+}
 mcp_add_checked() { # <host> <label> <cmd...>
   local host="$1"; shift; local label="$1"; shift
   if ! run_quiet 120 "$@"; then
@@ -622,12 +678,14 @@ mcp_add_checked() { # <host> <label> <cmd...>
 
 # --- Playwright browser download: curl resume fallback (F2) ---------------
 # The CLI's own Node downloader has no resume: on this network it dies at
-# ~90% with "Download failed: server closed connection" (cdn.playwright.dev)
-# and restarts from 0% on each of its 5 internal retries, so the install
-# never completes (reproduced 2026-11-10: 4 attempts in 500s, all dying at
-# 90%). curl -C - fetches the identical zip in one transfer (chrome-
-# linux64.zip, 207,460,506 B for CLI 0.1.24, VERIFIED 2026-11-10 via
-# HEAD on the CDN URL). When the CLI download
+# ~90% with "Download failed: server closed connection" and restarts from
+# 0% on each of its 5 internal retries, so the install never completes
+# (reproduced 2026-11-10: 4 attempts in 500s, all dying at 90%). curl -C -
+# fetches the identical zip in one transfer (chrome-linux64.zip,
+# 207,460,506 B for CLI 0.1.24; headless-shell 131,998,580 B — VERIFIED
+# 2026-11-11 via HEAD on the Chrome-for-Testing public bucket URLs the
+# CLI 0.1.24 actually downloads from; the same byte sizes the old
+# cdn.playwright.dev URLs served). When the CLI download
 # fails, the fallback below fetches the failed URL(s) with curl (the partial
 # file stays under $state_dir/playwright-downloads/, so a re-run RESUMES
 # instead of restarting), then reproduces the CLI's own post-download steps
@@ -652,28 +710,83 @@ mcp_add_checked() { # <host> <label> <cmd...>
 # No browser is vendored in the repo. After placing the file(s) the
 # installer re-runs the CLI install once (it skips the placed artifact via
 # the marker and fetches the rest) and confirms with --list.
+playwright_core_dir() { # prints the playwright-core dir for the installed CLI, or nothing
+  # Shim-proof (red-team H5): if playwright-cli resolves via a mise shim,
+  # readlink -f gives the shims dir, which has no node_modules. Fall back
+  # to the npm global root.
+  local cli_dir core
+  if command -v playwright-cli >/dev/null 2>&1; then
+    cli_dir="$(dirname -- "$(readlink -f "$(command -v playwright-cli)" 2>/dev/null)")"
+    core="$cli_dir/node_modules/playwright-core"
+    if [[ -d "$core" ]]; then printf '%s' "$core"; return 0; fi
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    core="$(npm root -g 2>/dev/null || true)/@playwright/cli/node_modules/playwright-core"
+    if [[ -d "$core" ]]; then printf '%s' "$core"; return 0; fi
+  fi
+  return 1
+}
 playwright_revision() { # <browser-name> — revision from the CLI bundle's browsers.json
-  local name="$1" cli_dir bj
-  cli_dir="$(dirname -- "$(readlink -f "$(command -v playwright-cli)")")"
-  bj="$cli_dir/node_modules/playwright-core/browsers.json"
+  local name="$1" bj
+  bj="$(playwright_core_dir 2>/dev/null || true)/browsers.json"
   [[ -f "$bj" ]] || return 1
   node -e "const b=require(process.argv[1]).browsers.find((x)=>x.name===process.argv[2]); if(!b) process.exit(1); console.log(b.revision)" "$bj" "$name" 2>/dev/null
 }
+playwright_browser_version() { # <browser-name> — browserVersion from the CLI bundle's browsers.json
+  local name="$1" bj
+  bj="$(playwright_core_dir 2>/dev/null || true)/browsers.json"
+  [[ -f "$bj" ]] || return 1
+  node -e "const b=require(process.argv[1]).browsers.find((x)=>x.name===process.argv[2]); if(!b || !b.browserVersion) process.exit(1); console.log(b.browserVersion)" "$bj" "$name" 2>/dev/null
+}
 playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and place it
-  local url="$1" fname name exe_rel rev dir_name zip_path dest cli_dir core_dir links_dir link_name
+  local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name _url_ver _bj_ver _url_rev
   fname="$(basename -- "${url%%\?*}")"
   case "$url" in
-    */builds/cft/*/linux64/chrome-linux64.zip)
+    # Host-anchored (red-team H4): the mapping trusts shape = identity,
+    # so a URL on any host would have matched. Only the two hosts the
+    # CLI actually downloads from are accepted (CFT bucket, VERIFIED
+    # 2026-11-11 via HEAD: chrome 200, 207,460,506 B; headless-shell 200,
+    # 131,998,580 B; Playwright CDN for older CLI builds + ffmpeg, whose
+    # URL was read from the CLI's own download log:
+    # cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1013/).
+    https://storage.googleapis.com/chrome-for-testing-public/*/linux64/chrome-linux64.zip)
       name="chromium"; exe_rel="chrome-linux64/chrome" ;;
-    */builds/cft/*/linux64/chrome-headless-shell-linux64.zip)
+    https://storage.googleapis.com/chrome-for-testing-public/*/linux64/chrome-headless-shell-linux64.zip)
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux64/chrome-headless-shell" ;;
-    */builds/ffmpeg/*/ffmpeg-linux.zip)
+    https://cdn.playwright.dev/*/builds/cft/*/linux64/chrome-linux64.zip)
+      name="chromium"; exe_rel="chrome-linux64/chrome" ;;
+    https://cdn.playwright.dev/*/builds/cft/*/linux64/chrome-headless-shell-linux64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux64/chrome-headless-shell" ;;
+    https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-linux.zip)
       name="ffmpeg"; exe_rel="ffmpeg-linux" ;;
     *)
       printf 'curl fallback: unknown artifact URL (no cache-layout mapping — not guessing): %s\n' "$url"
       return 1 ;;
   esac
   rev="$(playwright_revision "$name")" || { printf 'curl fallback: cannot read the %s revision from the CLI bundle (browsers.json).\n' "$name"; return 1; }
+  # Cross-check (red-team H4): the cache dir name comes from
+  # browsers.json, so a URL serving a different build would be placed
+  # under the wrong revision and marked complete. Refuse on mismatch.
+  # CFT URLs carry a version (compare to browserVersion); CDN URLs
+  # carry a revision (compare to the revision above). If the registry
+  # has no version for this browser (e.g. ffmpeg), the check is skipped.
+  case "$url" in
+    https://storage.googleapis.com/chrome-for-testing-public/*)
+      _url_ver="$(printf '%s' "$url" | sed -E 's#.*chrome-for-testing-public/([^/]+)/.*#\1#')"
+      _bj_ver="$(playwright_browser_version "$name" 2>/dev/null || true)"
+      if [[ -n "$_bj_ver" && "$_url_ver" != "$_bj_ver" ]]; then
+        printf 'curl fallback: URL version %s does not match the CLI registry browserVersion %s for %s — refusing to place it.\n' "$_url_ver" "$_bj_ver" "$name"
+        return 1
+      fi
+      ;;
+    https://cdn.playwright.dev/*)
+      _url_rev="$(printf '%s' "$url" | sed -E 's#.*/builds/(cft|ffmpeg)/([^/]+)/.*#\2#')"
+      if [[ -n "$_url_rev" && "$_url_rev" != "$rev" ]]; then
+        printf 'curl fallback: URL revision %s does not match the CLI registry revision %s for %s — refusing to place it.\n' "$_url_rev" "$rev" "$name"
+        return 1
+      fi
+      ;;
+  esac
   dir_name="${name//-/_}-$rev"
   mkdir -p "$state_dir/playwright-downloads"
   zip_path="$state_dir/playwright-downloads/$fname"
@@ -728,12 +841,14 @@ for info in z.infolist():
   # path, also with no trailing newline). Best-effort: the marker above
   # is what makes the CLI skip re-downloading; the .links entry only
   # repairs --list. Never overwrite an existing entry.
-  cli_dir="$(dirname -- "$(readlink -f "$(command -v playwright-cli)")")"
-  core_dir="$cli_dir/node_modules/playwright-core"
+  core_dir="$(playwright_core_dir 2>/dev/null || true)"
   links_dir="$user_home/.cache/ms-playwright/.links"
-  link_name="$(printf '%s' "$core_dir" | sha1sum 2>/dev/null | awk '{print $1}')"
-  if [[ -z "$link_name" ]] && command -v python3 >/dev/null 2>&1; then
-    link_name="$(printf '%s' "$core_dir" | python3 -c 'import sys,hashlib; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())' 2>/dev/null)"
+  link_name=""
+  if [[ -n "$core_dir" ]]; then
+    link_name="$(printf '%s' "$core_dir" | sha1sum 2>/dev/null | awk '{print $1}' || true)"
+    if [[ -z "$link_name" ]] && command -v python3 >/dev/null 2>&1; then
+      link_name="$(printf '%s' "$core_dir" | python3 -c 'import sys,hashlib; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())' 2>/dev/null)"
+    fi
   fi
   if [[ -n "$link_name" ]]; then
     mkdir -p -- "$links_dir"
@@ -742,7 +857,7 @@ for info in z.infolist():
       printf 'curl fallback: wrote .links entry %s (so `playwright-cli install-browser --list` sees this cache).\n' "$link_name"
     fi
   else
-    printf 'curl fallback: WARNING — could not compute the .links entry name (no sha1sum/python3); --list may fail on this fallback-only cache, but the browser itself is placed.\n'
+    printf 'curl fallback: WARNING — could not compute the .links entry name (playwright-core dir not found, or no sha1sum/python3); --list may fail on this fallback-only cache, but the browser itself is placed.\n'
   fi
   printf 'curl fallback: %s installed at %s (INSTALLATION_COMPLETE marker written — the CLI will skip re-downloading it).\n' "$name" "$dest"
   return 0
@@ -772,8 +887,9 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   # the eyes step itself only needs chromium-1254. The headless-shell zip
   # lives at the SAME CDN URL as the chrome zip — same version directory,
   # filename chrome-headless-shell-linux64.zip — the exact URL the CLI
-  # itself prints on the re-run (VERIFIED via curl HEAD 2026-11-10:
-  # 200 OK, 131,998,580 B = the CLI log's 125.9 MiB). So when a chrome URL
+  # itself prints on the re-run (VERIFIED via curl HEAD 2026-11-11 on
+  # the Chrome-for-Testing public bucket URL: 200 OK, 131,998,580 B =
+  # the CLI log's 125.9 MiB). So when a chrome URL
   # was seen but no headless-shell URL was in the log, derive it by
   # filename substitution and fetch it through the same playwright_curl_one
   # (same source, same layout, same per-entry permission restore — nothing
@@ -802,13 +918,41 @@ if [[ "$skip_eyes" == 1 ]]; then
   note_pending "Playwright CLI + browser skipped (--skip-eyes). Run: npm install -g @playwright/cli@$PLAYWRIGHT_CLI_VERSION, then playwright-cli install-browser chrome-for-testing"
 fi
 if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" == 1 ]]; then
+  _pw_cli_present=0
   if command -v playwright-cli >/dev/null 2>&1; then
     printf 'Playwright CLI already on PATH: %s\n' "$(command -v playwright-cli)"
+    _pw_cli_present=1
   else
     printf '\nInstalling Playwright CLI %s (pinned)...\n' "$PLAYWRIGHT_CLI_VERSION"
-    if ! run_best_effort "npm install -g @playwright/cli@$PLAYWRIGHT_CLI_VERSION" 300 \
+    if run_best_effort "npm install -g @playwright/cli@$PLAYWRIGHT_CLI_VERSION" 300 \
         npm install -g "@playwright/cli@$PLAYWRIGHT_CLI_VERSION"; then
+      _pw_cli_present=1
+    else
       note_pending "Playwright CLI not installed (npm -g failed — often a permissions/prefix issue). Install it with: npm install -g @playwright/cli@$PLAYWRIGHT_CLI_VERSION"
+    fi
+  fi
+  # Re-resolve the CLI after npm install (clean-env 2026-11-11, GAP-4/5):
+  # on mise-managed machines the shim does not exist until the first
+  # invocation / reshim, so `command -v playwright-cli` is false right
+  # after a successful npm install and the browser step below silently
+  # skipped (it had no else branch). Reshim + npm-prefix PATH before
+  # the check below; if it still cannot be found, the else records a
+  # PENDING — never silent. PATH is restored after the browser step
+  # (red-team H7): the prepend is for this step only, not for the hook /
+  # MCP / gitleaks / verify steps that follow.
+  _pw_saved_path="$PATH"
+  hash -r
+  if ! command -v playwright-cli >/dev/null 2>&1; then
+    # mise reshim takes no tool argument (Usage: mise reshim [-f
+    # --force] [--system]) — it rebuilds shims for ALL mise tools, not
+    # just playwright-cli. That is the documented behaviour; the PATH
+    # restore below bounds its effect on later steps.
+    if command -v mise >/dev/null 2>&1; then mise reshim >/dev/null 2>&1 || true; hash -r; fi
+  fi
+  if ! command -v playwright-cli >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    _pw_npm_prefix="$(npm config get prefix 2>/dev/null || true)"
+    if [[ -n "$_pw_npm_prefix" && -x "$_pw_npm_prefix/bin/playwright-cli" ]]; then
+      PATH="$_pw_npm_prefix/bin:$PATH"; hash -r
     fi
   fi
   if command -v playwright-cli >/dev/null 2>&1; then
@@ -867,7 +1011,23 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
         fi
       fi
     fi
+  else
+    # GAP-4 (clean-env 2026-11-11): this branch used to not exist — if the
+    # CLI was installed but unresolvable, the whole browser step silently
+    # did nothing and verify §6 failed with no trace. Never silent.
+    # Only when npm actually succeeded (QC 2026-11-11): an npm failure
+    # is already reported above, and must not produce a second,
+    # contradictory PENDING claiming the CLI is installed.
+    if [[ "$_pw_cli_present" == 1 ]]; then
+      if [[ -n "${_pw_npm_prefix:-}" ]]; then
+        note_pending "Playwright CLI installed (npm install exited 0) but not resolvable on PATH — the browser install was not attempted. Run: playwright-cli install-browser chrome-for-testing (if the command is not found, add \"$_pw_npm_prefix/bin\" to PATH first, or run $_pw_npm_prefix/bin/playwright-cli directly)."
+      else
+        note_pending "Playwright CLI installed but not resolvable on PATH — the browser install was not attempted. The npm prefix could not be determined; re-run ./install.sh, or find the binary (npm config get prefix) and run: <prefix>/bin/playwright-cli install-browser chrome-for-testing."
+      fi
+    fi
   fi
+  # Restore PATH (red-team H7) — see the resolve block above.
+  if [[ -n "${_pw_saved_path:-}" ]]; then PATH="$_pw_saved_path"; hash -r; fi
 elif [[ "$skip_eyes" == 0 ]]; then
   if [[ "$node_old" == 1 ]]; then
     note_pending "Playwright CLI not attempted (Node $node_ver found; the kit requires Node 22+). Install Node 22+, then: npm install -g @playwright/cli@$PLAYWRIGHT_CLI_VERSION, then playwright-cli install-browser chrome-for-testing"
@@ -891,7 +1051,7 @@ if [[ "$skip_hooks" == 1 ]]; then
   _sp=""
   for h in $hosts; do case "$h" in claude) _sp="${_sp:+$_sp,}claude";; codex) _sp="${_sp:+$_sp,}codex";; esac; done
   if [[ -n "$_sp" ]]; then
-    note_pending "Impeccable hook skipped (--skip-hooks). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --providers=$_sp --scope=global (accept the hook, then restart the host). Codex: also open /hooks and approve the project hook."
+    note_pending "Impeccable hook skipped (--skip-hooks). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --providers=$_sp --scope=global (accept the hook, then restart the host). Codex: the installer writes a project hook at $root/.codex/hooks.json — copy it to ~/.codex/hooks.json so it fires in all projects (re-running ./install.sh does this for you)."
   else
     note_pending "Impeccable hook skipped (--skip-hooks). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --scope=global and pick your host (accept the hook, then restart the host)."
   fi
@@ -904,12 +1064,15 @@ if [[ "$skip_hooks" == 0 && "$have_npx" == 1 && "$node_ok" == 1 ]]; then
   # installer") and could silently install a newer skill generation than
   # the vendored one. The pin equals npm latest today (4.8.2, VERIFIED
   # via `npm view` 2026-11-10), so behaviour is unchanged today and stays
-  # pinned if upstream moves latest. Trade-off, stated plainly:
-  # upstream's installer may lay down its own current skill copy next to
-  # the hook. That copy is self-consistent (upstream installs skill+engine
-  # as a pair), and re-running ./install.sh restores the vendored pin
-  # (backup-first). verify.sh's lockstep is checked against the REPO pin,
-  # so a jointly-replaced pair no longer passes undetected.
+  # pinned if upstream moves latest. Overwrite, stated plainly (clean-env
+  # 2026-11-11, GAP-2/3): upstream's installer DOES lay down its own
+  # current skill copy over the kit's generated variants (claude +
+  # agents dirs — the two --providers dirs), so a default install could
+  # never pass verify.sh §2b/§2d. install.sh restores the vendored
+  # variants itself right after the hook step (diff-gated, backup-first
+  # via install_dir — see the restore block below the hook section).
+  # verify.sh's lockstep is checked against the REPO pin, so a
+  # jointly-replaced pair no longer passes undetected.
   providers=""
   for h in $hosts; do case "$h" in claude) providers="${providers:+$providers,}claude";; codex) providers="${providers:+$providers,}codex";; esac; done
   if [[ -n "$providers" ]]; then
@@ -917,6 +1080,7 @@ if [[ "$skip_hooks" == 0 && "$have_npx" == 1 && "$node_ok" == 1 ]]; then
     hook_log_lines="$(wc -l < "$state_dir/install.log" 2>/dev/null || echo 0)"
     _hook_label="npx impeccable@$IMPECCABLE_PIN install --providers=$providers --scope=global"
     if run_quiet 300 npx --yes "impeccable@$IMPECCABLE_PIN" install "--providers=$providers" --scope=global; then
+      promote_codex_hook # project hook (if any) -> global, before the read-back below
       # H6: exit 0 alone is not "OK" — read back the host's hook config.
       if hook_wired; then
         printf 'OK: %s (verified — impeccable entry confirmed in host hook config)\n' "$_hook_label"
@@ -938,6 +1102,7 @@ if [[ "$skip_hooks" == 0 && "$have_npx" == 1 && "$node_ok" == 1 ]]; then
       if printf '%s' "$hook_log" | grep -qiE 'network error|could not download|tls close_notify|econnreset|etimedout|eai_again|enotfound|socket hang up|server closed connection|connection (reset|timed out|refused)|download failed'; then
         printf 'Impeccable hook failed with a transient download/network error — retrying once (1/1)...\n'
         if run_quiet 300 npx --yes "impeccable@$IMPECCABLE_PIN" install "--providers=$providers" --scope=global; then
+          promote_codex_hook # project hook (if any) -> global, before the read-back below
           if hook_wired; then
             printf 'OK: %s (retry 1/1) (verified — impeccable entry confirmed in host hook config)\n' "$_hook_label"
             printf 'Impeccable hook installed on retry.\n'
@@ -947,10 +1112,10 @@ if [[ "$skip_hooks" == 0 && "$have_npx" == 1 && "$node_ok" == 1 ]]; then
           fi
         else
           printf 'FAILED (non-fatal): %s (retry 1/1) — see %s/install.log\n' "$_hook_label" "$state_dir"
-          note_pending "Impeccable hook not installed by script (failed twice; the log shows a transient download/network error — retry when the network is stable). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --providers=$providers --scope=global (accept the hook, then restart the host). Codex: also open /hooks and approve the project hook."
+          note_pending "Impeccable hook not installed by script (failed twice; the log shows a transient download/network error — retry when the network is stable). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --providers=$providers --scope=global (accept the hook, then restart the host)."
         fi
       else
-        note_pending "Impeccable hook not installed by script (failure does NOT look like a transient download/network error — see $state_dir/install.log before re-running; do not just retry blindly). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --providers=$providers --scope=global (accept the hook, then restart the host). Codex: also open /hooks and approve the project hook."
+        note_pending "Impeccable hook not installed by script (failure does NOT look like a transient download/network error — see $state_dir/install.log before re-running; do not just retry blindly). Run interactively: npx --yes impeccable@$IMPECCABLE_PIN install --providers=$providers --scope=global (accept the hook, then restart the host)."
       fi
     fi
   else
@@ -959,19 +1124,53 @@ if [[ "$skip_hooks" == 0 && "$have_npx" == 1 && "$node_ok" == 1 ]]; then
   # Hermes hook has its own VERIFIED command (Impeccable 4.8.2 changelog).
   case " $hosts " in *" hermes "*)
     if command -v hermes >/dev/null 2>&1; then
-      if run_quiet 120 hermes plugins enable impeccable-design-hook; then
-        if ls "$user_home/.hermes/plugins" 2>/dev/null | grep -qi 'impeccable'; then
-          printf 'OK: hermes plugins enable impeccable-design-hook (verified — impeccable plugin present under ~/.hermes/plugins)\n'
+      # The vendored plugin must be INSTALLED before it can be enabled
+      # (clean-env 2026-11-11, GAP-7): `hermes plugins install` takes a
+      # Git URL only — no local-path install — so copy the vendored
+      # plugin into ~/.hermes/plugins/ first. install_dir is
+      # backup-first: a missing copy is installed, a differing one is
+      # replaced with the vendored pin (M1 — a repo update to the plugin
+      # otherwise never reaches an existing install), and an identical
+      # one is left alone (diff-gated, so no backup churn on re-runs).
+      # A regular file at the target path is moved aside the same way.
+      if [[ -d "$root/vendor/impeccable/skill/hermes-plugin" ]]; then
+        if [[ ! -e "$user_home/.hermes/plugins/impeccable-design-hook" ]]; then
+          # Subshell (re-QC round 2): install_dir fail()s (exits) on a
+          # failed copy, which must not kill the install — a best-effort
+          # step. A failure is a PENDING, matching the restore block.
+          ( install_dir "$root/vendor/impeccable/skill/hermes-plugin" "$user_home/.hermes/plugins/impeccable-design-hook" ) || note_pending "Vendored Hermes plugin copy failed (install_dir could not place it under ~/.hermes/plugins/) — the hook enable below will fail. Copy it by hand: cp -r $root/vendor/impeccable/skill/hermes-plugin ~/.hermes/plugins/impeccable-design-hook"
+        elif ! diff -qr -- "$root/vendor/impeccable/skill/hermes-plugin" "$user_home/.hermes/plugins/impeccable-design-hook" >/dev/null 2>&1; then
+          printf 'Updating vendored Hermes plugin (installed copy differs from the vendored pin — backing up first).\n'
+          ( install_dir "$root/vendor/impeccable/skill/hermes-plugin" "$user_home/.hermes/plugins/impeccable-design-hook" ) || note_pending "Vendored Hermes plugin update failed (install_dir could not replace it under ~/.hermes/plugins/) — the stale copy stays in place. Copy it by hand: cp -r $root/vendor/impeccable/skill/hermes-plugin ~/.hermes/plugins/impeccable-design-hook"
+        fi
+      fi
+      # --no-allow-tool-override: the enable prompts about overriding
+      # built-in tools (a privileged capability); this flag declines it
+      # and skips the prompt entirely (VERIFIED 2026-11-11: exit 0, no
+      # prompt, plugin listed as enabled). The plugin's
+      # transform_tool_result / pre_verify hooks work without the
+      # override. Grant later with --allow-tool-override if ever wanted.
+      if run_quiet 120 hermes plugins enable --no-allow-tool-override impeccable-design-hook; then
+        # S4: directory presence is NOT verification — install.sh just
+        # copied the plugin there, so `ls` succeeds by construction even
+        # if the enable did nothing. The real check is `hermes plugins
+        # list` showing it enabled. (The "not enabled" row contains the
+        # word "enabled", so exclude it first.)
+        if hermes plugins list 2>/dev/null | grep -i 'impeccable' | grep -vi 'not enabled' | grep -qi 'enabled'; then
+          printf 'OK: hermes plugins enable impeccable-design-hook (verified — plugin listed as enabled)\n'
+        elif ls "$user_home/.hermes/plugins" 2>/dev/null | grep -qi 'impeccable'; then
+          printf 'UNVERIFIED (H6): hermes plugins enable exited 0 and the plugin is installed, but `hermes plugins list` does not show it as enabled — NOT reporting OK.\n'
+          note_pending "Hermes Impeccable hook enable reported success but the plugin is not listed as enabled. Run: hermes plugins enable --no-allow-tool-override impeccable-design-hook and confirm it lists as enabled (hermes plugins list)."
         else
           printf 'UNVERIFIED (H6): hermes plugins enable impeccable-design-hook exited 0 but no impeccable plugin was found under ~/.hermes/plugins — NOT reporting OK.\n'
-          note_pending "Hermes Impeccable hook enable reported success but no impeccable plugin exists under ~/.hermes/plugins — NOT verified as wired (H6). Run: hermes plugins enable impeccable-design-hook and confirm it lists as enabled."
+          note_pending "Hermes Impeccable hook enable reported success but no impeccable plugin exists under ~/.hermes/plugins — NOT verified as wired (H6). Run: cp -r $root/vendor/impeccable/skill/hermes-plugin ~/.hermes/plugins/impeccable-design-hook, then hermes plugins enable --no-allow-tool-override impeccable-design-hook and confirm it lists as enabled."
         fi
       else
         printf 'FAILED (non-fatal): hermes plugins enable impeccable-design-hook — see %s/install.log\n' "$state_dir"
-        note_pending "Hermes Impeccable hook not enabled. Run: hermes plugins enable impeccable-design-hook"
+        note_pending "Hermes Impeccable hook not enabled. The plugin must be installed first: cp -r $root/vendor/impeccable/skill/hermes-plugin ~/.hermes/plugins/impeccable-design-hook, then run: hermes plugins enable --no-allow-tool-override impeccable-design-hook"
       fi
     else
-      note_pending "Hermes hook not attempted (hermes binary not on PATH). Run: hermes plugins enable impeccable-design-hook"
+      note_pending "Hermes hook not attempted (hermes binary not on PATH). Run: hermes plugins enable --no-allow-tool-override impeccable-design-hook"
     fi
     ;;
   esac
@@ -984,6 +1183,68 @@ elif [[ "$skip_hooks" == 0 ]]; then
     note_pending "Impeccable hook not attempted (npx missing). Install Node 22+, then: npx --yes impeccable@$IMPECCABLE_PIN install --scope=global and pick your host (accept the hook, then restart the host)."
   fi
 fi
+
+# --- Post-hook restore (clean-env 2026-11-11, GAP-2/3 + GAP-6) -------------
+# (a) Restore the vendored Impeccable variants. The upstream hook installer
+# overwrites the kit's generated copies (claude + agents dirs — the two
+# --providers dirs) with its own current copies, which fail verify.sh
+# §2b (top-level version:) and §2d (live self-grade language). Re-copy the
+# generated variants over the installed dirs, but ONLY where the installed
+# copy actually differs (diff-gated, so a clean tree is untouched), and
+# backup-first via install_dir (the upstream copy lands in $backup).
+# Runs whenever the hook step ran with a provider (success or not — a
+# failed npx run may still have overwritten before failing), never on
+# --skip-hooks / dry-run. Scope (red-team H2): only the dirs the
+# installer can have touched (claude + the codex dirs agents/codex-skills
+# — the --providers list is claude,codex). A hand-edit in one of those
+# dirs is indistinguishable from the upstream overwrite, so it is also
+# restored — backed up first, and the version being replaced is printed.
+if [[ "$dry_run" == 0 && "$skip_hooks" == 0 && -n "${providers:-}" && "${#DONE_DIRS[@]}" -gt 0 ]]; then
+  for _restore_dir in "$user_home/.claude/skills" "$user_home/.agents/skills" "$user_home/.codex/skills"; do
+    [[ -n "${DONE_DIRS[$_restore_dir]:-}" ]] || continue
+    _restore_src="$(impeccable_source_for_host "${DONE_DIRS[$_restore_dir]}")" || true
+    [[ -n "$_restore_src" && -d "$_restore_src" && -d "$_restore_dir/impeccable" ]] || continue
+    # diff exit codes (red-team S2): 0 = same, 1 = differs, 2/127 =
+    # error (missing/unreadable path, or no diff binary). Only 1 means
+    # "restore"; an error is a PENDING, never a restore and never a
+    # fatal abort. (diff is coreutils; if it is absent, skip loudly
+    # instead of treating everything as differs.)
+    if ! command -v diff >/dev/null 2>&1; then
+      note_pending "Impeccable variant restore skipped for $_restore_dir/impeccable (diff not found — cannot tell whether the upstream hook installer overwrote it). Re-run ./install.sh on a machine with diff, or compare by hand."
+      continue
+    fi
+    _diff_code=0
+    diff -qr -- "$_restore_src" "$_restore_dir/impeccable" >/dev/null 2>&1 || _diff_code=$?
+    if [[ "$_diff_code" == 0 ]]; then
+      continue
+    elif [[ "$_diff_code" != 1 ]]; then
+      note_pending "Impeccable variant restore skipped for $_restore_dir/impeccable (diff failed with exit $_diff_code — the installed copy may or may not be the upstream one). Compare by hand: diff -r $_restore_src $_restore_dir/impeccable"
+      continue
+    fi
+    _old_ver="$(grep -m1 -E '^version:' "$_restore_dir/impeccable/SKILL.md" 2>/dev/null | awk '{print $2}' || true)"
+    printf 'Restoring vendored Impeccable variant over the upstream hook-installer copy (installed version %s): %s\n' "${_old_ver:-unknown}" "$_restore_dir/impeccable"
+    # Best-effort (red-team S2): install_dir fail()s (exits) on a failed
+    # copy, which must not kill the install. Run it in a subshell so a
+    # failure only fails the subshell, then put the target back from
+    # $backup if install_dir moved it away.
+    if ( install_dir "$_restore_src" "$_restore_dir/impeccable" ); then
+      :
+    else
+      printf 'WARNING: Impeccable variant restore failed for %s — leaving the installed copy in place.\n' "$_restore_dir/impeccable" >&2
+      _rel="${_restore_dir#$user_home/}/impeccable"
+      if [[ ! -e "$_restore_dir/impeccable" && -e "$backup/$_rel" ]]; then
+        mv -- "$backup/$_rel" "$_restore_dir/impeccable" 2>/dev/null || true
+      fi
+    fi
+  done
+fi
+# (b) Catch-all Codex promotion (the success branches above already
+# promoted before their hook_wired read-back; this covers the failure
+# paths, where the installer may still have written the project hook).
+# Gated (QC 2026-11-11): --skip-hooks must not move/delete hook files,
+# and neither must a run where the hook step never ran (npx missing /
+# Node too old / no claude-or-codex provider).
+[[ "$skip_hooks" == 0 && -n "${providers:-}" && "${_promote_codex_ran:-0}" != 1 ]] && promote_codex_hook
 
 # --- Playwright MCP adds (best-effort, via host CLIs — never hand-edited --
 # --- config, because a wrong key fails silently on every host) -------------
@@ -1058,23 +1319,37 @@ install_gitleaks() { # pinned tarball + published checksums, into ~/.local/bin
   local base="https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION"
   local tmpd
   tmpd="$(mktemp -d)" || return 1
-  if ! curl -fsSL -o "$tmpd/gitleaks.tar.gz" "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; then
+  # The tarball MUST be saved under its real filename: sha256sum -c reads
+  # the filename FROM the checksum line, so a renamed file can never
+  # verify (clean-env 2026-11-11, GAP-1: the old gitleaks.tar.gz name made
+  # every fresh install refuse the binary and fail closed on gate 1.1).
+  if ! curl -fsSL -o "$tmpd/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; then
     printf 'gitleaks install: tarball download failed.\n'; rm -rf -- "$tmpd"; return 1
   fi
   if ! curl -fsSL -o "$tmpd/checksums.txt" "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"; then
     printf 'gitleaks install: checksums download failed — refusing to install an unverified binary.\n'; rm -rf -- "$tmpd"; return 1
   fi
-  if ! (cd "$tmpd" && grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" checksums.txt | sha256sum -c - >/dev/null 2>&1); then
+  # Anchored (red-team M6): an unanchored grep would also match a
+  # "...tar.gz.sig" line if upstream ever added one, failing the check.
+  if ! (cd "$tmpd" && grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$" checksums.txt | sha256sum -c - >/dev/null 2>&1); then
     printf 'gitleaks install: checksum verification FAILED — refusing to install.\n'; rm -rf -- "$tmpd"; return 1
   fi
-  if ! tar -xzf "$tmpd/gitleaks.tar.gz" -C "$tmpd" gitleaks; then
+  if ! tar -xzf "$tmpd/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -C "$tmpd" gitleaks; then
     printf 'gitleaks install: extraction failed.\n'; rm -rf -- "$tmpd"; return 1
   fi
   mkdir -p "$user_home/.local/bin"
   cp -- "$tmpd/gitleaks" "$user_home/.local/bin/gitleaks" || { printf 'gitleaks install: copy to ~/.local/bin failed.\n'; rm -rf -- "$tmpd"; return 1; }
   chmod 755 -- "$user_home/.local/bin/gitleaks"
   rm -rf -- "$tmpd"
-  "$user_home/.local/bin/gitleaks" version >/dev/null 2>&1
+  # Explicit return (QC 2026-11-11): the probe's exit status used to be
+  # the function's return value, so a binary that failed to run was
+  # reported as "install failed" with no diagnosis. Keep the failure,
+  # but say why.
+  if ! "$user_home/.local/bin/gitleaks" version >/dev/null 2>&1; then
+    printf 'gitleaks install: the installed binary does not run (gitleaks version failed).\n'
+    return 1
+  fi
+  return 0
 }
 if command -v gitleaks >/dev/null 2>&1; then
   printf 'Secret scanner already on PATH: gitleaks %s\n' "$(command -v gitleaks)"
@@ -1088,7 +1363,7 @@ elif install_gitleaks; then
     note_pending "gitleaks $GITLEAKS_VERSION is installed at ~/.local/bin/gitleaks but ~/.local/bin is not on PATH, so gate 1.1 still fails closed. Add it: export PATH=\"\$HOME/.local/bin:\$PATH\" (e.g. in ~/.profile), then re-run ./verify.sh. Alternative scanners the gate also accepts: trufflehog (see https://github.com/trufflesecurity/trufflehog/releases)."
   fi
 else
-  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz gitleaks-checksums.txt | sha256sum -c -) && tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
+  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$ gitleaks-checksums.txt | sha256sum -c -) && tar -xzf /tmp/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
 fi
 
 # Figma: human-gated by design (OAuth). Never attempted here.

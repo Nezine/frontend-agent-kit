@@ -1,3 +1,9 @@
 __pycache__/
 *.pyc
 .DS_Store
+# Installer output: the upstream Impeccable hook installer writes
+# <repo>/.codex/hooks.json (a project hook) when install.sh runs; it is
+# machine-local installer output, never committed. (install.sh promotes
+# it to ~/.codex/hooks.json and removes the project copy.) Root-only:
+# the pattern must not match a .codex/ dir nested in a subproject.
+/.codex/
