@@ -1,0 +1,46 @@
+# .gitleaks.toml — kit gitleaks config for gate.sh check 1.1 (W-LOOP fix,
+# 2026-11-11).
+#
+# Problem: run-log.mjs records the locked tokens' sha256 as `tokensHash`
+# in design/run-log.jsonl, and gitleaks' generic-api-key rule flags that
+# 64-hex content hash as a leak — a false positive (a hash of the public
+# tokens.css, not a credential). The kit's own gate therefore failed its
+# own run logs (exercise probe, version B leg 1).
+#
+# Scope — path-only, deliberately NOT a 64-hex regex:
+# gitleaks' allowlist fields combine with OR (verified 2026-11-11 against
+# gitleaks 8.30.1: a paths-only config suppresses every finding in the
+# listed file; a regex-only config suppresses every secret matching the
+# regex in ANY file). So a 64-hex regex here would broaden the allowlist
+# to every 64-hex secret in every file, and there is no line-context AND
+# in the allowlist mechanism — a regex cannot express "only on lines
+# containing tokensHash". The narrowest the mechanism can express is the
+# file scope alone: design/run-log.jsonl, and nothing else.
+#
+# Backstop: gate.sh's built-in 1.1 grep ALSO scans design/run-log.jsonl
+# for the same high-confidence secret patterns (AKIA / ghp_ / sk- /
+# private keys / api_key|secret|password assignments). A real secret in
+# the run log still FAILS the gate there even though gitleaks skips the
+# file. tokensHash itself does not match either grep pattern (no
+# api_key/secret/password/access_token keyword on its line), so the lock
+# hash stays clean. Residual hole, stated plainly: a generic
+# high-entropy string on a non-tokensHash line in the run log, matching
+# neither built-in pattern, would be missed by both layers. The run log
+# is append-only machine-written JSON whose only high-entropy field by
+# convention is tokensHash, so that hole needs a secret pasted into a
+# notes/findings field to bite.
+#
+# [extend] useDefault = true keeps gitleaks' full default rule set and
+# merges this allowlist on top. A --config WITHOUT [extend] would REPLACE
+# the defaults and silently disable every rule (verified: a config with
+# only [allowlist] reports "no leaks found" even for a planted key) —
+# never ship a config without it. Requires a gitleaks with [extend]
+# support (verified here against 8.30.1); if the config cannot be parsed
+# gitleaks exits non-zero and the gate FAILS closed.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "run-log tokensHash only: gitleaks skips design/run-log.jsonl, whose tokensHash sha256 content hash trips generic-api-key; a real secret in the run log still fails via gate.sh's built-in 1.1 grep over the same file"
+paths = ['''(^|/)design/run-log\.jsonl$''']

@@ -14,10 +14,10 @@ sub-agents) with:
    `design/tokens.css`, `design/TASTE.md`, the chosen DESIGN.md file(s),
    the 1440/768/390 screenshots, the 1–3 locked reference screenshots
    (downscaled to 720px long edge, every round), the single bit
-   `gate: green`, tool measurements where provided, and the brief-type
+   `gate: green`, the single bit `cross-check: clear`, tool measurements where provided, and the brief-type
    scope. It contains NOTHING else about the build: no builder transcript,
    no builder reasoning, no drafts, no earlier rounds' scores, no variant
-   history, no run-log entries, no gate findings, no builder / model
+   history, no run-log entries, no gate findings, no cross-check findings, no builder / model
    identity.
 2. **The judge skill, by name.** The spawn instruction names
    `frontend-judge` explicitly and tells the sub-agent to read
@@ -42,7 +42,7 @@ Example spawn instruction (adapt the paths; keep the constraints verbatim):
 > edge): ref 1 `<project>/design/references/<ref1>.png`, ref 2
 > `<project>/design/references/<ref2>.png` (1–3 refs, as the lock names),
 > screenshots `<project>/design/screenshots/{1440,768,390}.png`, gate:
-> green, brief type: <landing | dashboard/app | redesign>. Return the
+> green, cross-check: clear, brief type: <landing | dashboard/app | redesign>. Return the
 > score table in the skill's output format, evidence first, every evidence
 > line citing its reference image. Edit nothing. You have not seen this
 > build before; if any of these inputs is missing, say so instead of
@@ -103,6 +103,11 @@ The full scoping table lives in `frontend-kit` step 3 /
   anchors the new grade).
 - Gate findings (findings lists, `detect` output, gate-scripts output).
   The judge receives only the single bit `gate: green`.
+- Cross-check findings (finding lists, severity counts, report contents,
+  checker identity). The judge receives only the single bit
+  `cross-check: clear` — a SEVERE-blocked build never reaches the judge,
+  because the orchestrator spawns a judge only when the gate is green
+  AND the cross-check is clear.
 - The builder's or the model's identity (who built the page, which model).
 
 ## Recording the grade

@@ -39,7 +39,7 @@ design/DESIGN-SYSTEM.md  — the design-system declaration (step 1.6):
 design/rounds/           — one folder per fix round (step 5.5):
                            `rounds/<n>/proposal.md` / `delta.md` / `tasks.md`
 design/screenshots/      — this build's shots (Playwright output)
-design/variants/         — CSS-only variants + their screenshots
+design/variants/         — structural variants (+ 1 break-frame) + their screenshots
 ```
 
 The plan, Design Read, and declaration templates are copied with the
@@ -199,10 +199,12 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   dashboards / app screens use the dense multi-panel layout instead (see the
   brief-type scoping table in step 3 — it governs both the build shape and
   the gate).
-- If the brief is vague on direction: generate the 5 CSS-only variants (same
-  content, same copy, same semantic HTML — only CSS changes; Editorial /
-  Dark / Warm brutalist / Glassy / Minimal — each as a concrete token
-  direction in `references/variant-briefs.md`), each with its own tokens,
+- If the brief is vague on direction: generate the 5 structural variants
+  (same content, same copy, same section inventory — structure may
+  differ; tokens stay locked) + 1 break-frame variant = 6 variants
+  (Editorial / Dark / Warm brutalist / Glassy / Minimal — each as a
+  concrete token + structural direction in
+  `references/variant-briefs.md`), each with its own tokens,
   screenshot each at the same width. **Variant folder layout** (the picker
   requires it): `design/variants/<name>/tokens.css`,
   `design/variants/<name>/screenshot-1440.png`,
@@ -366,6 +368,39 @@ scoped here is the GATE checks, not the lens.
   max 2 experts per round. The expert verdict is ADVISORY: the judge keeps
   the final 4-axis scores; the expert's top defects enter the fix list. An
   accessibility REWORK (1–2) blocks shipping even when the 4 axes are ≥4.
+- **Cheap-grade ladder (P13, rounds 2–3).** Round 1 is a full 3-width
+  grade. Rounds 2–3 that get a grade are cheap grades: the full 390 shot
+  + crops of the changed sections only + tool checks (snapshot / console /
+  geometry) FIRST, pixels second — a score contradicting a tool
+  measurement is invalid. The cost table (Variant B adopted — full-page
+  390) is in `references/grader-rubric.md`; it is MEASURED in two
+  instrumented runs (W-LOOP exercise, run-1 + run-2 — see the rubric's
+  cost table for the per-run figures: R2 build 913 run-1 / 836 run-2,
+  R2 images total 1,777 run-1 / 1,700 run-2 on a 2-ref basis; text
+  context 35,784 run-1 / 31,414 run-2; whole-round saving 5.9–7.2%
+  run-1 / 7.1–8.3% run-2). Downscale ALL judge images to
+  1,568px long edge before sending (host note for Claude Code: this avoids
+  the high-res tier); model selection is not a loop rule. Every round
+  produces FRESH per-axis scores for the whole page from the new
+  screenshots, for every axis it grades — carried scores are abolished;
+  an unchanged SECTION not re-scored is marked `not re-graded (unchanged
+  since round N)` in the score table and recorded in the run log via
+  `--not-regraded "<section ids>"`, an explicit absence, never a score. P6 flat-line detection and P8's agreement log
+  use fresh scores only. The stop round is always a full fresh grade
+  (rule in `references/stop-rules.md`). Precedence: P5's classification
+  runs first (token-only fix → gate-only, no grade); P13's cheap grade
+  applies only to rounds that get a grade (structural rounds 2–3); when
+  P11's pairwise triggers, the round is a full-shot round (full 1440 +
+  full 390 of both versions, order randomized) and no crops apply.
+  Changed sections are determined mechanically by the git diff of
+  `design/tokens.css` + the HTML between rounds, cross-checked against
+  the builder's fix list — the builder's self-report is never the
+  determiner. The crop helper is
+  `skills/frontend-kit/scripts/crop-sections.mjs`; it outputs the input
+  manifest (JSON) for the judge spawn listing the 390 full shot + crops +
+  tool-check outputs, and fails loudly (full shots for that round,
+  labelled in the run log) when its image backend is absent — never
+  silently send full shots as if they were crops.
 
 ## 5. Fix top 2, as token diffs (or top 1 if the evidence is thin)
 
@@ -409,9 +444,10 @@ scoped here is the GATE checks, not the lens.
   presented as done: the human gate does not open, and the round goes
   back to step 5 with the failing section or state named. There is no
   advisory mode. The converge result is recorded in the run log.
-- **6.2 Stop when:** ≥4 on every axis AND gate green AND cross-check clear — or after 3 rounds, whichever
-  comes first. A build that cannot reach ≥4 in 3 rounds is a direction
-  problem (wrong reference, wrong tokens) — re-pick a variant (step 2a),
+- **6.2 Stop when:** ≥4 on every axis AND gate green AND cross-check clear — or a P6 trigger
+  ends work on the direction (step 5 decision tree) — or after 3 rounds per direction,
+  whichever comes first. A build that cannot reach ≥4 in 3 rounds is a direction problem
+  (wrong reference, wrong tokens) — re-pick a variant (step 2a),
   not a 4th round. (Bias grows with rounds — Huang et al. 2024, VERIFIED
   from the primary PDF Tables 2–6.) **Re-pick cap: max 2 re-picks, 9 rounds
   total** — 3 rounds in the initial direction + at most 2 re-picks × 3
@@ -419,7 +455,28 @@ scoped here is the GATE checks, not the lens.
   the human gate with the best version so far. **Best-version-kept survives
   a re-pick:** the best-scoring version across ALL directions stays the
   version that ships; a re-pick starts a new direction from scratch but
-  never discards the previous best.
+  never discards the previous best. Best-version-kept is decided by the pairwise verdict
+  when pairwise runs, by absolute scores otherwise; a tie keeps the incumbent.
+  **P6 triggers (D1/D2, 2026-11-10; full text in `references/stop-rules.md`):** the loop
+  ends work on a direction on the FIRST non-improving round — one trigger count, not two.
+  (a) After round 1, if Layout or Space ≤ 3 AND the judge's evidence lines cite the failure
+  (not a bare score), re-pick from the kept variants — ONLY if a structural (break-frame)
+  variant exists among them; if all kept variants are CSS-only, (a) does NOT fire and the
+  loop escalates instead (present the best version + blocker at the human gate). An early
+  re-pick under (a) consumes one of the 2 re-picks. (b) Flat-line: a fix round that improves
+  NO axis AND the gate adds no new finding ends work on the direction — flat-line test: no
+  axis improved AND gate findings did not decrease AND no new gate finding appeared; a
+  round where scores are flat but the gate fixed a finding is NOT flat (gate progress
+  counts). One re-grade confirms (second grade, not a second round; third only if the two
+  disagree). Rules (c) and (d) are DELETED, and the mid-loop human-escalation sentence is
+  DELETED: "escalate" means end work on the direction and present the best version +
+  blocker at the existing human gate; in buffet mode the run parks in "awaiting human" as
+  designed behaviour. Median-of-3 (e) applies on non-final rounds only; on the round that
+  would stop the loop, P14's jury-of-3 applies INSTEAD — never both; max 3 judge calls on
+  a stop round. **Stop-round grade:** the round that would stop the loop gets a FULL fresh
+  grade (1440/768/390 + references); no carried / not-re-graded axes at the stop decision.
+  Stated effect is the mechanism only (no full grade round is spent on a direction after a
+  flat round — derived estimate, unmeasured); no quantified round saving is claimed.
 - **6.3 Human gate:** score table + the 3-width screenshots + 2–4 targeted questions
   with concrete options (pick them from `references/human-gate-pack.md` —
   never open-ended "what do you think?") + recommended next command,
@@ -440,7 +497,13 @@ scoped here is the GATE checks, not the lens.
 - **6.5 Record in the run log (P7 run state, in the append-only log — no
   separate run file):** per round — scores, grader identity + independence
   basis, converge result, gate findings (`--gate-findings`, `;`-separated),
-  fix class (`--fix-class`), outcome (`--outcome kept | discarded | re-pick |
+  fix class (`--fix-class`), the P6 trigger that ended a direction
+  (`--trigger flat-line | round-1-repick`; `stagnation` is a RETIRED value,
+  accepted for old logs only, never emitted by the new rules), the pairwise
+  verdict (`--pairwise keep-incumbent | keep-challenger | tie` +
+  `--pairwise-agrees yes | no`), the stop-round jury (`--jury "<t,l,c,s
+  median>"` + `--jury-mode disjoint-3 | single-family | single` +
+  `--jury-votes "<v1;v2;v3>"`), outcome (`--outcome kept | discarded | re-pick |
   stopped | escalated | pending`, default `pending`), and the built page
   graded (`--page`); `tokensHash` is recorded automatically as the sha256
   of `design/tokens.css` when present, else null. The plan's approval basis

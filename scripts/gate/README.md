@@ -209,6 +209,27 @@ guessed. A finding about a whole file (no single line) prints as
   warning up front on a directory target; `gate.sh` never runs directory
   mode at all — it detects per built file, which gets the full parsed-page
   rules.
+- **Secret-scan allowlist, run-log `tokensHash` only (1.1, 2026-11-11,
+  W-LOOP fix).** `gate.sh` runs gitleaks with the kit config
+  `scripts/gate/.gitleaks.toml`, which extends gitleaks' defaults
+  (`[extend] useDefault = true`) and allowlists ONLY
+  `design/run-log.jsonl` — the run log's `tokensHash` sha256 content hash
+  trips `generic-api-key`, a false positive that failed the exercise
+  probe's version-B leg 1. The scope is path-only on purpose: gitleaks'
+  allowlist fields combine with OR (verified against 8.30.1 — a 64-hex
+  regex would suppress 64-hex secrets in EVERY file, and no line-context
+  AND exists in the mechanism), so no 64-hex regex is in the config; a
+  `--config` without `[extend]` would REPLACE the defaults and disable
+  every rule, so never ship one without it. Backstop: the built-in 1.1
+  grep also scans `design/run-log.jsonl` for the high-confidence patterns,
+  so a real secret in the run log still FAILS. Verified 2026-11-11 via
+  `gate.sh --security-only` on scratch projects (gitleaks 8.30.1): run log
+  with a `tokensHash` line → 1.1 PASS, exit 0; planted fake AKIA key in a
+  scratch file → 1.1 FAIL via gitleaks, exit 2; same key planted inside
+  `run-log.jsonl` → 1.1 FAIL via the built-in grep, exit 2. Residual hole,
+  stated in the config: a generic high-entropy string on a
+  non-`tokensHash` line in the run log, matching neither built-in pattern,
+  would be missed by both layers.
 
 ## Widths — the rhythm-widths ambiguity, resolved from the code
 

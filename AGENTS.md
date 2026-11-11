@@ -310,8 +310,9 @@ The default path is the **taste-locked deterministic-gate loop**, driven by the
    recorded in the run log (`run-log.mjs lock`); `git commit` only if the project is
    a git repo (see `frontend-kit` SKILL.md step 1.8).
 2. **Build (one HTML file, tokens only — no inline style drift).** If the brief is vague
-   on direction: generate the 5 CSS-only variants (same content/copy/HTML, only CSS
-   changes — Editorial / Dark / Warm brutalist / Glassy / Minimal), screenshot each at
+   on direction: generate the 5 structural variants + 1 break-frame = 6 variants (same
+   content, same copy, same section inventory — structure may differ; tokens stay locked
+   — Editorial / Dark / Warm brutalist / Glassy / Minimal + break-frame), screenshot each at
    the same width. The human picks one; the pick IS the feedback.
 3. **Deterministic gate (BEFORE any vision grade):** `impeccable detect` (62 rules);
    taste-style gate scripts (overflow / collide / tap-size, section height,

@@ -35,13 +35,18 @@ below and "What the judge never receives" in `references/invocation.md`):
 3. Screenshots of the page at 1440 / 768 / 390 (Playwright output in
    `design/screenshots/`). Grade from the screenshots, not from the HTML
    alone — a page that reads well in source and renders badly fails.
+   (On a cheap-grade round, see "Cheap-grade inputs (P13)" below — the
+   390 full shot + crops of the changed sections + tool checks, not the
+   full 3-width set. On a pairwise round, see "Pairwise keep/discard
+   (P11)" — full 1440 + full 390 shots of both versions.)
 4. The 1–3 locked reference screenshots named in the taste lock
    (`run-log.mjs lock --refs <chosen DESIGN.md + reference screenshots>`),
    downscaled to 720px long edge, every round. These are the reference you
    grade against — never all 8–15 screenshots in `design/references/`,
    only the 1–3 the lock names. A score that does not cite the reference
    image it is judged against is invalid (see "The evidence rule"). Cost:
-   +~1,400 image tokens/round for 3 downscaled refs (1 ref ≈ 470); the
+   +~1,300 image tokens/round for 3 downscaled refs (1 ref = 432
+   MEASURED in both W-LOOP runs, run-1 + run-2); the
    full P12+P13 cost table is in
    `skills/frontend-kit/references/grader-rubric.md`.
 5. The single bit `gate: green` — nothing else about the gate. You are
@@ -73,6 +78,7 @@ reaches you anyway, ignore it and say so.
 | Tool measurements (Playwright snapshot / console / geometry) | Builder's transcript, reasoning, plan, or drafts |
 | Pairwise A/B inputs (P11 only — full shots of both versions, labelled A/B; not part of a per-round absolute grade) | Unpicked variants (direction alternatives, not evidence) |
 | The single bit `gate: green` (the ONLY gate information you receive) | Anything about the builder's model, host, or history |
+| The single bit `cross-check: clear` (the ONLY cross-check information you receive) | Cross-check findings (finding lists, severity counts, report contents, checker identity) |
 
 The gate is handled by orchestrator pre-filter: the orchestrator does not
 spawn a judge on a red gate, so a red gate never reaches you as a grading
@@ -158,6 +164,97 @@ something (no screenshot at a width, no contrast measurement, no reference
 shot), say which observation is missing instead of scoring around it —
 score the axis lower and name the missing evidence.
 
+## Pairwise keep/discard (P11)
+
+The orchestrator asks for a pairwise verdict ONLY on a round where the
+build actually changed AND the absolute-score change on the round's
+lowest axis, versus the incumbent, is at most 1 point in either direction
+(|Δ lowest axis| ≤ 1). A clear improvement or regression is decided by
+the absolute scores alone, and no pairwise call is made. When the
+orchestrator does ask, it spawns TWO fresh pairwise judges, neither of
+which is the judge that produced this round's absolute scores:
+
+- Each pairwise judge receives the full 1440 + full 390 shots of BOTH
+  versions, side by side, labelled A and B only. The order is randomized
+  per call: the second call swaps A and B.
+- The pairwise judge receives NO round identity (it does not know which
+  version is the new round and which is the incumbent), NO absolute
+  scores (its own or any other judge's), NO model/builder identity, and
+  nothing else from the D8 forbidden list. Labels A/B only.
+- Each pairwise judge answers one question: keep A or keep B — for the
+  whole page, against the locked reference. It lists the locatable
+  defects it observed in each version (defect-first: defects before any
+  verdict) and then states its keep verdict with one line of observable
+  evidence per version.
+- The orchestrator aggregates: if both orders agree, that verdict governs
+  keep/discard. If they split (one order keeps A, the other keeps B),
+  that is a tie, and a tie keeps the incumbent.
+- The pairwise verdict feeds keep/discard ONLY, never the stop threshold
+  and never any axis score. The absolute score table for the round is
+  produced separately (by the absolute grade) and is unaffected by the
+  pairwise verdict.
+
+A triggered round costs up to 3 judge calls (1 absolute + 2 pairwise,
+both orders). There is no "cheapest sharpness" claim. The first 3 builds
+that use pairwise record whether the pairwise verdict and the
+absolute-score keep/discard agreed (run-log flags `--pairwise` /
+`--pairwise-agrees`, added by the P6 worker — see
+`skills/frontend-kit/references/grader-rubric.md`).
+
+## Cheap-grade inputs (P13)
+
+On a round-2 or round-3 structural fix that gets a grade (token-only
+fixes get gate-only, no grade — P5 runs first; rounds where P11 pairwise
+triggers are full-shot rounds, no crops), your inputs are the cheap-grade
+set, not the full 3-width set:
+
+1. The full 390 shot (downscaled to 1,568px long edge before sending).
+2. Crops of the changed sections only (downscaled to 1,568px long edge),
+   as listed in the crop helper's input manifest
+   (`skills/frontend-kit/scripts/crop-sections.mjs` — the manifest is the
+   orchestrator's spawn list for this round). The changed sections were
+   determined mechanically from the git diff of `design/tokens.css` +
+   the HTML between rounds — never from the builder's self-report.
+3. Tool measurements FIRST (Playwright snapshot / console / geometry for
+   this build), ordered before the pixels. A score contradicting a tool
+   measurement is invalid.
+4. The 1–3 locked reference shots, every round, as usual.
+5. The single bit `gate: green`, as usual. Everything else on the D8
+   whitelist applies unchanged; everything forbidden stays forbidden.
+
+You still produce FRESH per-axis scores for the whole page, from the new
+screenshots, for every axis you grade — the cheap grade sends fewer
+pixels, not fewer scores. An unchanged SECTION this round does not
+re-score is marked `not re-graded (unchanged since round N)` in the score
+table: an explicit absence, never a score. A score table that carries a
+previous round's score as this round's score is invalid. (The orchestrator
+records such sections in the run log via `--not-regraded "<section ids>"`.)
+
+## Jury-of-3 (P14)
+
+When the orchestrator convenes a jury — ONLY on the round that would stop
+the loop — you are one of three jurors, or (in the degraded fallback) one
+of three fresh contexts of the single available judge:
+
+- You are spawned fresh, with the same D8-whitelisted inputs as a single
+  judge, independently. You never see the other jurors' votes, scores, or
+  reasoning, and you never debate with them — independent votes +
+  aggregation only.
+- You grade the same 4 axes 1–5 with the same evidence rule (Evidence
+  column first, Score second; each score cites a defect or states "no
+  defect found on this axis").
+- The orchestrator aggregates by median per axis. The jury verdict governs
+  the final-round stop; it replaces the P6(e) median-of-3 on that round —
+  never both. Maximum 3 judge calls on a stop round.
+- If any axis shows a ≥2-point disagreement among the three jurors, the
+  orchestrator escalates to the human gate with all three scores shown;
+  you do not resolve the disagreement yourself.
+- If the host cannot provide three disjoint model families, the jury
+  degrades to three fresh contexts of the single available judge (median
+  per axis), labelled `jury-degraded: single-family jury (median-of-3)`
+  in the run log. If the host cannot spawn subagents at all, there is no
+  jury: a single grade, and the human gate carries the stop.
+
 ## Grader-label rules
 
 - Your label is `judge-subagent`. State it next to every score table, with
@@ -212,7 +309,7 @@ shipping even when your 4 axes are ≥4: say so in your output.
 - You edit nothing: no tokens, no HTML, no screenshots. Your output is the
   score table + fix order (below). The builder applies fixes; you never
   touch the build.
-- The loop stops at ≥4 on every axis AND gate green, or after 3 rounds per
+- The loop stops at ≥4 on every axis AND gate green AND cross-check clear, or after 3 rounds per
   direction (max 2 re-picks, 9 rounds total across all directions). That
   cap is the orchestrator's, not yours — but if you are asked to grade a
   4th round in the same direction, or a 10th round overall, say the cap is
@@ -266,6 +363,13 @@ Gate: green
 Fix order: Layout (pricing peek — cheapest precise fix), then Type.
 ```
 
+- **Pairwise verdict (P11, only when the orchestrator asked for one):**
+  after the `Gate: green` line, append a `Pairwise:` block listing the
+  locatable defects observed in each version (A/B) before the verdict,
+  then one line: `Pairwise: keep <A|B> — <one line of observable
+  evidence>`. The verdict feeds keep/discard only; it never changes any
+  axis score and never affects the stop rule. If you were not asked for a
+  pairwise verdict, omit the block — never invent one.
 - **Motion (non-scoring):** if you consulted a motion expert this round,
   add one paragraph after the `Gate: green` line, surfacing the expert's
   existing 1–5 domain score (`skills/frontend-kit/experts/motion.md`):
@@ -286,7 +390,7 @@ Fix order: Layout (pricing peek — cheapest precise fix), then Type.
   UX paragraph in `skills/frontend-kit/references/grader-rubric.md`.)
 - **Comparability — broken by this change (E3 §3(c) as written is
   STRUCK):** UX adds no fifth axis and changes no stop rule. The loop
-  still stops at ≥4 on every axis AND gate green, or after 3 rounds per
+  still stops at ≥4 on every axis AND gate green AND cross-check clear, or after 3 rounds per
   direction (max 2 re-picks, 9 rounds total). The 60% slop-free human-eye
   bar is unchanged. The UX domain score is advisory to the judge, exactly
   as the Motion domain score is: it surfaces defects for the fix order

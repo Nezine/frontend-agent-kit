@@ -15,8 +15,11 @@
 // --scores none (fixed 2026-11-10, probe G-4: the old code rejected every
 // no-grade record because the grader check ran before the scores check,
 // so the ladder's rung-3 "gate green, vision not available" round could
-// not be recorded at all). A no-grade record stores grader: null and
-// grade: exactly "gate green, vision not available", with NO invented
+// not be recorded at all). A no-grade record stores grader: null and a
+// gate-reflecting grade label — "gate green, vision not available" when
+// --gate pass, "gate red, no grade" when --gate fail (W-LOOP fix
+// 2026-11-11: the old code wrote the green label regardless of --gate,
+// so a gate-red round read as green in the grade field) — with NO invented
 // grader label and NO independence basis. --grader none WITH scores is
 // still REJECTED: a score IS a grade and needs an independent judge.
 //
@@ -74,13 +77,35 @@
 //     nothing written). crosscheckReport is copied from that verdict.
 //   round: { kind, round, grader, independenceBasis, scores, grade,
 //     evidence, gate, gateFindings, variant, tokensHash, fixClass,
-//     outcome, page, notes, at }. variant is the PICKED variant.
+//     outcome, page, trigger, pairwise, pairwiseAgrees, jury, juryMode,
+//     juryVotes, notRegraded, notes, at }. variant is the PICKED variant.
 //     tokensHash is --tokens-hash, or the sha256 of
 //     <project>/design/tokens.css when present, else null. fixClass is a
 //     free-form fix class (e.g. "tokens:colour"); outcome is one of
 //     kept | discarded | re-pick | stopped | escalated | pending
 //     (default pending). gateFindings is the gate output for the round
 //     (;-separated). page is the built HTML file the round graded.
+//     trigger (P6) records why the direction ended on this round:
+//     flat-line | round-1-repick; stagnation is a RETIRED value for the
+//     deleted trigger (c) — accepted so old logs still parse, never
+//     emitted by the new rules. pairwise (P11) is the pairwise
+//     keep/discard verdict vs the incumbent (keep-incumbent |
+//     keep-challenger | tie); pairwiseAgrees is whether that verdict
+//     agrees with the absolute-score comparison (true/false). jury (P14)
+//     is the stop-round jury median per axis {type,layout,colour,space};
+//     juryMode is disjoint-3 | single-family | single; juryVotes is the
+//     three per-judge votes (each {type,layout,colour,space}), and when
+//     both jury and juryVotes are given the jury MUST be the per-axis
+//     median of the votes (otherwise the record is REJECTED).
+//     notRegraded (P13, W-LOOP fix 2026-11-11) is the list of section ids
+//     the round did NOT re-score because they were unchanged since an
+//     earlier round (e.g. ["#hero", "#footer"]) — SECTIONS, not axes:
+//     the cheap grade still produces fresh per-axis scores for the whole
+//     page; only unchanged sections are not re-scored. Recorded via the
+//     --not-regraded flag; --scores always carries four fresh integers
+//     or "none" (a "not re-measured" value in --scores is REJECTED —
+//     parseScores only accepts integers 1-5). The rubric's score table
+//     marks such sections `not re-graded (unchanged since round N)`.
 //   feedback: { kind, round, from, tokenChange, scoreAfter, grader,
 //     independenceBasis, evidence, fixClass, at }.
 // The round-brief generator (skills/frontend-kit/scripts/round-brief.mjs)
@@ -96,15 +121,37 @@
 //     [--tokens-hash <sha256 hex>] [--fix-class "<class>"]
 //     [--outcome <kept|discarded|re-pick|stopped|escalated|pending>]
 //     [--gate-findings "<gate output, ;-separated>"] [--page <built.html>]
+//     [--trigger <flat-line|round-1-repick|stagnation>]
+//     [--pairwise <keep-incumbent|keep-challenger|tie>]
+//     [--pairwise-agrees <yes|no>]
+//     [--jury "<type,layout,colour,space median>"]
+//     [--jury-mode <disjoint-3|single-family|single>]
+//     [--jury-votes "<t,l,c,s; t,l,c,s; t,l,c,s>"]
+//     [--not-regraded "<#section,#section>"]   # sections not re-scored
+//       (unchanged since an earlier round); --scores stays four fresh
+//       integers or "none" — never "not re-measured"
 //   --tokens-hash defaults to the sha256 of <project>/design/tokens.css
 //   when that file exists; --page is the built HTML the round graded
 //   (the round-brief generator needs it to find the best HTML).
+//   --trigger records the P6 trigger that ended the direction on this
+//   round (flat-line | round-1-repick); stagnation is RETIRED (deleted
+//   trigger (c)) — accepted so old logs still parse, never emitted by
+//   the new rules. --pairwise / --pairwise-agrees record the P11
+//   pairwise keep/discard verdict and whether it agrees with the
+//   absolute-score comparison. --jury / --jury-mode / --jury-votes
+//   record the P14 stop-round jury: the per-axis median, the jury mode,
+//   and the three per-judge votes; when --jury and --jury-votes are
+//   both given, --jury must equal the per-axis median of the votes.
+//   Pairwise and jury fields need a graded round: they are REJECTED on
+//   a --grader none record (a no-grade round has no scores to compare
+//   or to take a median of); --trigger is accepted on any record.
 //   record enforces the same evidence bar as feedback --score-after:
 //   --evidence, when given, must be 10+ characters naming an observable
 //   element (same evidenceNamesObservable rule); a bare --evidence "x"
 //   with a score is REJECTED (exit 2, nothing written). A score IS a
 //   grade, whichever command records it.
-//   No-grade record (ladder rung 3 — gate green, vision not available):
+//   No-grade record (ladder rung 3 — "gate green, vision not available"
+//   on --gate pass, "gate red, no grade" on --gate fail):
 //   node run-log.mjs --project <dir> record --round N --grader none
 //     --scores none --gate <pass|fail> [--variant <name>] [--notes "..."]
 //   --grader none is accepted ONLY with --scores none (and no --evidence
@@ -284,8 +331,8 @@ function evidenceNamesObservable(evidence) {
 function usage(msg) {
   if (msg) console.error(`run-log: ${msg}`);
   console.error(`usage:
-  node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s|none> --evidence "<...>" --gate <pass|fail> [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>]
-  node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--variant <name>] [--notes "..."]  (no-grade round: grade is exactly "gate green, vision not available")
+  node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s|none> --evidence "<...>" --gate <pass|fail> [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>] [--trigger <flat-line|round-1-repick|stagnation>] [--pairwise <keep-incumbent|keep-challenger|tie>] [--pairwise-agrees <yes|no>] [--jury "<t,l,c,s median>"] [--jury-mode <disjoint-3|single-family|single>] [--jury-votes "<v1;v2;v3>"] [--not-regraded "<#section,#section>"]
+  node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--variant <name>] [--notes "..."]  (no-grade round: grade is "gate green, vision not available" when --gate pass, "gate red, no grade" when --gate fail)
   node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --evidence "<observable element>"] [--fix-class "<class>"]
   node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"]
   node run-log.mjs --project <dir> replan --action <re-plan|re-pick> --purpose "<revised purpose from PLAN.md>" [--notes "..."]
@@ -377,6 +424,96 @@ function parseOutcome(s) {
   return s;
 }
 
+// P6 trigger (stop-rules.md): which trigger ended the direction on this
+// round. `stagnation` is the RETIRED value for the deleted trigger (c) —
+// accepted so old logs still parse, never emitted by the new rules.
+const TRIGGERS = ['flat-line', 'round-1-repick', 'stagnation'];
+
+function parseTrigger(s) {
+  if (s === undefined) return null;
+  if (!TRIGGERS.includes(s)) usage(`--trigger must be one of ${TRIGGERS.join(' | ')} (stagnation is retired — accepted for old logs only, never emitted by the new rules)`);
+  return s;
+}
+
+// P11 pairwise verdict vs the incumbent (best-version-kept is decided by
+// this verdict when pairwise runs, by absolute scores otherwise).
+const PAIRWISE_VERDICTS = ['keep-incumbent', 'keep-challenger', 'tie'];
+
+function parsePairwise(s) {
+  if (s === undefined) return null;
+  if (!PAIRWISE_VERDICTS.includes(s)) usage(`--pairwise must be one of ${PAIRWISE_VERDICTS.join(' | ')}`);
+  return s;
+}
+
+function parsePairwiseAgrees(s) {
+  if (s === undefined) return null;
+  if (s === 'yes') return true;
+  if (s === 'no') return false;
+  usage('--pairwise-agrees must be yes or no');
+  return null;
+}
+
+// P14 stop-round jury: a "t,l,c,s" score set (same 1–5 shape as --scores).
+function parseJuryScores(s, flag) {
+  const parts = s.split(',').map((v) => Number(v.trim()));
+  if (parts.length !== 4 || parts.some((v) => !Number.isInteger(v) || v < 1 || v > 5)) {
+    usage(`${flag} must be four integers 1-5 (type,layout,colour,space)`);
+  }
+  return { type: parts[0], layout: parts[1], colour: parts[2], space: parts[3] };
+}
+
+function parseJury(s) {
+  if (s === undefined) return null;
+  return parseJuryScores(s, '--jury');
+}
+
+const JURY_MODES = ['disjoint-3', 'single-family', 'single'];
+
+function parseJuryMode(s) {
+  if (s === undefined) return null;
+  if (!JURY_MODES.includes(s)) usage(`--jury-mode must be one of ${JURY_MODES.join(' | ')}`);
+  return s;
+}
+
+function parseJuryVotes(s) {
+  if (s === undefined) return null;
+  const votes = s.split(';').map((v) => v.trim()).filter(Boolean);
+  if (votes.length !== 3) usage('--jury-votes must be three votes, ";"-separated, each four integers 1-5 (type,layout,colour,space)');
+  return votes.map((v) => parseJuryScores(v, '--jury-votes'));
+}
+
+// P13 --not-regraded (W-LOOP fix 2026-11-11): comma-separated SECTION ids
+// the round did not re-score because they were unchanged since an earlier
+// round (e.g. "#hero,#footer"). Sections, not axes — the cheap grade still
+// produces fresh per-axis scores for the whole page. --scores always
+// carries four fresh integers or "none"; a "not re-measured" value in
+// --scores is rejected by parseScores.
+function parseNotRegraded(s) {
+  if (s === undefined) return null;
+  const ids = s.split(',').map((v) => v.trim()).filter(Boolean);
+  if (!ids.length) usage('--not-regraded needs at least one section id, e.g. "#hero,#footer"');
+  for (const id of ids) {
+    if (!/^#[A-Za-z][\w-]*$/.test(id)) usage(`--not-regraded section ids must look like "#hero" (got "${id}")`);
+  }
+  return [...new Set(ids)];
+}
+
+function median3(a, b, c) {
+  return [a, b, c].sort((x, y) => x - y)[1];
+}
+
+// The jury median is definitional (P14: median per axis): a --jury that is
+// not the per-axis median of --jury-votes is an inconsistent record.
+function checkJuryMedian(jury, juryVotes) {
+  if (!jury || !juryVotes) return;
+  for (const axis of ['type', 'layout', 'colour', 'space']) {
+    const median = median3(juryVotes[0][axis], juryVotes[1][axis], juryVotes[2][axis]);
+    if (jury[axis] !== median) {
+      reject(`--jury ${axis} is ${jury[axis]} but the per-axis median of --jury-votes is ${median}. The jury median is definitional (P14) — record the median, not a different number.`);
+    }
+  }
+}
+
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
 if (!args.project) usage('--project <dir> is required');
@@ -390,11 +527,29 @@ if (cmd === 'record') {
     process.exit(2);
   }
   // No-grade record (probe G-4): --grader none is accepted ONLY with
-  // --scores none. It records grader: null and grade exactly "gate green,
-  // vision not available" — no invented grader label, no basis. A score
+  // --scores none. It records grader: null and a gate-reflecting grade
+  // label — "gate green, vision not available" on --gate pass, "gate red,
+  // no grade" on --gate fail — no invented grader label, no basis. A score
   // with grader none is a grade without a judge: REJECTED.
   const scores = parseScores(args.scores || 'none');
   const noGrade = grader.toLowerCase() === 'none';
+  // P6/P11/P14 record fields. Pairwise and jury need a graded round (a
+  // no-grade round has no scores to compare or to take a median of);
+  // --trigger is accepted on any record. --not-regraded likewise needs
+  // a graded round: a no-grade round scored nothing, so "sections not
+  // re-scored" is meaningless on it.
+  const trigger = parseTrigger(args.trigger);
+  const pairwise = parsePairwise(args.pairwise);
+  const pairwiseAgrees = parsePairwiseAgrees(args['pairwise-agrees']);
+  const jury = parseJury(args.jury);
+  const juryMode = parseJuryMode(args['jury-mode']);
+  const juryVotes = parseJuryVotes(args['jury-votes']);
+  const notRegraded = parseNotRegraded(args['not-regraded']);
+  checkJuryMedian(jury, juryVotes);
+  if (noGrade && (pairwise || pairwiseAgrees !== null || jury || juryMode || juryVotes || notRegraded)) {
+    console.error('run-log: REJECTED — --pairwise / --pairwise-agrees / --jury / --jury-mode / --jury-votes / --not-regraded need a graded round. A --grader none record has no scores to compare, to take a median of, or to mark sections not re-scored on. No entry written.');
+    process.exit(2);
+  }
   if (noGrade) {
     if (scores) {
       console.error('run-log: REJECTED — --grader none goes with --scores none only. A score IS a grade and needs an independent judge (judge-subagent | muse-manager | other-model). No entry written.');
@@ -404,7 +559,7 @@ if (cmd === 'record') {
     if (!['pass', 'fail'].includes(args.gate)) usage('--gate must be pass or fail');
     const rec = {
       kind: 'round', round, grader: null, independenceBasis: null,
-      scores: null, grade: 'gate green, vision not available',
+      scores: null, grade: args.gate === 'fail' ? 'gate red, no grade' : 'gate green, vision not available',
       evidence: null, gate: args.gate,
       gateFindings: args['gate-findings'] || null,
       variant: args.variant || null,
@@ -412,11 +567,14 @@ if (cmd === 'record') {
       fixClass: args['fix-class'] || null,
       outcome: parseOutcome(args.outcome),
       page: args.page || null,
+      trigger,
+      pairwise: null, pairwiseAgrees: null, jury: null, juryMode: null, juryVotes: null,
+      notRegraded: null,
       notes: args.notes || null,
       at: new Date().toISOString(),
     };
     appendLog(args.project, rec);
-    console.log(`run-log: recorded round ${round} (grader: none; grade: gate green, vision not available; gate: ${args.gate})`);
+    console.log(`run-log: recorded round ${round} (grader: none; grade: ${rec.grade}; gate: ${args.gate})`);
     process.exit(0);
   }
   if (!ALLOWED_GRADERS.includes(grader)) {
@@ -443,7 +601,7 @@ if (cmd === 'record') {
   if (!['pass', 'fail'].includes(args.gate)) usage('--gate must be pass or fail');
   const rec = {
     kind: 'round', round, grader, independenceBasis: args.basis.trim(),
-    scores, grade: scores ? 'graded' : 'gate green, vision not available',
+    scores, grade: scores ? 'graded' : (args.gate === 'fail' ? 'gate red, no grade' : 'gate green, vision not available'),
     evidence: args.evidence || null, gate: args.gate,
     gateFindings: args['gate-findings'] || null,
     variant: args.variant || null,
@@ -451,6 +609,8 @@ if (cmd === 'record') {
     fixClass: args['fix-class'] || null,
     outcome: parseOutcome(args.outcome),
     page: args.page || null,
+    trigger, pairwise, pairwiseAgrees, jury, juryMode, juryVotes,
+    notRegraded,
     notes: args.notes || null,
     at: new Date().toISOString(),
   };
@@ -631,8 +791,11 @@ if (cmd === 'record') {
   for (const r of rows) {
     if (r.kind === 'round') {
       const s = r.scores ? `T${r.scores.type}/L${r.scores.layout}/C${r.scores.colour}/S${r.scores.space}` : 'no grade';
-      const g = r.grader ? `grader: ${r.grader} (${r.independenceBasis})` : 'grader: none (gate green, vision not available)';
-      console.log(`round ${r.round} | ${g} | ${s} | grade: ${r.grade} | gate: ${r.gate}${r.variant ? ` | variant: ${r.variant}` : ''}${r.tokensHash ? ` | tokens: ${r.tokensHash.slice(0, 12)}…` : ''}${r.fixClass ? ` | fix-class: ${r.fixClass}` : ''}${r.outcome ? ` | outcome: ${r.outcome}` : ''}${r.page ? ` | page: ${r.page}` : ''}${r.notes ? ` | ${r.notes}` : ''}`);
+      const g = r.grader ? `grader: ${r.grader} (${r.independenceBasis})` : `grader: none (${r.grade})`;
+      const j = r.jury ? ` | jury: T${r.jury.type}/L${r.jury.layout}/C${r.jury.colour}/S${r.jury.space} (${r.juryMode || 'mode not recorded'})` : '';
+      const p = r.pairwise ? ` | pairwise: ${r.pairwise}${r.pairwiseAgrees !== null && r.pairwiseAgrees !== undefined ? ` (agrees with absolute: ${r.pairwiseAgrees ? 'yes' : 'no'})` : ''}` : '';
+      const nr = r.notRegraded && r.notRegraded.length ? ` | not re-graded: ${r.notRegraded.join(', ')}` : '';
+      console.log(`round ${r.round} | ${g} | ${s} | grade: ${r.grade} | gate: ${r.gate}${r.variant ? ` | variant: ${r.variant}` : ''}${r.tokensHash ? ` | tokens: ${r.tokensHash.slice(0, 12)}…` : ''}${r.fixClass ? ` | fix-class: ${r.fixClass}` : ''}${r.outcome ? ` | outcome: ${r.outcome}` : ''}${r.trigger ? ` | trigger: ${r.trigger}` : ''}${p}${j}${nr}${r.page ? ` | page: ${r.page}` : ''}${r.notes ? ` | ${r.notes}` : ''}`);
       if (r.gateFindings) console.log(`  gate findings: ${r.gateFindings}`);
       if (r.evidence) console.log(`  evidence: ${r.evidence}`);
     } else if (r.kind === 'feedback') {
@@ -682,11 +845,16 @@ if (cmd === 'record') {
     console.log(brief);
   }
 } else if (cmd === 'best') {
-  const rounds = readLog(args.project).filter((r) => r.kind === 'round' && r.scores);
+  // Effective scores: the stop-round jury median, when recorded, is the
+  // round's score for keep/discard purposes (P14 replaces the single
+  // grade on the stop round); otherwise the absolute scores.
+  const effScores = (r) => r.jury || r.scores;
+  const rounds = readLog(args.project).filter((r) => r.kind === 'round' && effScores(r));
   if (!rounds.length) { console.log('run-log: no graded rounds yet.'); process.exit(0); }
   const total = (s) => s.type + s.layout + s.colour + s.space;
-  const best = rounds.reduce((a, b) => (total(b.scores) > total(a.scores) ? b : a));
-  console.log(`best: round ${best.round} (grader: ${best.grader}) — T${best.scores.type}/L${best.scores.layout}/C${best.scores.colour}/S${best.scores.space}, total ${total(best.scores)}/20, gate: ${best.gate}`);
+  const best = rounds.reduce((a, b) => (total(effScores(b)) > total(effScores(a)) ? b : a));
+  const bs = effScores(best);
+  console.log(`best: round ${best.round} (grader: ${best.grader}) — T${bs.type}/L${bs.layout}/C${bs.colour}/S${bs.space}, total ${total(bs)}/20, gate: ${best.gate}${best.jury ? ' (jury median)' : ''}`);
 } else {
   usage(`unknown command "${cmd || ''}" (record | feedback | lock | replan | crosscheck | land | brief | show | best)`);
 }

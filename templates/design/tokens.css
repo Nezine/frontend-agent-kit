@@ -173,7 +173,7 @@
   --space-7: 48px;
   --space-8: 64px;
   --space-9: 96px;
-  --space-section: 96px; /* gap between sections */
+  --space-section: 96px; /* section padding top/bottom (NOT the gap between sections: the content gap between sections is 2x this token = 192px, one bottom pad + one top pad) */
   --space-card: 32px; /* padding inside cards */
 
   /* --- Radius 2 / 6 / 12 / 20px --- */

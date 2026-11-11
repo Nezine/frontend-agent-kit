@@ -227,8 +227,9 @@ prompt for discussion.
    (by content, not order), EARS acceptance criteria (5–8 WHEN / THE
    SYSTEM SHALL lines, including the 390px no-overflow rule and the
    three-width rule), the screen × state matrix, the Design Read dials
-   (copied from step 1.2), and the design-system pointer section. Optional, light touch: when taking the brief, the
-   orchestrator may invite the user with the one-line conviction prompt in
+   (copied from step 1.2), and the design-system pointer section. Optional,
+   light touch: when taking the brief, the orchestrator may invite the user
+   with the one-line conviction prompt in
    `references/metric-locked-loop.md` §8 — an invitation, never a
    requirement, never a gate. Record
    the plan's preferred structure for the variant auto-pick tie-break as
@@ -551,7 +552,7 @@ assembled from it.
    | Orchestrator | The run log file, PLAN.md, the briefs; the full project on disk | Pastes the full run log into any subagent prompt |
    | Builder (round N) | The round brief only: locked tokens + Purpose + motion/3D routing + best HTML + gate findings + grader evidence lines + run-state table | The full run log, earlier HTML versions, its own reasoning from a prior round |
    | Fixer (round N+1) | Same as the builder — the new round's brief | Same as the builder |
-   | Judge | Screenshots + the 1–3 locked reference shots + rubric/scope + the 5-line lock text + tool measurements (+ pairwise A/B inputs when the stop round calls for them) + the single `cross-check: clear` bit (the only cross-check information the judge receives) | Model/builder identity, earlier scores, the run log, gate findings, cross-check findings — the single `gate: green` bit from the orchestrator's pre-filter is the only gate information the judge receives, and the single `cross-check: clear` bit is the only cross-check information it receives |
+   | Judge | Screenshots + the 1–3 locked reference shots + rubric/scope + the 5-line lock text + tool measurements (+ pairwise A/B inputs when pairwise triggers on that round — |Δ lowest axis| ≤ 1 on any round, not only the stop round) + the single `cross-check: clear` bit (the only cross-check information the judge receives) | Model/builder identity, earlier scores, the run log, gate findings, cross-check findings — the single `gate: green` bit from the orchestrator's pre-filter is the only gate information the judge receives, and the single `cross-check: clear` bit is the only cross-check information it receives |
    | Expert (second opinion) | Same as the judge, plus the one domain question it was asked | Same as the judge |
 
    Measurable check: the builder/fixer prompt is the generator's brief
@@ -889,6 +890,31 @@ Do not proceed to step 4 with a red gate OR an unclear cross-check.
 
 ## Step 5 — Fix top 2, as token diffs
 
+**Fix-vs-re-pick decision tree (P6 — run after every grade, BEFORE fixing).**
+The stop rules live in `references/stop-rules.md`; this tree mirrors them.
+1. **Ship check.** Every axis ≥ 4 AND gate green AND cross-check clear → stop, go to step 6
+   (human gate). No fix round.
+2. **Round-1 re-pick (a).** Only after round 1: if Layout or Space ≤ 3 AND the judge's
+   evidence lines cite the failure (not a bare score) — check with
+   `scripts/stuck-detector.mjs` — then re-pick from the kept variants, NOT fix-top-2,
+   but ONLY if a structural (break-frame) variant exists among them. If all kept variants
+   are CSS-only, (a) does NOT fire: escalate — end work on the direction, present the best
+   version + blocker at the human gate (step 6). A re-pick under (a) consumes one of the
+   2 re-picks and creates a NEW lock version (step 1.8).
+3. **Flat-line (b).** After any fix round (round 2+): run `scripts/stuck-detector.mjs`. A
+   round that improves NO axis AND the gate adds no new finding ends work on the direction:
+   re-pick if re-picks remain, else stop and present the best version at the human gate.
+   Gate-progress exception: scores flat but the gate fixed a finding is NOT flat. Confirm
+   with one re-grade (second grade, not a second round; third only if the two disagree) —
+   except on the round that would stop the loop, where the jury-of-3 applies instead, never
+   both. Record the trigger on the round record (`run-log.mjs record ... --trigger
+   flat-line|round-1-repick`).
+4. **Otherwise fix.** Fix the top 2 findings (top 1 if the evidence is thin) — item 1 below.
+   **Best-version-kept:** decided by the pairwise verdict when pairwise runs, by absolute
+   scores otherwise; a tie keeps the incumbent. **Stop-round grade:** the round that would
+   stop the loop gets a FULL fresh grade (1440/768/390 + references); no carried /
+   not-re-graded axes at the stop decision.
+
 1. Fix the top 2 findings (top 1 if the evidence is thin). Fixes go to
    `design/tokens.css` first. HTML or layout changes only if the gate still
    fails after the token change.
@@ -937,8 +963,9 @@ Do not proceed to step 4 with a red gate OR an unclear cross-check.
    done: the human gate does not open, and the round goes back to
    step 5 with the failing section or state named. There is no
    advisory mode. The converge result is recorded in the run log.
-2. Stop when every axis is ≥ 4 AND the gate is green AND the cross-check is clear — or after 3 rounds,
-   whichever comes first. A build that cannot reach ≥ 4 in 3 rounds is a
+2. Stop when every axis is ≥ 4 AND the gate is green AND the cross-check is clear — or when a
+   P6 trigger ends work on the direction (step 5 decision tree) — or after 3 rounds per
+   direction, whichever comes first. A build that cannot reach ≥ 4 in 3 rounds is a
    direction problem (wrong reference, wrong tokens): re-pick a variant
    (step 2a), not a 4th round. **Re-pick cap: max 2 re-picks, 9 rounds
    total** — 3 rounds in the initial direction + at most 2 re-picks × 3
@@ -947,9 +974,18 @@ Do not proceed to step 4 with a red gate OR an unclear cross-check.
    survives a re-pick:** the best-scoring version across ALL directions
    stays the version that ships; a re-pick starts a new direction from
    scratch but never discards the previous best — if no later round beats
-   it, the earlier best is what the human gate sees. A re-pick creates a
+   it, the earlier best is what the human gate sees. Best-version-kept is decided by the
+   pairwise verdict when pairwise runs, by absolute scores otherwise; a tie keeps the
+   incumbent. A re-pick creates a
    NEW lock version (step 1.8): the new direction is locked, not merged
    into the old lock.
+   **No mid-loop human contact:** "escalate" means end work on the direction and present the
+   best version + blocker here, at this human gate. In buffet mode the run parks in
+   "awaiting human" as designed behaviour.
+   **Stop-round grade:** the round that would stop the loop gets a FULL fresh grade
+   (1440/768/390 + references); no carried / not-re-graded axes at the stop decision.
+   Median-of-3 (P6(e)) applies on non-final rounds only; on the stop round the jury-of-3
+   applies INSTEAD — never both; max 3 judge calls on a stop round.
    **Pre-ship cross-check (once, before the human gate).** Run the step-3a
    cross-check once on the shipping version (the mainline tip at stop /
    the best version) before the human-gate packet is prepared. A SEVERE
@@ -978,7 +1014,11 @@ Do not proceed to step 4 with a red gate OR an unclear cross-check.
    converge result per round, the cross-check verdict per slice and the
    pre-ship verdict, the plan's approval basis (human approval
    in PLAN.md, or the `approved-by` field on the lock entry for
-   human-less runs), and every feedback → token change → new score, so
+   human-less runs), the P6 trigger that ended a direction (`--trigger
+   flat-line | round-1-repick`; `stagnation` is retired, accepted for old
+   logs only), the pairwise verdict (`--pairwise` + `--pairwise-agrees`),
+   and the stop-round jury (`--jury` + `--jury-mode` + `--jury-votes`),
+   and every feedback → token change → new score, so
    the dictionary grows.
 
 ## Step 6a — Buffet mode (autonomous run + Figma handoff)

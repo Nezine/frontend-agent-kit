@@ -505,13 +505,35 @@ sec_grep() {
 # grep is NOT a scanner verdict: with no scanner installed the check
 # FAILS, naming the missing tool (fail closed; a pattern scan is not a
 # secret scanner). A grep hit FAILS outright, scanner or not.
-sec_11_hits="$(sec_grep '(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(live|test)-[A-Za-z0-9]{16,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)')"
-sec_11_assign="$(sec_grep -i $'(api[_-]?key|apikey|secret|passwd|password|access[_-]?token)[[:space:]]*[:=][[:space:]]*[\'"][^\'"]{16,}[\'"]')"
-if [[ -n "$sec_11_hits" || -n "$sec_11_assign" ]]; then
+# Gitleaks runs with the kit config scripts/gate/.gitleaks.toml (extends
+# gitleaks' defaults; allowlists ONLY design/run-log.jsonl — see the
+# config's own comment for the verified OR semantics and the residual
+# hole). The built-in grep below ALSO scans design/run-log.jsonl, so a
+# real secret in the run log still FAILS even though gitleaks skips the
+# file; tokensHash itself matches neither grep pattern.
+sec_11_pat='(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(live|test)-[A-Za-z0-9]{16,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'
+sec_11_assign_pat=$'(api[_-]?key|apikey|secret|passwd|password|access[_-]?token)[[:space:]]*[:=][[:space:]]*[\'"][^\'"]{16,}[\'"]'
+sec_11_hits="$(sec_grep "$sec_11_pat")"
+sec_11_assign="$(sec_grep -i "$sec_11_assign_pat")"
+sec_11_log_hits=""
+sec_11_log_assign=""
+if [[ -f "$project_dir/design/run-log.jsonl" ]]; then
+  sec_11_log_hits="$(grep -HnE "$sec_11_pat" -- "$project_dir/design/run-log.jsonl" 2>/dev/null || true)"
+  sec_11_log_assign="$(grep -HnEi "$sec_11_assign_pat" -- "$project_dir/design/run-log.jsonl" 2>/dev/null || true)"
+fi
+if [[ -n "$sec_11_hits" || -n "$sec_11_assign" || -n "$sec_11_log_hits" || -n "$sec_11_log_assign" ]]; then
   secfail "1.1" "secret scan: high-confidence secret pattern found (built-in grep)"
-  { [[ -n "$sec_11_hits" ]] && printf '%s\n' "$sec_11_hits"; [[ -n "$sec_11_assign" ]] && printf '%s\n' "$sec_11_assign"; } | sort -u | head -20
+  { [[ -n "$sec_11_hits" ]] && printf '%s\n' "$sec_11_hits"; [[ -n "$sec_11_assign" ]] && printf '%s\n' "$sec_11_assign"; [[ -n "$sec_11_log_hits" ]] && printf '%s\n' "$sec_11_log_hits"; [[ -n "$sec_11_log_assign" ]] && printf '%s\n' "$sec_11_log_assign"; } | sort -u | head -20
 elif command -v gitleaks >/dev/null 2>&1; then
-  if gitleaks detect --no-git --source "$project_dir" > "$detect_log" 2>&1; then
+  # Kit config lives next to this script. When it is absent (gate.sh
+  # copied alone), run without it — the run-log tokensHash false positive
+  # returns, but scanning stays on.
+  gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  gate_gitleaks_args=(detect --no-git --source "$project_dir")
+  if [[ -f "$gate_dir/.gitleaks.toml" ]]; then
+    gate_gitleaks_args=(detect --no-git --config "$gate_dir/.gitleaks.toml" --source "$project_dir")
+  fi
+  if gitleaks "${gate_gitleaks_args[@]}" > "$detect_log" 2>&1; then
     secpass "1.1" "secret scan clean (gitleaks; built-in pattern grep also clean)"
   else
     secfail "1.1" "secret scan: gitleaks found leaks: $(tail -5 "$detect_log" | tr '\n' ' ')"
