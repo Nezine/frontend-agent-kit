@@ -16,7 +16,16 @@
 //
 //   1. copy-lint.mjs (static, no browser, <1s) — copy FAILs: residue, old
 //      slop words, stock phrases, budgeted devices used as tics.
-//   2. consistency.mjs --quick (headless system Chrome via CDP) — overflow /
+//   2. security stage (static, no browser) — the page-level subset of the
+//      deterministic Stage 1 checks (synthesis §3): 1.2–1.5 sink greps +
+//      1.9 weak crypto, run on the target page file. The FULL Stage 1
+//      section (1.1–1.12, incl. secret scan, deps/CVE/licence/headers)
+//      runs in gate.sh §6 on the whole project; this leg runs only the
+//      checks that are meaningful on a single page, so the two legs never
+//      disagree about a verdict neither of them owns. Per-check PASS/FAIL,
+//      fail-closed: a sink found here FAILS leg 2. External local scripts
+//      are covered by gate.sh §6's project scan.
+//   3. consistency.mjs --quick (headless system Chrome via CDP) — overflow /
 //      collide / tap-size, section height, one-section-per-screen, at the
 //      kit checker widths.
 //
@@ -154,7 +163,7 @@
 // Node, no dependencies beyond the vendored checkers + system Chrome.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, statSync, mkdtempSync } from 'node:fs';
+import { existsSync, statSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -242,7 +251,73 @@ if (kind) lintArgs.push('--kind', kind);
 if (asJson) lintArgs.push('--json');
 worst = Math.max(worst, run(process.execPath, lintArgs, 'copy-lint'));
 
-// 2. consistency --quick (needs system Chrome).
+// 2. security stage — page-level deterministic Stage 1 checks (1.2–1.5, 1.9).
+// Static, no browser, always runs (including --skip-browser). The full
+// Stage 1 section (1.1–1.12) runs in gate.sh §6; this leg runs only the
+// checks meaningful on a single page file, with per-check PASS/FAIL
+// output, fail-closed: any FAIL here fails leg 2 (worst >= 1).
+console.log('\n===== gate: security (Stage 1 page subset: 1.2–1.5, 1.9) =====');
+let secPageText;
+try {
+  secPageText = readFileSync(page, 'utf8');
+} catch (e) {
+  console.error(`gate: security stage could not read ${page}: ${e.message} — fail closed (exit 2)`);
+  process.exit(2);
+}
+const secLines = secPageText.split('\n');
+function secGrepLines(re) {
+  const out = [];
+  secLines.forEach((line, i) => { if (re.test(line)) out.push(`${page}:${i + 1}: ${line.trim().slice(0, 160)}`); });
+  return out;
+}
+const secFailed = [];
+function secCheck(id, passLabel, failLabel, hits) {
+  if (hits.length) {
+    console.log(`SECURITY ${id}: FAIL — ${failLabel}`);
+    for (const h of hits.slice(0, 10)) console.log(`  ${h}`);
+    secFailed.push(id);
+  } else {
+    console.log(`SECURITY ${id}: PASS — ${passLabel}`);
+  }
+}
+// 1.2 — HTML sinks without DOMPurify sanitization (same rule as gate.sh §6:
+// a file using DOMPurify.sanitize passes with a note; the per-occurrence
+// taint check is checklist territory).
+const secSinkHits = secGrepLines(/dangerouslySetInnerHTML|innerHTML\s*=|outerHTML\s*=|document\.write\s*\(/);
+if (secSinkHits.length && !/DOMPurify\.sanitize/.test(secPageText)) {
+  secCheck('1.2', 'no unsanitized HTML sink', 'HTML sink (innerHTML/outerHTML/document.write/dangerouslySetInnerHTML) without DOMPurify sanitization', secSinkHits);
+} else if (secSinkHits.length) {
+  console.log('SECURITY 1.2: PASS — page uses an HTML sink but also DOMPurify.sanitize (per-occurrence taint check is checklist territory)');
+} else {
+  console.log('SECURITY 1.2: PASS — no unsanitized HTML sink');
+}
+// 1.3 — eval / Function / string timers.
+secCheck('1.3', 'no eval / Function / string-timer sink',
+  'code-execution sink (eval / new Function / setTimeout|setInterval with a string argument)',
+  secGrepLines(/(^|[^A-Za-z0-9_])eval\s*\(|new\s+Function\s*\(|setTimeout\s*\(\s*['"]|setInterval\s*\(\s*['"]/));
+// 1.4 — template-interpolated data into a SQL/shell/query call.
+secCheck('1.4', 'no template-interpolated data in SQL/shell/query calls',
+  'template-interpolated data fed to a code/SQL/shell call — parameterise it',
+  secGrepLines(/(\.query|exec|spawn|execSync|spawnSync)\s*\(\s*`[^`]*\$\{/));
+// 1.5 — javascript: URLs in href/src/action.
+secCheck('1.5', 'no javascript: URL in href/src/action',
+  'javascript: URL in href/src/action — allow-list http/https only',
+  secGrepLines(/(href|src|action)\s*=\s*['"]javascript:/));
+// 1.9 — weak crypto (W-APPSEC BLOCK per synthesis §3; W-OWASP rates it
+// WARN — the gate follows W-APPSEC). Math.random() only on lines that
+// also name a security use.
+const secWeakHits = secGrepLines(/createHash\s*\(\s*['"]?(md5|sha1)['"]?|(^|[^A-Za-z0-9_])MD5\s*\(|(^|[^A-Za-z0-9_])SHA1\s*\(|createCipher\s*\(/)
+  .concat(secGrepLines(/Math\.random\s*\(\)/).filter((h) => /token|secret|password|passwd|key|nonce|salt|otp|session|auth|crypt/i.test(h)));
+secCheck('1.9', 'no weak crypto (no MD5/SHA1-for-security, no createCipher, no Math.random() for secrets/tokens)',
+  'weak crypto (MD5/SHA1 for security, deprecated createCipher, or Math.random() for a secret/token)', secWeakHits);
+if (secFailed.length) {
+  console.log(`----- security: FAIL (${secFailed.join(', ')}) — full Stage 1 (1.1–1.12) runs in gate.sh §6 -----`);
+  worst = Math.max(worst, 1);
+} else {
+  console.log('----- security: page subset clean (full Stage 1 runs in gate.sh §6) -----');
+}
+
+// 3. consistency --quick (needs system Chrome).
 if (skipBrowser) {
   // H13 (fail-closed, 2026-11-10): a skipped browser leg used to leave
   // `worst` at 0, so a clean copy-lint exited 0 with a "GREEN" verdict —

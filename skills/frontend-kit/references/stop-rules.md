@@ -4,7 +4,7 @@
 
 Stop the loop when EITHER condition is met, whichever comes first:
 
-1. **≥4 on every axis AND gate green.** The build is shippable. Present the
+1. **≥4 on every axis AND gate green AND cross-check clear.** The build is shippable. Present the
    human gate.
 2. **After 3 rounds.** A build that cannot reach ≥4 in 3 rounds is a
    direction problem (wrong reference, wrong tokens) — re-pick a variant

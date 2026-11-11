@@ -59,6 +59,19 @@
 //     re-plan (re-derive the section inventory from the revised
 //     purpose) or re-pick (record a NEW taste-lock version via `lock`);
 //     purpose is the revised purpose from the re-derived plan.
+//   crosscheck: { kind, slice, round, severe, warning, waived, verdict,
+//     report, checker, independenceBasis, notes, at }. verdict is DERIVED
+//     (clear iff severe == 0 and warning == waived), never asserted. The
+//     checker must be independent of the builder AND the judge for the
+//     slice: basis states BOTH fresh/separate context AND no production
+//     history (same two-half rule as a grader basis). report is the
+//     cross-check report file (coord/crosscheck/<slice-id>-<n>.md in
+//     buffet mode). A blocked verdict is recorded, not rejected — the
+//     land is what a blocked verdict stops.
+//   land: { kind, slice, round, gate, page, crosscheckReport, notes, at }.
+//     Recorded only when --gate pass AND the LATEST crosscheck verdict
+//     for the same slice/round is clear; otherwise REJECTED (exit 2,
+//     nothing written). crosscheckReport is copied from that verdict.
 //   round: { kind, round, grader, independenceBasis, scores, grade,
 //     evidence, gate, gateFindings, variant, tokensHash, fixClass,
 //     outcome, page, notes, at }. variant is the PICKED variant.
@@ -126,6 +139,22 @@
 //   has no Purpose section yet, and record it on the next lock.
 //   node run-log.mjs --project <dir> replan --action <re-plan|re-pick>
 //     --purpose "<revised purpose from PLAN.md>" [--notes "..."]
+//   node run-log.mjs --project <dir> crosscheck --slice <id> [--round N]
+//     --severe N --warning N [--waived N] --report <path>
+//     --checker <security-expert|crosscheck-subagent|crosscheck-team>
+//     --basis "<why this checker counts as independent>"
+//   crosscheck records a security/compliance cross-check verdict
+//   (coordination design §13, SKILL.md step 3a). The verdict is DERIVED:
+//   clear iff severe == 0 and every warning is fixed-or-waived
+//   (warning == waived). The checker must be independent of the builder
+//   AND the judge for the slice (same two-half basis as a grader).
+//   node run-log.mjs --project <dir> land --slice <id> [--round N]
+//     --gate pass [--page <built.html>] [--notes "..."]
+//   land records a land/ship decision. It is REJECTED (exit 2, nothing
+//   written) unless --gate pass AND the LATEST crosscheck verdict for
+//   the same slice/round is clear. A land without a cross-check verdict
+//   is never recorded — landing without a cross-check is forbidden,
+//   exactly as landing without a gate is (F32).
 //   replan records a purpose failure's resolution: re-plan re-derives
 //   the section inventory from the revised purpose; re-pick records a
 //   NEW taste-lock version (via `lock`). The decision is recorded in
@@ -144,13 +173,16 @@
 // Exit codes: 0 ok, 1 usage error (including a brief that fails its schema
 //   check — lock, best HTML, gate findings, or evidence lines missing),
 //   2 rejected entry (grader == builder, scores without a named
-//   independent grader, or a duplicate lock version).
+//   independent grader, a duplicate lock version, a checker without a
+//   two-half independence basis, or a land without a clear cross-check
+//   verdict).
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
 const ALLOWED_GRADERS = ['judge-subagent', 'muse-manager', 'other-model'];
+const ALLOWED_CHECKERS = ['security-expert', 'crosscheck-subagent', 'crosscheck-team'];
 const FORBIDDEN_GRADERS = ['builder', 'self', 'self-grade', 'builder-grade'];
 
 // Feedback --score-after validation: a post-feedback score is a grade, so
@@ -257,6 +289,8 @@ function usage(msg) {
   node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --evidence "<observable element>"] [--fix-class "<class>"]
   node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"]
   node run-log.mjs --project <dir> replan --action <re-plan|re-pick> --purpose "<revised purpose from PLAN.md>" [--notes "..."]
+  node run-log.mjs --project <dir> crosscheck --slice <id> [--round N] --severe N --warning N [--waived N] --report <path> --checker <security-expert|crosscheck-subagent|crosscheck-team> --basis "<why independent>"
+  node run-log.mjs --project <dir> land --slice <id> [--round N] --gate pass [--page <built.html>] [--notes "..."]
   node run-log.mjs --project <dir> brief [--round N] [--out <file>]
   node run-log.mjs --project <dir> show
   node run-log.mjs --project <dir> best`);
@@ -513,6 +547,84 @@ if (cmd === 'record') {
   };
   appendLog(args.project, rec);
   console.log(`run-log: purpose fail recorded — action: ${action}; revised purpose: ${rec.purpose}`);
+} else if (cmd === 'crosscheck') {
+  // Security/compliance cross-check verdict (coordination design §13,
+  // SKILL.md step 3a). The coordinator transcribes the checker's verdict
+  // here BEFORE any land is recorded; `land` below refuses to record
+  // without a prior clear verdict for the same slice/round.
+  // Verdict is DERIVED, never asserted: clear iff severe == 0 AND every
+  // warning is fixed-or-waived (warning == waived). A blocked verdict is
+  // still recorded — it is the record of the block, and the next
+  // cross-check after the fix supersedes it (land reads the LATEST
+  // verdict for the slice/round).
+  const slice = (args.slice || '').trim();
+  const round = args.round !== undefined ? Number(args.round) : null;
+  if (!slice && (round === null || !Number.isInteger(round) || round < 1)) usage('crosscheck needs --slice <id> and/or --round N');
+  if (round !== null && (!Number.isInteger(round) || round < 1)) usage('--round must be a positive integer');
+  const severe = Number(args.severe);
+  const warning = Number(args.warning);
+  const waived = args.waived !== undefined ? Number(args.waived) : 0;
+  if (!Number.isInteger(severe) || severe < 0) usage('--severe must be a non-negative integer');
+  if (!Number.isInteger(warning) || warning < 0) usage('--warning must be a non-negative integer');
+  if (!Number.isInteger(waived) || waived < 0 || waived > warning) usage('--waived must be a non-negative integer no greater than --warning');
+  if (!args.report || !args.report.trim()) usage('crosscheck needs --report <path to the cross-check report>');
+  const checker = (args.checker || '').trim();
+  if (!ALLOWED_CHECKERS.includes(checker)) {
+    console.error(`run-log: REJECTED — checker "${checker}" is not an allowed independent cross-checker (allowed: ${ALLOWED_CHECKERS.join(', ')}). The checker must be independent of the builder AND of the judge for that slice. No entry written.`);
+    process.exit(2);
+  }
+  // Same two-half independence bar as a grader basis (fresh/separate
+  // context AND no production history) — a checker that shares the
+  // builder's context or history is not independent (synthesis §2 C5:
+  // the generator cannot be the validator).
+  checkIndependenceBasis(args.basis, checker);
+  const verdict = (severe === 0 && warning === waived) ? 'clear' : 'blocked';
+  const rec = {
+    kind: 'crosscheck', slice: slice || null, round,
+    severe, warning, waived, verdict,
+    report: args.report.trim(), checker, independenceBasis: args.basis.trim(),
+    notes: args.notes || null,
+    at: new Date().toISOString(),
+  };
+  appendLog(args.project, rec);
+  console.log(`run-log: cross-check recorded for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} — verdict: ${verdict} (SEVERE ${severe}, WARNING ${warning}, waived ${waived}); report: ${rec.report}`);
+} else if (cmd === 'land') {
+  // Land / ship decision (coordination design §3/§13, SKILL.md step 3a):
+  // requires gate green AND a clear cross-check verdict already in the
+  // log. A land without a prior clear verdict is REJECTED (exit 2,
+  // nothing written) — landing without a cross-check is forbidden,
+  // exactly as landing without a gate is (F32). The verdict read is the
+  // LATEST cross-check for the slice/round: a blocked verdict after a
+  // clear one supersedes it (fix → fresh re-check).
+  const slice = (args.slice || '').trim();
+  const round = args.round !== undefined ? Number(args.round) : null;
+  if (!slice && (round === null || !Number.isInteger(round) || round < 1)) usage('land needs --slice <id> and/or --round N');
+  if (round !== null && (!Number.isInteger(round) || round < 1)) usage('--round must be a positive integer');
+  if (args.gate !== 'pass') {
+    console.error('run-log: REJECTED — land requires --gate pass. A land on a red gate is forbidden (the gate is the first half of the land rule; the cross-check is the second). No entry written.');
+    process.exit(2);
+  }
+  const checks = readLog(args.project).filter((r) => r.kind === 'crosscheck'
+    && (slice ? r.slice === slice : true)
+    && (round !== null ? r.round === round : true));
+  const latest = checks[checks.length - 1];
+  if (!latest) {
+    console.error(`run-log: REJECTED — land for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} has no cross-check verdict in the log. Record it first (run-log.mjs crosscheck ...), then land. No entry written.`);
+    process.exit(2);
+  }
+  if (latest.verdict !== 'clear') {
+    console.error(`run-log: REJECTED — the latest cross-check verdict for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} is ${latest.verdict.toUpperCase()} (SEVERE ${latest.severe}, WARNING ${latest.warning}, waived ${latest.waived}; report: ${latest.report}). A SEVERE finding blocks the land like a gate FAIL; fix and re-check first. No entry written.`);
+    process.exit(2);
+  }
+  const rec = {
+    kind: 'land', slice: slice || null, round,
+    gate: 'pass', page: args.page || null,
+    crosscheckReport: latest.report,
+    notes: args.notes || null,
+    at: new Date().toISOString(),
+  };
+  appendLog(args.project, rec);
+  console.log(`run-log: LAND recorded for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} (gate: pass; cross-check: clear; report: ${latest.report})${rec.page ? `; page: ${rec.page}` : ''}`);
 } else if (cmd === 'show') {
   const rows = readLog(args.project);
   if (!rows.length) { console.log('run-log: no entries yet.'); process.exit(0); }
@@ -532,6 +644,10 @@ if (cmd === 'record') {
       console.log(`taste lock v${r.lockVersion ?? '?'}: tokens: ${r.tokens}${r.tokensHash ? ` (sha256 ${r.tokensHash.slice(0, 12)}…)` : ''}; refs: ${r.references}${r.purpose ? `; purpose: ${r.purpose}` : ''}${r.approvedBy ? `; approved-by: ${r.approvedBy}` : ''}${r.notes ? `; notes: ${r.notes}` : ''} (${r.at})`);
     } else if (r.kind === 'purpose-fail') {
       console.log(`purpose fail: action: ${r.action}; revised purpose: ${r.purpose}${r.notes ? `; notes: ${r.notes}` : ''} (${r.at})`);
+    } else if (r.kind === 'crosscheck') {
+      console.log(`cross-check (slice ${r.slice || '—'}${r.round !== null && r.round !== undefined ? `, round ${r.round}` : ''}): verdict: ${r.verdict} (SEVERE ${r.severe}, WARNING ${r.warning}, waived ${r.waived}) | checker: ${r.checker} (${r.independenceBasis}) | report: ${r.report} (${r.at})`);
+    } else if (r.kind === 'land') {
+      console.log(`LAND (slice ${r.slice || '—'}${r.round !== null && r.round !== undefined ? `, round ${r.round}` : ''}): gate: ${r.gate} | cross-check: clear | report: ${r.crosscheckReport}${r.page ? ` | page: ${r.page}` : ''} (${r.at})`);
     } else if (r.kind === 'dictionary-overwrite') {
       console.log(`dictionary overwrite: "${r.word}" — was: ${r.previousChange} — now: ${r.newChange} (${r.at})`);
     } else {
@@ -572,5 +688,5 @@ if (cmd === 'record') {
   const best = rounds.reduce((a, b) => (total(b.scores) > total(a.scores) ? b : a));
   console.log(`best: round ${best.round} (grader: ${best.grader}) — T${best.scores.type}/L${best.scores.layout}/C${best.scores.colour}/S${best.scores.space}, total ${total(best.scores)}/20, gate: ${best.gate}`);
 } else {
-  usage(`unknown command "${cmd || ''}" (record | feedback | lock | replan | brief | show | best)`);
+  usage(`unknown command "${cmd || ''}" (record | feedback | lock | replan | crosscheck | land | brief | show | best)`);
 }

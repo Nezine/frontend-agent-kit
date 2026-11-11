@@ -95,7 +95,7 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   one line per build: how this build aims at it), never a score the
   loop grades itself and never a stop input. **UNCHANGED by this bar:**
   the 60% slop-free acceptance bar, the 4 grading axes (Type / Layout /
-  Colour / Space), and the stop rule (≥4 on every axis AND gate green,
+  Colour / Space), and the stop rule (≥4 on every axis AND gate green AND cross-check clear,
   or 3 rounds). The scroll-motion recipe
   (`references/style-recipes/scroll-motion.md`) already encodes the
   restraint half of this bar (1–2 dealt moments, one moving thing per
@@ -401,7 +401,7 @@ scoped here is the GATE checks, not the lens.
   presented as done: the human gate does not open, and the round goes
   back to step 5 with the failing section or state named. There is no
   advisory mode. The converge result is recorded in the run log.
-- **6.2 Stop when:** ≥4 on every axis AND gate green — or after 3 rounds, whichever
+- **6.2 Stop when:** ≥4 on every axis AND gate green AND cross-check clear — or after 3 rounds, whichever
   comes first. A build that cannot reach ≥4 in 3 rounds is a direction
   problem (wrong reference, wrong tokens) — re-pick a variant (step 2a),
   not a 4th round. (Bias grows with rounds — Huang et al. 2024, VERIFIED

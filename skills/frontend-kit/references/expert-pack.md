@@ -6,7 +6,7 @@ specialists. Each expert is one Markdown brief in
 and the judge (`frontend-judge`) call them as fresh sub-agents when a round
 needs domain expertise — never the builder, never in the build thread.
 
-## The pack (11 domains)
+## The pack (12 domains)
 
 | Domain | File | Judges | Call it when |
 |---|---|---|---|
@@ -21,6 +21,7 @@ needs domain expertise — never the builder, never in the build thread.
 | Performance | `experts/performance.md` | Page/image/font/script budgets, layout shift, loading behaviour | The page is overweight, fonts shift, or loading behaviour is un-designed |
 | Responsive | `experts/responsive.md` | Overflow, clipped glyphs, stacking order, tap targets, breakpoints | Anything width-specific — the desktop looks fine and the phone is suspect |
 | UX (task flow) | `experts/ux.md` | Primary task completion, system status, navigation at every width, error prevention/recovery, help | The judge is uncertain on Layout/task-flow, or the brief is task-heavy (form, checkout, dashboard, portfolio with a primary task), or Layout scored <4 in a prior round of the same direction. NOT every round. |
+| Security / compliance | `experts/security.md` | Secrets/keys in code, XSS/injection sinks, insecure deps + CVEs, licences, ToS, copyright, data leaks | Pre-land per slice (after gate green, before grade) + pre-ship once on the shipping version — MANDATORY on every slice, not at the judge's discretion; SEVERE = hard block like a gate FAIL |
 
 ## When to call an expert (and when not to)
 
@@ -36,6 +37,16 @@ needs domain expertise — never the builder, never in the build thread.
 - **Never more than 2 experts per round.** If three or more domains are
   suspect, the build has a direction problem — re-pick the variant, not a
   third expert. Experts are a second opinion, not a committee.
+- **Security is mandatory, not discretionary.** The security expert runs
+  pre-land on every slice (after the gate is green, before the grade) and
+  pre-ship once on the shipping version — the judge does not decide
+  whether to call it, and the orchestrator does not skip it. Spawn it
+  with the checklist (`references/security-checklist.md`) + the merged
+  tree / shipping version + the gate result, same fresh-context /
+  no-production-history pattern as the judge. Its verdict is BLOCKING,
+  not advisory (see "How an expert verdict is used"), and it does not
+  count against the max-2-experts-per-round budget: the cross-check is a
+  stage, not a second opinion.
 - **UX priority on overlap.** When a defect could belong to two experts,
   it counts once, under one expert: nav-vanishing → UX (not responsive);
   focus-ring/keyboard/contrast → accessibility (not UX); label/CTA
@@ -43,6 +54,12 @@ needs domain expertise — never the builder, never in the build thread.
   destination; pure width breakage (overflow, clipping) → responsive
   (not UX). A defect assigned to one expert counts as one suspect domain
   (the tripwire counts once).
+- **Security priority on overlap.** When a defect could belong to the
+  security expert and another expert, security owns it: a secret/key in
+  code → security (not copy, not design-systems); an XSS/injection sink
+  → security (not responsive, not UX); a licence/copyright question →
+  security (not imagery); an auth-flow usability defect → UX, UNLESS it
+  is access control (broken auth, IDOR, missing CSRF) → security.
 - **UX budget.** At most 1 UX invocation per round; a re-grade is a new
   invocation.
 - **Never the builder, never in the build thread.** Experts are spawned
@@ -102,13 +119,23 @@ Example spawn instruction (adapt the paths; keep the constraints verbatim):
   only one half — the same rule as for the judge.
 - **Disagreement rule.** If an expert and the judge disagree, the judge's
   4-axis score stands for the stop condition (≥4 on every axis AND gate
-  green), but the expert's defects still enter the fix list: the builder
+  green AND cross-check clear), but the expert's defects still enter the fix list: the builder
   fixes the top 2 across judge + experts, as token diffs first. A
   disagreement is recorded in the run log, not silently resolved.
 - **An accessibility REWORK can block shipping.** If the accessibility
   expert returns REWORK (1–2), the build does not ship even when the
   judge's 4 axes are ≥4 — say so in the human gate. Every other expert's
   REWORK is a direction signal (re-pick the variant), not a ship-blocker.
+- **A security SEVERE blocks landing AND shipping — and it blocks before
+  the grade, not just the ship.** The security expert is the exception to
+  "advisory": a SEVERE finding means no land, no grade, no ship, exactly
+  like a gate FAIL. The verdict is recorded with `run-log.mjs crosscheck`
+  (SEVERE/WARNING counts, report path, checker independence basis)
+  before any land is recorded; a land without a prior clear verdict is
+  rejected by the run-log script. WARNINGs are fixed or waived-with-reason
+  in the run log. The coordinator can never waive a SEVERE — only the
+  human on return can override one, recorded in the run log with the
+  human's name.
 
 ## What the pack does not contain (deliberately)
 

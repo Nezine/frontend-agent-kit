@@ -3,8 +3,9 @@
 #
 # Non-interactive, Linux-first. Detects the hosts actually present, copies the
 # vendored skills into EVERY applicable skills directory (backup-first), then
-# best-effort installs the Impeccable hook, the Playwright MCP server and the
-# Playwright CLI. Best-effort steps NEVER fail the install; they are reported
+# best-effort installs the Impeccable hook, the Playwright MCP server, the
+# Playwright CLI, and the gitleaks secret scanner (gate 1.1 — without it the
+# gate fails closed on a fresh machine). Best-effort steps NEVER fail the install; they are reported
 # as PENDING with the exact manual command.
 #
 #   ./install.sh [--hosts=claude,codex,opencode,...] [--dry-run] [--no-warm]
@@ -68,6 +69,11 @@ set -euo pipefail
 
 PLAYWRIGHT_CLI_VERSION="0.1.24"
 PLAYWRIGHT_MCP_VERSION="0.0.85"
+# Secret scanner for gate 1.1 (F4, 2026-11-11): gitleaks v8.30.1, VERIFIED
+# 2026-11-11 against the GitHub releases API (tag v8.30.1, published
+# 2026-03-21; assets gitleaks_8.30.1_linux_x64.tar.gz +
+# gitleaks_8.30.1_checksums.txt). Pinned — never @latest.
+GITLEAKS_VERSION="8.30.1"
 
 KNOWN_HOSTS="claude codex opencode gemini hermes copilot muse cmd"
 
@@ -512,6 +518,7 @@ if [[ "$dry_run" == 1 ]]; then
   printf '  - Impeccable hook: npx --yes impeccable@%s install --providers=<detected claude/codex> --scope=global (skipped with --skip-hooks)\n' "$IMPECCABLE_PIN"
   printf '  - Playwright CLI: npm install -g @playwright/cli@%s, then playwright-cli install-browser chrome-for-testing (skipped with --skip-eyes)\n' "$PLAYWRIGHT_CLI_VERSION"
   printf '  - Playwright MCP: host-CLI adds of npx -y @playwright/mcp@%s (skipped with --skip-mcp)\n' "$PLAYWRIGHT_MCP_VERSION"
+  printf '  - Secret scanner (gate 1.1): gitleaks v%s pinned tarball to ~/.local/bin (skipped if gitleaks or trufflehog is already on PATH)\n' "$GITLEAKS_VERSION"
   printf '  - Figma MCP: NOT installed (human OAuth — by design)\n'
   printf '\nDRY RUN complete — no files written, no hooks/MCP/verify attempted.\n'
   exit 0
@@ -1028,6 +1035,57 @@ elif [[ "$skip_mcp" == 0 ]]; then
   else
     note_pending "Playwright MCP adds not attempted (npx missing). Install Node 22+, then per host, e.g. Claude Code: claude mcp add --scope user playwright -- npx -y @playwright/mcp@$PLAYWRIGHT_MCP_VERSION (codex: codex mcp add playwright -- npx -y @playwright/mcp@$PLAYWRIGHT_MCP_VERSION; opencode: opencode mcp add playwright --global -- npx -y @playwright/mcp@$PLAYWRIGHT_MCP_VERSION; gemini: gemini mcp add --scope user playwright npx -y @playwright/mcp@$PLAYWRIGHT_MCP_VERSION)."
   fi
+fi
+
+# --- Secret scanner for gate 1.1 (best-effort, F4 2026-11-11) ---------------
+# Gate 1.1 (gate.sh §6) fails CLOSED when no secret scanner is installed
+# (gitleaks or trufflehog) — on a fresh machine the gate failed with only
+# "install one" as guidance and no file recorded how. Install gitleaks
+# here so a fresh install passes 1.1: the pinned v8.30.1 release tarball
+# (see GITLEAKS_VERSION above), fetched with its published checksums file
+# and verified with sha256sum BEFORE extraction — never @latest, never
+# curl|sh, no sudo (installs to ~/.local/bin). Best-effort like the
+# hook/MCP/eyes steps: any failure is a PENDING note with the exact
+# manual command, never fatal. trufflehog / osv-scanner / go-licenses
+# are NOT installed here (no verified pin established for them in this
+# round) — the PENDING note below names them as manual alternatives.
+install_gitleaks() { # pinned tarball + published checksums, into ~/.local/bin
+  command -v curl >/dev/null 2>&1 || { printf 'gitleaks install: curl not found.\n'; return 1; }
+  command -v sha256sum >/dev/null 2>&1 || { printf 'gitleaks install: sha256sum not found.\n'; return 1; }
+  local base="https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION"
+  local tmpd
+  tmpd="$(mktemp -d)" || return 1
+  if ! curl -fsSL -o "$tmpd/gitleaks.tar.gz" "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; then
+    printf 'gitleaks install: tarball download failed.\n'; rm -rf -- "$tmpd"; return 1
+  fi
+  if ! curl -fsSL -o "$tmpd/checksums.txt" "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"; then
+    printf 'gitleaks install: checksums download failed — refusing to install an unverified binary.\n'; rm -rf -- "$tmpd"; return 1
+  fi
+  if ! (cd "$tmpd" && grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" checksums.txt | sha256sum -c - >/dev/null 2>&1); then
+    printf 'gitleaks install: checksum verification FAILED — refusing to install.\n'; rm -rf -- "$tmpd"; return 1
+  fi
+  if ! tar -xzf "$tmpd/gitleaks.tar.gz" -C "$tmpd" gitleaks; then
+    printf 'gitleaks install: extraction failed.\n'; rm -rf -- "$tmpd"; return 1
+  fi
+  mkdir -p "$user_home/.local/bin"
+  cp -- "$tmpd/gitleaks" "$user_home/.local/bin/gitleaks" || { printf 'gitleaks install: copy to ~/.local/bin failed.\n'; rm -rf -- "$tmpd"; return 1; }
+  chmod 755 -- "$user_home/.local/bin/gitleaks"
+  rm -rf -- "$tmpd"
+  "$user_home/.local/bin/gitleaks" version >/dev/null 2>&1
+}
+if command -v gitleaks >/dev/null 2>&1; then
+  printf 'Secret scanner already on PATH: gitleaks %s\n' "$(command -v gitleaks)"
+elif command -v trufflehog >/dev/null 2>&1; then
+  printf 'Secret scanner already on PATH: trufflehog %s (gate 1.1 accepts gitleaks or trufflehog)\n' "$(command -v trufflehog)"
+elif install_gitleaks; then
+  if command -v gitleaks >/dev/null 2>&1; then
+    printf 'OK: gitleaks %s installed (gate 1.1 scanner)\n' "$GITLEAKS_VERSION"
+  else
+    printf 'OK: gitleaks %s installed to ~/.local/bin/gitleaks, but ~/.local/bin is not on PATH — gate 1.1 still cannot see it.\n' "$GITLEAKS_VERSION"
+    note_pending "gitleaks $GITLEAKS_VERSION is installed at ~/.local/bin/gitleaks but ~/.local/bin is not on PATH, so gate 1.1 still fails closed. Add it: export PATH=\"\$HOME/.local/bin:\$PATH\" (e.g. in ~/.profile), then re-run ./verify.sh. Alternative scanners the gate also accepts: trufflehog (see https://github.com/trufflesecurity/trufflehog/releases)."
+  fi
+else
+  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz gitleaks-checksums.txt | sha256sum -c -) && tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
 fi
 
 # Figma: human-gated by design (OAuth). Never attempted here.

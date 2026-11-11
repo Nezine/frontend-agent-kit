@@ -17,7 +17,7 @@ names another skill, read that skill and follow it.
 
 The full loop spec lives in `references/workflow.md`. The grade rubric lives in
 `references/grader-rubric.md`. The stop rules and the degradation ladder live
-in `references/stop-rules.md`. The expert pack (11 independent domain
+in `references/stop-rules.md`. The expert pack (12 independent domain
 specialists + call rules) lives in `references/expert-pack.md` and
 `experts/<domain>.md`. The GetLayers free-layer reference lives in
 `references/getlayers.md`: an optional step-1 reference direction and
@@ -518,7 +518,7 @@ assembled from it.
    | Orchestrator | The run log file, PLAN.md, the briefs; the full project on disk | Pastes the full run log into any subagent prompt |
    | Builder (round N) | The round brief only: locked tokens + Purpose + motion/3D routing + best HTML + gate findings + grader evidence lines + run-state table | The full run log, earlier HTML versions, its own reasoning from a prior round |
    | Fixer (round N+1) | Same as the builder — the new round's brief | Same as the builder |
-   | Judge | Screenshots + the 1–3 locked reference shots + rubric/scope + the 5-line lock text + tool measurements (+ pairwise A/B inputs when the stop round calls for them) | Model/builder identity, earlier scores, the run log, gate findings — the single `gate: green` bit from the orchestrator's pre-filter is the only gate information the judge receives |
+   | Judge | Screenshots + the 1–3 locked reference shots + rubric/scope + the 5-line lock text + tool measurements (+ pairwise A/B inputs when the stop round calls for them) + the single `cross-check: clear` bit (the only cross-check information the judge receives) | Model/builder identity, earlier scores, the run log, gate findings, cross-check findings — the single `gate: green` bit from the orchestrator's pre-filter is the only gate information the judge receives, and the single `cross-check: clear` bit is the only cross-check information it receives |
    | Expert (second opinion) | Same as the judge, plus the one domain question it was asked | Same as the judge |
 
    Measurable check: the builder/fixer prompt is the generator's brief
@@ -631,9 +631,17 @@ AC-2 emoji), the token-naming lint (`scripts/gate/lint-tokens.mjs`, §3d
 on-* text role for every `--color-*` used as a background, T4 colour
 roles alias primitives, never literals), and, whenever `design/PLAN.md`
 exists, the converge check (`scripts/gate/converge-check.mjs`, §5 —
-every planned section/state exists in the build). All three fail the
+every planned section/state exists in the build). All four fail the
 gate like any leg-1 finding; the converge check additionally blocks
-the human gate (step 6.1). The token-naming lint runs on the demo
+the human gate (step 6.1). Leg 1 also runs the security stage
+(`gate.sh` §6): the deterministic Stage 1 checks 1.1–1.12 from
+`research/security-ai/SYNTHESIS.md` §3 — secret scan, sink greps,
+dependency existence/pinning, CVE, headers, weak crypto, licence scan,
+rate limits, lifecycle scripts. A security FAIL blocks the round like
+any leg-1 finding; a check that cannot run fails the section, never
+passes silently. The security stage is the deterministic half of the
+step-3a cross-check; the LLM/human half runs as an independent agent
+and is recorded with `run-log.mjs crosscheck`. The token-naming lint runs on the demo
 target too — the template must pass its own lint.
 
 1. `node scripts/gate/detect.mjs <page or dir>` — the `impeccable detect`
@@ -715,6 +723,57 @@ scoped here is the GATE checks, not the lens.
 FAIL blocks the round. Fix, then re-run the gate from the top. Do not proceed
 to step 4 with a red gate.
 
+## Step 3a — Security/compliance cross-check (after the gate, before any vision grade)
+
+The cross-check is a MANDATORY stage on the same level as the deterministic
+gate (coordination design §13 — user order 2026-11-11, EXTREMELY important).
+It runs twice: (i) **pre-land, per slice** — after the step-3 gate, before
+the step-4 grade, on the merged tree (buffet mode) or the gated build
+(solo run); (ii) **pre-ship, once** — on the shipping version (the mainline
+tip at stop / the best version), before the human-gate packet is prepared
+(step 6). A SEVERE finding stops the land/ship exactly as a gate FAIL does.
+
+1. **Who runs it.** A fresh-context cross-checker, spawned like the judge
+   (fresh sub-agent, no production history of the slice) — NEVER the builder
+   of the slice, NEVER the design judge for that slice. The security expert
+   (`experts/security.md`, the 12th expert in `references/expert-pack.md`)
+   is the checker. Its checklist is `references/security-checklist.md`
+   (Stages 0–6 from `research/security-ai/SYNTHESIS.md` §3; Stage 1 checks
+   1.1–1.12 are the deterministic [GATE] half and already run inside
+   `gate.sh` §6 — the checker re-runs them with its own tools and its own
+   verdict; the builder's scan results are evidence, never the verdict).
+2. **What blocks vs warns.** SEVERE = hard block: no land, no ship; the
+   slice goes to `input-required` with the report linked; the owning agent
+   fixes and re-claims; the fix is re-checked by a fresh cross-check run.
+   The coordinator can NEVER waive a SEVERE — only the human, on return,
+   can override one, recorded in the run log with the human's name.
+   WARNING = fix, or waive with a written reason in the run log (accepted
+   risk, named, dated). A waived warning stays visible in the pre-ship
+   report. OK = clear.
+3. **How it reports.** One report per check — `coord/crosscheck/<slice-id>-<n>.md`
+   in buffet mode; in a solo run, a report file under the project (e.g.
+   `design/crosscheck/round-<n>.md`) whose path is recorded with the
+   verdict. Findings carry severity + evidence (file:line, what, why,
+   suggested fix). The coordinator transcribes the verdict with
+   `node scripts/run-log.mjs --project <dir> crosscheck --slice <id>
+   --severe N --warning N [--waived N] --report <path> --checker
+   <security-expert|crosscheck-subagent|crosscheck-team> --basis "<fresh
+   context, no production history>"` — BEFORE any land is recorded. A land
+   entry without a prior clear cross-check verdict is rejected by the
+   run-log script (exit 2, nothing written).
+4. **Land requires gate green AND cross-check clear.** Per-branch green is
+   not green, and a gate-green build with a SEVERE cross-check finding does
+   not land, does not grade, and does not ship. If the builder disputes a
+   finding, the coordinator summons a second cross-checker; two SEVEREs
+   from two independent checkers is final.
+5. **The judge never sees the findings.** The cross-check verdict reaches
+   the judge ONLY as the precondition bit `cross-check: clear` (step 4) —
+   never as findings, counts, or report text (D8 whitelist,
+   `references/grader-rubric.md`). A build that is not cross-check-clear
+   never reaches the judge at all.
+
+Do not proceed to step 4 with a red gate OR an unclear cross-check.
+
 ## Step 4 — Eyes + grade (Playwright CLI)
 
 1. Serve the page over http (never `file://` — module scripts do not run).
@@ -740,8 +799,11 @@ to step 4 with a red gate.
    `skills/frontend-judge/references/invocation.md` for the exact spawn
    pattern: fresh context, no production history, no shared context with
    the builder; pass only the built page, locked tokens + the 1–3 locked reference screenshots,
-   screenshots, the single bit `gate: green`, and brief-type scope — never the builder's
-   reasoning or earlier scores). The judge reads the page + locked
+   screenshots, the single bits `gate: green` and `cross-check: clear`, and brief-type scope — never the builder's
+   reasoning or earlier scores). The judge is spawned only after the gate
+   is green AND the cross-check is clear (step 3a) — the `cross-check:
+   clear` bit is a precondition, and no cross-check finding ever reaches
+   the judge. The judge reads the page + locked
    references + screenshots and returns the score table with evidence.
    **Fallback order, first available wins:** (1) fresh judge sub-agent
    (`frontend-judge`); (2) `other-model` judge (a different agent/model
@@ -839,7 +901,7 @@ to step 4 with a red gate.
    done: the human gate does not open, and the round goes back to
    step 5 with the failing section or state named. There is no
    advisory mode. The converge result is recorded in the run log.
-2. Stop when every axis is ≥ 4 AND the gate is green — or after 3 rounds,
+2. Stop when every axis is ≥ 4 AND the gate is green AND the cross-check is clear — or after 3 rounds,
    whichever comes first. A build that cannot reach ≥ 4 in 3 rounds is a
    direction problem (wrong reference, wrong tokens): re-pick a variant
    (step 2a), not a 4th round. **Re-pick cap: max 2 re-picks, 9 rounds
@@ -852,6 +914,12 @@ to step 4 with a red gate.
    it, the earlier best is what the human gate sees. A re-pick creates a
    NEW lock version (step 1.8): the new direction is locked, not merged
    into the old lock.
+   **Pre-ship cross-check (once, before the human gate).** Run the step-3a
+   cross-check once on the shipping version (the mainline tip at stop /
+   the best version) before the human-gate packet is prepared. A SEVERE
+   finding stops the ship exactly as a gate FAIL does; record the verdict
+   with `run-log.mjs crosscheck` and attach the report to the human-gate
+   packet.
 3. Present the human gate: the score table, the 3-width screenshots, 2–4
    targeted questions with concrete options (pick them from
    `references/human-gate-pack.md` — never an open-ended "what do you
@@ -871,7 +939,8 @@ to step 4 with a red gate.
    learned about the direction, in one short section). Nothing merges
    into TASTE.md mid-loop, ever.
 5. Record in the run log: scores per round, grader label per round, the
-   converge result per round, the plan's approval basis (human approval
+   converge result per round, the cross-check verdict per slice and the
+   pre-ship verdict, the plan's approval basis (human approval
    in PLAN.md, or the `approved-by` field on the lock entry for
    human-less runs), and every feedback → token change → new score, so
    the dictionary grows.
@@ -897,6 +966,7 @@ repeated here: one copy, at the top, is the rule.
 | Component/system lookup | `ui-ux-pro-max-reference`, `threeui`, GSAP skills | Paste a catalog into this file |
 | Motion | `references/style-recipes/scroll-motion.md` for patterns / tokens / restraint; GSAP skills for implementation | Hand-roll animation advice; invent a motion pattern from priors |
 | Grading rubric, stop rules, ladder | `references/grader-rubric.md`, `references/stop-rules.md` | Grade by feel |
+| Security / compliance cross-check (step 3a) | `references/security-checklist.md` + `experts/security.md` (fresh sub-agent, never the builder, never the judge for that slice) | Let the builder or the judge cover security; waive a SEVERE without the human |
 | Domain expertise (specialist second opinion) | `references/expert-pack.md` + `experts/<domain>.md` (fresh sub-agent, never the builder) | Ask the builder or the judge to cover a domain outside its confidence |
 | Variant directions (concrete token + structural briefs) | `references/variant-briefs.md` + `references/variant-scoring.md` (blind pick, random order, unpicked-variant retention) | Invent five directions from priors |
 | Human-gate questions + next commands | `references/human-gate-pack.md` | Ask open-ended "what do you think?" |
@@ -916,6 +986,10 @@ repeated here: one copy, at the top, is the rule.
 - DESIGN-SYSTEM.md holds rationale only — no token values; `tokens.css`
   governs on drift.
 - The gate runs before the grade. No vision round on a red gate.
+- The cross-check runs after the gate and before the grade (step 3a). No
+  land or ship without a clear cross-check verdict: a SEVERE finding
+  blocks like a gate FAIL, and only the human on return can override one
+  — the coordinator can never waive a SEVERE.
 - Every score has one line of observable evidence and a named independent
   grader label. A builder self-grade is FORBIDDEN. A score without a named
   independent grader label is INVALID. If no independent judge exists, the

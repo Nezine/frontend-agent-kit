@@ -61,11 +61,21 @@ It is the complete list of what the judge may and may not receive.
 | Tool measurements (Playwright snapshot / console / geometry) | Builder's transcript, reasoning, plan, or drafts |
 | Pairwise A/B inputs (P11: full shots of both versions, labelled A/B only) | Unpicked variants (direction alternatives, not evidence) |
 | The single bit `gate: green` (the ONLY gate information the judge receives) | Anything about the builder's model, host, or history |
+| The single bit `cross-check: clear` (the ONLY cross-check information the judge receives) | Cross-check findings (finding lists, severity counts, report contents, checker identity) |
 
 Gate handled by orchestrator pre-filter: the orchestrator does not spawn a
 judge on a red gate, so a red gate never reaches the judge as a grading
 task. The single `gate: green` bit is the only exception, enforced by the
 orchestrator — the judge never sees gate findings.
+
+Cross-check clear is a PRECONDITION for grading, like gate green: the
+orchestrator does not spawn a judge until the gate is green AND the
+cross-check is clear, so a SEVERE-blocked build never reaches the judge as
+a grading task. The single `cross-check: clear` bit is the only cross-check
+information the judge receives — no findings, no severity counts, no report
+text, no checker identity. The D8 whitelist is unchanged by this:
+cross-check findings are forbidden judge inputs, exactly as gate findings
+are.
 
 There is no builder-graded path, and builder grading can never trigger the
 stop rule. Any score without a named independent grader label
@@ -84,7 +94,7 @@ figure (README, AGENTS.md, muse-app-pack, plugin manifests, clean-env
 test). The ≥4-on-every-axis stop rule is UNCHANGED: the % is the human-eye
 bar for the acceptance test, the 4-axis scores are the per-round gate. A
 build passes the human eye when it reads ≥60% slop-free; the probe loop
-still stops at ≥4 on every axis AND gate green, or after 3 rounds.
+still stops at ≥4 on every axis AND gate green AND cross-check clear, or after 3 rounds.
 
 Why: intrinsic self-correction degrades reasoning (Huang et al. 2024,
 VERIFIED from the primary PDF Tables 2–6: GPT-4 GSM8K 95.5 → 91.5 → 89.0
@@ -229,10 +239,11 @@ Round 2 — grader: judge-subagent (fresh context, no production history)
 | Colour | Accent #d97757 used twice (CTA + footer mark) vs ref 1; body text 12.6:1 | 4     |
 | Space  | Section gaps 192px throughout (2×96px section padding, inside the 128–288px band) vs ref 1; card padding 32px per tokens | 5     |
 Gate: green
+Cross-check: clear
 ```
 
 **Motion (non-scoring):** if a motion expert was consulted this round, the
-report adds one paragraph after the `Gate: green` line, surfacing the
+report adds one paragraph after the `Gate: green` and `Cross-check: clear` lines, surfacing the
 expert's existing 1–5 domain score (`skills/frontend-kit/experts/motion.md`)
 — `Motion: <score> (motion-expert) — <the expert's one-line evidence>`,
 plus one line per named pattern used: `Pattern N: PASS/FAIL — <one line>`.
@@ -241,7 +252,7 @@ motion expert was consulted this round, the paragraph is omitted — never
 invent a motion score.
 
 **UX (non-scoring):** if a UX expert was consulted this round, the report
-adds one paragraph after the `Gate: green` line (after the Motion
+adds one paragraph after the `Gate: green` and `Cross-check: clear` lines (after the Motion
 paragraph when both are present), surfacing the expert's existing 1–5
 domain score (`skills/frontend-kit/experts/ux.md`) — `UX: <score>
 (ux-expert) — <the expert's one-line evidence>`, plus one line per FAILED
@@ -263,7 +274,7 @@ UX-13: FAIL — Fixed 320px mocks ~40% empty black below the last terminal line
 
 **Comparability — broken by this change (E3 §3(c) as written is STRUCK):**
 UX adds no fifth axis and changes no stop rule. The loop still stops at
-≥4 on every axis AND gate green, or after 3 rounds per direction (max 2
+≥4 on every axis AND gate green AND cross-check clear, or after 3 rounds per direction (max 2
 re-picks, 9 rounds total). The 60% slop-free human-eye bar is unchanged.
 The UX domain score is advisory to the judge, exactly as the Motion
 domain score is: it surfaces defects for the fix order and never moves
