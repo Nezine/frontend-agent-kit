@@ -1,6 +1,6 @@
 # CI gate fixture
 
-Minimal static page the CI workflow runs `scripts/gate/gate.sh` against
+Minimal static page the CI workflow runs `skills/frontend-kit/scripts/gate/gate.sh` against
 after `./install.sh` + `./verify.sh --strict`. It is a probe build, not a
 full loop grade: the point is exercising the gate end to end on a
 project-shaped target (taste lock in `design/tokens.css`, one built page).

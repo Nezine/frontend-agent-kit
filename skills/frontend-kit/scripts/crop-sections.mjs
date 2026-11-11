@@ -26,7 +26,7 @@
 // builder's fix list is cross-checked against the diff and NEVER used as
 // the determiner. P5's script classifier does not exist in this repo
 // (verified on disk — no classifier script in skills/frontend-kit/scripts/
-// or scripts/gate/) and is not assumed here.
+// or skills/frontend-kit/scripts/gate/) and is not assumed here.
 //
 // NESTED-CHANGE DEDUPE (W-LOOP fix, 2026-11-11): only the OUTERMOST
 // changed section gets a crop. A changed section inside another changed

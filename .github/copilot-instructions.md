@@ -19,7 +19,7 @@ polish of any UI — follow the **frontend-kit orchestrator**:
    `design/references/` are committed BEFORE the build. Fixes go to
    `tokens.css` first.
 3. Deterministic gate before any grade — and the builder NEVER grades its
-   own work: run `scripts/gate/gate.sh --target <dir>` (repo root) — FAIL
+   own work: run `skills/frontend-kit/scripts/gate/gate.sh --target <dir>` (repo root) — FAIL
    blocks the round. Then screenshot at 1440 / 768 / 390 and grade 1–5 on
    Type / Layout / Colour / Space through an independent judge only
    (`judge-subagent`, `muse-manager`, or `other-model`), one line of

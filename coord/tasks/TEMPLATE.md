@@ -37,7 +37,7 @@ agent cannot read is marked CHƯA ĐỌC and never cited as read.
 
 What the agent must NOT do: files it must not touch, branches it must not
 commit to or push, actions it must not take (e.g. "do NOT commit, do NOT push;
-do NOT touch `SKILL.md`, `tokens.css`, `scripts/gate/`, `P10/p10-held`,
+do NOT touch `SKILL.md`, `tokens.css`, `skills/frontend-kit/scripts/gate/`, `P10/p10-held`,
 `W-LOOP-4/5`, `main`/`v1` branches; do NOT push to `buffet/main").
 
 ## 5. Effort scale

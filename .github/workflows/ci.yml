@@ -55,11 +55,11 @@ jobs:
           # run time, not a parse error). The grep is the real guard:
           # it covers the full banned list, not just the constructs that
           # happened to exist when the lint was written.
-          if grep -rnE 'declare[[:space:]]+-A|mapfile|readarray|\$\{[A-Za-z_][A-Za-z0-9_]*\^\^|\$\{[A-Za-z_][A-Za-z0-9_]*,,|local +-n|globstar|&>>|;;&|coproc' install.sh verify.sh scripts/gate/gate.sh scripts/check-versions.sh scripts/generate-host-variants.sh; then
+          if grep -rnE 'declare[[:space:]]+-A|mapfile|readarray|\$\{[A-Za-z_][A-Za-z0-9_]*\^\^|\$\{[A-Za-z_][A-Za-z0-9_]*,,|local +-n|globstar|&>>|;;&|coproc' install.sh verify.sh skills/frontend-kit/scripts/gate/gate.sh scripts/check-versions.sh scripts/generate-host-variants.sh; then
             echo "ERROR: bash-4-only construct found (see above) — rewrite it in bash-3.2-compatible form."
             exit 1
           fi
-          for f in install.sh verify.sh scripts/gate/gate.sh scripts/check-versions.sh scripts/generate-host-variants.sh; do
+          for f in install.sh verify.sh skills/frontend-kit/scripts/gate/gate.sh scripts/check-versions.sh scripts/generate-host-variants.sh; do
             bash -n "$f" || exit 1
           done
           echo "lint OK: no banned constructs, all five scripts parse."
@@ -86,4 +86,4 @@ jobs:
 
       - name: Gate on a probe build
         shell: bash
-        run: scripts/gate/gate.sh --target tests/ci-gate-fixture
+        run: skills/frontend-kit/scripts/gate/gate.sh --target tests/ci-gate-fixture

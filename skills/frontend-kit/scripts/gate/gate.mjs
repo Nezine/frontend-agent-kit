@@ -228,7 +228,7 @@ if (statSync(page).isDirectory()) {
   usage(`a directory is not a page: pass a single built .html file, not ${page}`);
 }
 if (!existsSync(COPY_LINT) || !existsSync(CONSISTENCY)) {
-  console.error('gate: vendored checkers missing from scripts/gate/ (copy-lint.mjs, consistency.mjs). Re-clone the kit; do not substitute another checker silently.');
+  console.error('gate: vendored checkers missing from scripts/gate/ (copy-lint.mjs, consistency.mjs). Re-run ./install.sh; do not substitute another checker silently.');
   process.exit(2);
 }
 

@@ -719,6 +719,23 @@ step-3a cross-check; the LLM/human half runs as an independent agent
 and is recorded with `run-log.mjs crosscheck`. The token-naming lint runs on the demo
 target too — the template must pass its own lint.
 
+**Gate artifacts — a pass must be provable (D13, GAP-11).** Each leg
+writes its full output to a log file in the project: leg 1 →
+`design/gate-leg1.log` (`gate.sh --target <dir> > design/gate-leg1.log 2>&1`),
+leg 2 → `design/gate-leg2.log`
+(`node scripts/gate/gate.mjs <page.html> > design/gate-leg2.log 2>&1`).
+A `--gate pass` is recorded ONLY with both artifacts:
+`run-log.mjs record ... --gate pass --gate-leg1 design/gate-leg1.log
+--gate-leg2 design/gate-leg2.log` (and the same two flags on `land`).
+Without both artifacts the run log REFUSES the pass (exit 2, nothing
+written) — a pass with no artifact is a self-assertion, not a record.
+`--gate fail` needs no artifact. Degraded rungs record `--gate fail`
++ notes, never a pass. **"Skill base"** in this skill means the
+installed skill directory (e.g. `~/.claude/skills/frontend-kit/` on
+Claude Code, or the equivalent skills-dir copy on the host) — every
+`scripts/gate/...` path in this skill is relative to the skill base,
+which is where the gate scripts now live.
+
 1. `node scripts/gate/detect.mjs <page or dir>` — the `impeccable detect`
    wrapper (62 deterministic rules: 31 slop / 31 quality). Exit codes:
    0 = clean; **2 = findings — fix them**; **1 = the scan could not run**
@@ -838,8 +855,11 @@ tip at stop / the best version), before the human-gate packet is prepared
    run-log script (exit 2, nothing written).
 4. **Land requires gate green AND cross-check clear.** Per-branch green is
    not green, and a gate-green build with a SEVERE cross-check finding does
-   not land, does not grade, and does not ship. If the builder disputes a
-   finding, the coordinator summons a second cross-checker; two SEVEREs
+   not land, does not grade, and does not ship. The land record carries
+   the same two gate-leg artifact flags as a round record
+   (`--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log`,
+   D13 — the run log refuses a land asserting a pass with no artifacts).
+   If the builder disputes a finding, the coordinator summons a second cross-checker; two SEVEREs
    from two independent checkers is final.
 5. **The judge never sees the findings.** The cross-check verdict reaches
    the judge ONLY as the precondition bit `cross-check: clear` (step 4) —
@@ -958,9 +978,12 @@ reworked P3 (council decision D7, `references/decisions.md`): a
    findings and the page every round, or the next brief fails its schema
    check. **No independent
    judge available (no-grade path):** record the round with
-   `run-log.mjs record --round N --grader none --scores none --gate <pass|fail>`
+   `run-log.mjs record --round N --grader none --scores none --gate <pass|fail> [--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log]`
    — the grade is recorded as exactly "gate green, vision not available",
    with no invented grader label. `--grader none` with scores is rejected.
+   With `--gate pass`, add `--gate-leg1 design/gate-leg1.log --gate-leg2
+   design/gate-leg2.log` (D13 — the run log refuses a pass without both
+   gate-leg artifacts); `--gate fail` needs no artifact.
 
 ## Step 5 — Fix top 2, as token diffs
 

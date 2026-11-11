@@ -314,6 +314,23 @@ Leg 1 is `gate.sh` (taste lock + `impeccable detect` + static
 checks); leg 2 is `gate.mjs` (copy-lint + consistency browser leg). A
 `gate.sh` PASS alone is only leg 1, never a gate pass.
 
+**Gate artifacts — a pass must be provable (D13, GAP-11).** Each leg
+writes its full output to a log file in the project: leg 1 →
+`design/gate-leg1.log` (`gate.sh --target <dir> > design/gate-leg1.log 2>&1`),
+leg 2 → `design/gate-leg2.log`
+(`node scripts/gate/gate.mjs <page.html> > design/gate-leg2.log 2>&1`).
+A `--gate pass` is recorded ONLY with both artifacts:
+`run-log.mjs record ... --gate pass --gate-leg1 design/gate-leg1.log
+--gate-leg2 design/gate-leg2.log` (and the same two flags on `land`).
+Without both artifacts the run log REFUSES the pass (exit 2, nothing
+written) — a pass with no artifact is a self-assertion, not a record.
+`--gate fail` needs no artifact. Degraded rungs record `--gate fail`
++ notes, never a pass. **"Skill base"** in this skill means the
+installed skill directory (e.g. `~/.claude/skills/frontend-kit/` on
+Claude Code, or the equivalent skills-dir copy on the host) — every
+`scripts/gate/...` path in this skill is relative to the skill base,
+which is where the gate scripts now live.
+
 - `impeccable detect` — 62 deterministic rules (31 slop / 31 quality; 16
   advisory, 2 error, 44 no-severity → warning-default; registry lives in the
   ENGINE, `crates/live/assets/antipatterns.json` at tag skill-v4.8.2 —

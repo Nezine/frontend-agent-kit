@@ -761,6 +761,14 @@ done
 # so a secret of ANY shape there passes all 1.1 layers; .taste-skill/ IS
 # scanned by gitleaks, so only a label-dependent gitleaks miss there is
 # unclosed by the grep pass. .git/ stays excluded (not project content).
+# D13 (GAP-11): design/gate-leg1.log + design/gate-leg2.log are excluded
+# from THIS grep pass too, mirroring the .taste-skill/ exclusion — the
+# gate's own prior output must never fail the next gate run (a secret
+# echoed into a gate log would fail 1.1 on the gate's own artifact).
+# The exclusion is grep-pass-only: gitleaks still scans the logs, so a
+# real secret in a log is still caught by the scanner layer — the
+# failure mode stays fail-closed (a noisy 1.1 FAIL naming the log),
+# never a silent pass.
 # ENCODING (RR3-03, fix round 4B): the pass is UTF-16-aware — see
 # sec_11_utf16_enc / sec_11_text_grep below. A UTF-16 file is binary
 # to grep -I (skipped) and NUL-interleaved to grep -a (patterns never
@@ -920,7 +928,7 @@ sec_11_text_grep() {
 # RR4-04 (fix round 5): NUL-delimited — a newline in a filename must not
 # split the list (find -print0, sort -z, read -d '').
 sec_11_text_files=()
-while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -print0 2>/dev/null | sort -z -u || true)
+while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/gate-leg1.log' -not -path '*/design/gate-leg2.log' -print0 2>/dev/null | sort -z -u || true)
 if [[ "${#sec_11_text_files[@]}" -gt 0 ]]; then
   sec_11_text_hits="$(sec_11_text_grep "$sec_11_pat" -i | sec_11_keep_unless_example_only "$sec_11_pat" || true)"
   sec_11_text_assign="$(sec_11_text_grep "$sec_11_assign_pat" -i | sec_11_keep_unless_example_only "$sec_11_assign_pat" || true)"

@@ -16,13 +16,13 @@
 #      A mismatch FAILS LOUDLY — the 62-rule registry lives in the engine,
 #      so a wrong engine silently applies the wrong registry;
 #   3b. Vendored-allowlist manifest vs taste tree (GAP-9, D9): the
-#      scripts/gate/vendored-allowlist.txt pin header must equal the
+#      skills/frontend-kit/scripts/gate/vendored-allowlist.txt pin header must equal the
 #      SOURCES.md taste pin, every entry's sha256 must equal the vendored
 #      tree file's, and the key set must equal the tree's recomputed
 #      runtime sink-file set. A mismatch FAILS LOUDLY — a stale manifest
 #      must never ship as if it were current;
 #   4. `impeccable detect` runs on a clean fixture;
-#   5. the deterministic gate (scripts/gate/gate.sh) runs on the fixture;
+#   5. the deterministic gate (skills/frontend-kit/scripts/gate/gate.sh) runs on the fixture;
 #   6. Playwright eyes: `playwright-cli --help`, serve over http (never
 #      file://), screenshot at 390px, console clean — retried up to 3x
 #      with per-attempt logs kept (Q-1 redo: the old single attempt
@@ -487,6 +487,45 @@ else
   ok "no live builder-self-grade language in installed skills (sentence-scoped prohibiting mentions allowlisted — see §2d comment)"
 fi
 
+# --- 2e. installed-copy gate presence anchors (D13, GAP-11) --------------
+# The gate scripts live INSIDE the skill now
+# (skills/frontend-kit/scripts/gate/), so every installed frontend-kit
+# copy must carry all 16 of them — a copy without the gate cannot
+# complete the loop (the GAP-11 defect: the installed skill cited a
+# gate that was not there). FAIL per missing file per copy, in the §2b
+# every-copy pattern (a corrupted second copy must not pass because the
+# first one is fine). gate.sh must be executable (-x): the cp -r
+# fallback exec-bit preservation is otherwise unverified.
+# F8 (fix round 1): presence alone cannot tell a current installed gate
+# from a pre-D13 one, so two content anchors are checked per copy:
+# gate.sh must carry the §6 1.1 gate-leg-log exclusion itself
+# (`-not -path '*/design/gate-leg1.log'` on the find line — a mere
+# comment mentioning the log does not count) and gate.mjs must carry
+# the D13 error string (`Re-run ./install.sh`). A stale installed gate
+# FAILs §2e instead of passing silently and failing the next real gate
+# run on its own output.
+gate_files=(
+  gate.sh gate.mjs detect.mjs converge-check.mjs copy-lint.mjs
+  consistency.mjs anti-cliche.mjs lint-tokens.mjs runlog-check.mjs
+  json-dup-keys.mjs seed-structural.mjs dompurify-call.mjs
+  vendored-allowlist.txt vendored-runtime-list.txt README.md
+  .gitleaks.toml
+)
+checked_2e=0
+fails_2e_before="$fails"
+while IFS= read -r sd || [[ -n "$sd" ]]; do
+  gdir="$sd/frontend-kit/scripts/gate"
+  [[ -f "$sd/frontend-kit/SKILL.md" ]] || continue
+  checked_2e=$((checked_2e+1))
+  for gf in "${gate_files[@]}"; do
+    [[ -f "$gdir/$gf" ]] || fail "installed gate file missing: $gdir/$gf (D13 — the installed skill cannot run the gate)"
+  done
+  [[ -x "$gdir/gate.sh" ]] || fail "installed gate.sh is not executable: $gdir/gate.sh (D13 — re-run ./install.sh)"
+  grep -qF "*/design/gate-leg1.log" "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion: $gdir/gate.sh (D13 — re-run ./install.sh)"
+  grep -q 'Re-run \./install\.sh' "$gdir/gate.mjs" 2>/dev/null || fail "installed gate.mjs is stale (pre-D13): missing the 'Re-run ./install.sh' error string: $gdir/gate.mjs (D13 — re-run ./install.sh)"
+done < <(all_skills_dirs)
+[[ "$checked_2e" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D13 §2e cannot check gate presence)"
+[[ "$checked_2e" != 0 && "$fails" == "$fails_2e_before" ]] && ok "installed gate present in $checked_2e frontend-kit copy/copies (all 16 files, gate.sh executable, D13 content anchors present)"
 # --- 3. Impeccable engine lockstep (A10) — FAIL LOUDLY on mismatch --------
 # The expected engine comes from the REPO pin, not from the installed
 # tree (F4/QC F8): installed-vs-installed lockstep passes a jointly
@@ -620,7 +659,7 @@ fi
 
 # --- 3b. Vendored-allowlist manifest vs taste tree (GAP-9, D9) — FAIL LOUDLY on mismatch --------
 # Same style as the engine lockstep check (§3): the manifest
-# scripts/gate/vendored-allowlist.txt must match the vendored taste
+# skills/frontend-kit/scripts/gate/vendored-allowlist.txt must match the vendored taste
 # assets tree for the pinned taste version, or a stale manifest ships
 # as if it were current. Three checks, all FAILs:
 #   (a) the manifest's pin header (tag + commit) equals the SOURCES.md
@@ -629,7 +668,7 @@ fi
 #       sha256 for that asset-relative path, and every entry names a
 #       file that exists in the tree;
 #   (c) the manifest's key set equals the runtime INCLUSION list
-#       (scripts/gate/vendored-runtime-list.txt) — the SAME file the
+#       (skills/frontend-kit/scripts/gate/vendored-runtime-list.txt) — the SAME file the
 #       generator (vendor-update.sh) reads, so the two cannot drift, by
 #       construction (RR-04, fix round 2: the old mirrored regex is gone;
 #       the generator and this check share one source of truth, and a
@@ -655,7 +694,7 @@ fi
 # human), not this check; §3b's job is detecting inconsistency
 # (stale/mismatched manifest), and it does that. No anchor was built
 # here deliberately.
-taste_allowlist="$root/scripts/gate/vendored-allowlist.txt"
+taste_allowlist="$root/skills/frontend-kit/scripts/gate/vendored-allowlist.txt"
 taste_assets="$root/vendor/taste/skills/taste-skill/assets"
 taste_pin="$(sed -n 's/^<!-- PIN: taste | repo=[^ |]* | tag=\([^ |]*\) | commit=\([^ >]*\).*/\1 \2/p' "$root/SOURCES.md" | head -n 1)"
 if [[ ! -f "$taste_allowlist" ]]; then
@@ -688,14 +727,14 @@ else
     fi
   done < "$taste_allowlist"
   # Reverse direction: the manifest's key set must equal the runtime
-  # INCLUSION list (scripts/gate/vendored-runtime-list.txt) — the SAME
+  # INCLUSION list (skills/frontend-kit/scripts/gate/vendored-runtime-list.txt) — the SAME
   # file vendor-update.sh generates from (RR-04, fix round 2: single
   # source of truth, no mirrored pattern). Separately, and
   # informationally only (NOT a fail — the 17 lab/demo/catalog files are
   # unlisted by design), print the review set: sink files in the tree
   # NOT on the inclusion list, so a NEW upstream file is visible at
   # verify time and must be reviewed against the list at re-pin.
-  runtime_list="$root/scripts/gate/vendored-runtime-list.txt"
+  runtime_list="$root/skills/frontend-kit/scripts/gate/vendored-runtime-list.txt"
   allow_keys="$(grep -v '^#' "$taste_allowlist" | grep -v '^$' | awk '{print $2}' | sort)"
   if [[ ! -f "$runtime_list" ]]; then
     allowlist_bad=1
@@ -750,7 +789,7 @@ cat > "$work/index.html" <<'EOF'
 <link rel="icon" href="favicon.ico">
 <link rel="stylesheet" href="tokens.css">
 <style>body{background:var(--bg);color:var(--ink);padding:var(--space)}</style></head>
-<body><main><h1>Verify fixture</h1><p>A clean page for the loop checks.</p></main></body></html>
+<body><main id="main"><h1>Verify fixture</h1><p>A clean page for the loop checks.</p></main></body></html>
 EOF
 cat > "$work/tokens.css" <<'EOF'
 :root { --bg: #ffffff; --ink: #0a0f1e; --space: 16px; }
@@ -760,6 +799,19 @@ EOF
 # lives in design/tokens.css — without it gate.sh fails the fixture.
 mkdir -p "$work/design"
 cp "$work/tokens.css" "$work/design/tokens.css"
+# D13 (GAP-11): the fixture gains a minimal design/PLAN.md so the
+# converge check actually executes on the §5 gate runs (B §5e, C §4.3 —
+# a PLAN-less fixture lets a missing converge-check pass silently via
+# a note at gate.sh:466). One section, matching the fixture page's
+# <main id="main">; no state matrix (converge-check notes that state
+# evidence is unchecked, it does not fail).
+cat > "$work/design/PLAN.md" <<'EOF'
+## Section inventory
+
+| id | section | notes |
+| --- | --- | --- |
+| main | Main | Verify fixture content |
+EOF
 # Q-1 redo: the fixture ships a real favicon.ico so the page logs no
 # deterministic favicon 404 console error (the only anomaly on the old
 # fixture page — it fired on every page load). Minimal valid 16x16 32bpp
@@ -789,31 +841,1739 @@ if [[ -n "$launcher" && -n "$expected_engine" ]]; then
 fi
 
 # --- 5. deterministic gate runs ---------------------------------------------
-if [[ -x "$root/scripts/gate/gate.sh" ]]; then
-  if "$root/scripts/gate/gate.sh" --target "$work" ${launcher:+--launcher "$launcher"} >"$work/gate.log" 2>&1; then
+# D13 (GAP-11): the gate runs TWICE on the same fixture — once from the
+# repo clone (regression: guards the move itself) and once from the
+# INSTALLED copy (the loop agents actually run). Same fixture, same
+# --launcher handling, same detect-skipped → UNVERIFIED / real-failure
+# → FAIL distinction on each run. The installed run additionally FAILS
+# if its log contains "missing from the kit install" (gate.sh degrades
+# missing §3c/§5 helpers to notes, not failures — a gate that silently
+# skipped its helpers is not a green gate).
+run_gate_leg1() { # <path-to-gate.sh> <log-file> <label>
+  local gate_sh="$1" gate_log="$2" label="$3"
+  if [[ ! -x "$gate_sh" ]]; then
+    fail "gate script missing: $gate_sh ($label)"
+    return
+  fi
+  if "$gate_sh" --target "$work" ${launcher:+--launcher "$launcher"} >"$gate_log" 2>&1; then
     # A passing gate whose detect step was SKIPPED proves only the static
     # checks — the loop's detect leg is unproven (F3). That is UNVERIFIED,
     # not an OK.
-    if grep -qi 'detect skipped' "$work/gate.log"; then
-      unverified "gate ran but its impeccable-detect step was skipped (engine not reachable) — static checks alone passed; the loop's detect leg is not proven"
+    if grep -qi 'detect skipped' "$gate_log"; then
+      unverified "gate ran but its impeccable-detect step was skipped (engine not reachable) — static checks alone passed; the loop's detect leg is not proven ($label)"
     else
-      ok "gate scripts run (scripts/gate/gate.sh on fixture)"
+      ok "gate scripts run ($label)"
     fi
   else
     # A gate that fails ONLY because its detect leg could not run is
     # UNVERIFIED (the loop step is unproven), not a hard FAIL — the new
     # gate.sh fails loudly on a skipped detect (F6) instead of passing on
     # static checks alone, so distinguish that from a real gate failure.
-    if grep -qi 'detect skipped\|detect did not complete' "$work/gate.log"; then
-      unverified "gate could not run its impeccable-detect leg on the fixture (engine not reachable) — static checks may have passed, but the loop's detect leg is not proven"
-      cat "$work/gate.log" >&2 || true
+    if grep -qi 'detect skipped\|detect did not complete' "$gate_log"; then
+      unverified "gate could not run its impeccable-detect leg on the fixture (engine not reachable) — static checks may have passed, but the loop's detect leg is not proven ($label)"
+      cat "$gate_log" >&2 || true
     else
-      fail "gate scripts failed on the fixture — see $work/gate.log (log removed with temp dir; re-run gate.sh --target <dir> to reproduce)"
-      cat "$work/gate.log" >&2 || true
+      fail "gate scripts failed on the fixture ($label) — see $gate_log (log removed with temp dir; re-run gate.sh --target <dir> to reproduce)"
+      cat "$gate_log" >&2 || true
     fi
   fi
+}
+
+# Clone run (regression — guards the move itself).
+run_gate_leg1 "$root/skills/frontend-kit/scripts/gate/gate.sh" "$work/gate.log" "repo clone gate.sh on fixture"
+
+# Installed run: the first installed frontend-kit copy that has the gate.
+installed_gate_sh=""
+installed_gate_mjs=""
+while IFS= read -r sd || [[ -n "$sd" ]]; do
+  cand="$sd/frontend-kit/scripts/gate/gate.sh"
+  if [[ -x "$cand" ]]; then installed_gate_sh="$cand"; installed_gate_mjs="$sd/frontend-kit/scripts/gate/gate.mjs"; break; fi
+done < <(all_skills_dirs)
+if [[ -z "$installed_gate_sh" ]]; then
+  fail "no installed frontend-kit copy has frontend-kit/scripts/gate/gate.sh (D13 §2e should have caught this — the installed skill cannot run the gate)"
 else
-  fail "gate script missing: $root/scripts/gate/gate.sh"
+  run_gate_leg1 "$installed_gate_sh" "$work/gate-installed.log" "installed gate.sh on fixture ($installed_gate_sh)"
+  # The installed run must fail if the gate degraded a missing helper to
+  # a note instead of failing (gate.sh §3c/§5): a "missing from the kit
+  # install" note means the installed copy is incomplete.
+  if grep -qi 'missing from the kit install' "$work/gate-installed.log"; then
+    fail "installed gate degraded a missing helper to a note (\"missing from the kit install\" in the installed gate log) — the installed copy is incomplete; re-run ./install.sh"
+  fi
+  # Installed leg 2 (gate.mjs, §5d): exit 0 = green; exit 2 with the
+  # --skip-browser marker = browser leg skipped, not green (UNVERIFIED);
+  # exit 1 naming the missing Chrome = the browser leg could not run in
+  # this environment (UNVERIFIED, same as a skipped detect leg); any
+  # other failure = FAIL. NOTE (D13, verified 2026-11-11 on a
+  # Chrome-less machine): without Chrome and WITHOUT --skip-browser,
+  # gate.mjs exits 1 with "No Chrome, Edge or Chromium found", NOT exit
+  # 2 with the skip marker — the skip marker only appears under
+  # explicit --skip-browser. The synthesis §5d "exit 2 with the skip
+  # marker without [Chrome]" prediction is wrong for that invocation;
+  # this section matches the observed exit codes.
+  if [[ -f "$installed_gate_mjs" ]]; then
+    if node "$installed_gate_mjs" "$work/index.html" >"$work/gate-installed-leg2.log" 2>&1; then
+      ok "installed gate leg 2 green (gate.mjs on fixture)"
+    elif grep -qi 'browser checks were SKIPPED\|consistency SKIPPED' "$work/gate-installed-leg2.log"; then
+      unverified "installed gate leg 2 skipped its browser leg (--skip-browser marker) — copy-lint may have passed, but the browser leg is not proven"
+    elif grep -qi 'No Chrome, Edge or Chromium found' "$work/gate-installed-leg2.log"; then
+      unverified "installed gate leg 2 could not run its browser leg (no Chrome in this environment) — the loop's browser leg is not proven"
+    else
+      fail "installed gate leg 2 failed on the fixture — see the installed leg-2 log (log removed with temp dir; re-run gate.mjs <page> to reproduce)"
+      cat "$work/gate-installed-leg2.log" >&2 || true
+    fi
+  else
+    fail "installed gate leg 2 missing: $installed_gate_mjs"
+  fi
+  # Installed gate.sh --self-test (§5d): exit 0 = pass; a failure that
+  # is ONLY the skipped detect leg is UNVERIFIED (same distinction as
+  # the §5 runs — on an engine-less machine the self-test fixture fails
+  # its detect leg by design, F6); any other failure = FAIL.
+  if "$installed_gate_sh" --self-test >"$work/gate-installed-selftest.log" 2>&1; then
+    ok "installed gate.sh --self-test passes"
+  elif grep -qi 'detect skipped\|detect did not complete' "$work/gate-installed-selftest.log"; then
+    unverified "installed gate.sh --self-test could not run its impeccable-detect leg (engine not reachable) — the self-test's detect leg is not proven"
+  else
+    fail "installed gate.sh --self-test failed — see the installed self-test log (log removed with temp dir)"
+    cat "$work/gate-installed-selftest.log" >&2 || true
+  fi
+fi
+
+# --- 5b. run-log gate-artifact refusal (D13, GAP-11) ------------------------
+# A --gate pass with no artifacts (or with an artifact missing its PASS
+# marker) must be REFUSED (exit 2, nothing written) on both `record`
+# and `land`; with well-formed artifacts it records gateLeg1/gateLeg2
+# + their sha256. Uses the installed copy's run-log.mjs when one
+# exists, else the repo copy (the code under test is the same file).
+rl_proj="$work/runlog-proj"
+mkdir -p "$rl_proj/design"
+cp "$work/tokens.css" "$rl_proj/design/tokens.css"
+run_log_mjs=""
+while IFS= read -r sd || [[ -n "$sd" ]]; do
+  cand="$sd/frontend-kit/scripts/run-log.mjs"
+  if [[ -f "$cand" ]]; then run_log_mjs="$cand"; break; fi
+done < <(all_skills_dirs)
+[[ -z "$run_log_mjs" ]] && run_log_mjs="$root/skills/frontend-kit/scripts/run-log.mjs"
+rl_log="$rl_proj/design/run-log.jsonl"
+rl_lines() { if [[ -f "$rl_log" ]]; then grep -c . "$rl_log" || true; else printf '0'; fi; }
+# (1) record --gate pass with no artifacts → exit 2, nothing written.
+if node "$run_log_mjs" --project "$rl_proj" record --round 1 --grader none --scores none --gate pass >"$work/runlog-t1.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass without artifacts exited 0 — a gate pass with no artifact must be refused (exit 2)"
+elif [[ -f "$rl_log" ]]; then
+  fail "run-log refusal (D13): record --gate pass without artifacts wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass without artifacts (exit 2, nothing written)"
+fi
+# (2) record --gate pass with an artifact missing its PASS marker → exit 2, nothing written.
+printf 'GATE RESULT: FAIL (3 issue(s))\n' > "$rl_proj/design/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 1 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t2.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a FAIL leg-1 artifact exited 0 — an artifact without its PASS marker must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a FAIL leg-1 artifact wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with an artifact missing its PASS marker (exit 2, nothing written)"
+fi
+# (3) record --gate pass with well-formed artifacts → exit 0, fields recorded.
+printf 'GATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+if node "$run_log_mjs" --project "$rl_proj" record --round 1 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t3.log" 2>&1; then
+  if grep -q '"gateLeg1":"design/gate-leg1.log"' "$rl_log" && grep -q '"gateLeg2":"design/gate-leg2.log"' "$rl_log" && grep -q '"gateLeg1Sha":"[0-9a-f]\{64\}"' "$rl_log" && grep -q '"gateLeg2Sha":"[0-9a-f]\{64\}"' "$rl_log"; then
+    ok "run-log records record --gate pass with well-formed artifacts (gateLeg1/gateLeg2 + gateLeg1Sha/gateLeg2Sha)"
+  else
+    fail "run-log refusal (D13): record --gate pass exited 0 but the record lacks gateLeg1/gateLeg2/gateLeg1Sha/gateLeg2Sha"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with well-formed artifacts failed — see $work/runlog-t3.log"
+  cat "$work/runlog-t3.log" >&2 || true
+fi
+# (4) land --gate pass without artifacts → exit 2 (the land path must not
+# be the bypass). Needs a clear cross-check first, else land refuses for
+# the cross-check reason instead of the artifact reason.
+if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-cc.log" 2>&1; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass >"$work/runlog-t4.log" 2>&1; then
+    fail "run-log refusal (D13): land --gate pass without artifacts exited 0 — the land path must not bypass the artifact refusal (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): land --gate pass without artifacts wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses land --gate pass without artifacts (exit 2, nothing written)"
+  fi
+  # (5) land --gate pass with well-formed artifacts → exit 0.
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t5.log" 2>&1; then
+    ok "run-log records land --gate pass with well-formed artifacts"
+  else
+    fail "run-log refusal (D13): land --gate pass with well-formed artifacts failed — see $work/runlog-t5.log"
+    cat "$work/runlog-t5.log" >&2 || true
+  fi
+else
+  fail "run-log refusal (D13): setup cross-check failed, so the land refusal could not be tested — see $work/runlog-cc.log"
+  cat "$work/runlog-cc.log" >&2 || true
+fi
+# F7 (fix round 1): the refusal paths the red team bypassed (F2–F5) get
+# their own §5b cases — each asserts exit 2 AND nothing written, so a
+# future edit that re-opens any bypass fails verify.sh instead of
+# passing it silently. Well-formed artifacts are reset before each case.
+rl_reset_artifacts() {
+  printf 'GATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+  printf '===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+}
+# (6) stale artifacts (page newer than both legs) → exit 2, nothing written.
+rl_reset_artifacts
+printf '<html><body><main id="main">x</main></body></html>\n' > "$rl_proj/design/page.html"
+touch -d '2030-01-01' "$rl_proj/design/page.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t6.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with stale artifacts exited 0 — artifacts older than --page must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with stale artifacts wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with stale artifacts (exit 2, nothing written)"
+fi
+touch -d '2026-11-11 12:00' "$rl_proj/design/page.html"
+# (7) absolute artifact path → exit 2, nothing written.
+rl_reset_artifacts
+printf 'GATE RESULT: PASS\n' > "$work/outside-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 "$work/outside-leg1.log" --gate-leg2 design/gate-leg2.log >"$work/runlog-t7.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with an absolute artifact path exited 0 — absolute paths must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with an absolute artifact path wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with an absolute artifact path (exit 2, nothing written)"
+fi
+# (8) true `..` escape (artifact outside design/) → exit 2, nothing written.
+rl_reset_artifacts
+printf 'GATE RESULT: PASS\n' > "$work/escape-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 ../escape-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t8.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a '..' escape artifact exited 0 — paths resolving outside design/ must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a '..' escape artifact wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with a '..' escape artifact (exit 2, nothing written)"
+fi
+# (9a) leg-1 artifact with a PASS string in a comment plus its real FAIL
+# verdict → exit 2, nothing written (F5).
+rl_reset_artifacts
+printf '# NOTE: I wish this said GATE RESULT: PASS but the gate failed\nGATE RESULT: FAIL (3 issue(s))\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t9a.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a leg-1 artifact carrying a FAIL verdict exited 0 — a FAIL verdict must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a leg-1 artifact carrying a FAIL verdict wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with a leg-1 artifact carrying a FAIL verdict (exit 2, nothing written)"
+fi
+# (9b) leg-2 artifact with a GREEN string in a comment plus its real FAIL
+# verdict → exit 2, nothing written (F5).
+rl_reset_artifacts
+printf '// ===== gate verdict: GREEN ===== is what we want\n===== gate verdict: FAIL (exit 1) =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t9b.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a leg-2 artifact carrying a FAIL verdict exited 0 — a FAIL verdict must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a leg-2 artifact carrying a FAIL verdict wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with a leg-2 artifact carrying a FAIL verdict (exit 2, nothing written)"
+fi
+# (10) one file cited as both legs → exit 2, nothing written (F4).
+rl_reset_artifacts
+printf 'GATE RESULT: PASS\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/both.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/both.log --gate-leg2 design/both.log >"$work/runlog-t10.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with one file as both legs exited 0 — the two legs must be two separate files (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with one file as both legs wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with one file as both legs (exit 2, nothing written)"
+fi
+# (10b) hardlink pair (same inode, two names) as the two legs → exit 2.
+if ln "$rl_proj/design/both.log" "$rl_proj/design/both2.log" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/both.log --gate-leg2 design/both2.log >"$work/runlog-t10b.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with a hardlink pair as both legs exited 0 — same device+inode is one file, not two legs (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with a hardlink pair as both legs wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with a hardlink pair as both legs (exit 2, nothing written)"
+  fi
+else
+  unverified "run-log hardlink-pair refusal case skipped — this environment cannot create a hardlink"
+fi
+rm -f "$rl_proj/design/both.log" "$rl_proj/design/both2.log"
+# (11) --page outside the project → exit 2, nothing written (F3).
+rl_reset_artifacts
+printf '<html>old</html>\n' > "$work/ancient-page.html"
+touch -d '2019-01-01' "$work/ancient-page.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page "$work/ancient-page.html" >"$work/runlog-t11.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page outside the project exited 0 — an outside file cannot be the freshness reference (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page outside the project wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page outside the project (exit 2, nothing written)"
+fi
+# (11b) --page that IS one of the artifact files → exit 2, nothing written.
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/gate-leg1.log >"$work/runlog-t11b.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page as its own artifact exited 0 — an artifact cannot be its own freshness reference (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page as its own artifact wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page as its own artifact (exit 2, nothing written)"
+fi
+# (11c) land with --page outside the project → exit 2, nothing written
+# (the cross-check from case (4) is still clear, so only the --page
+# refusal can reject this land).
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page "$work/ancient-page.html" >"$work/runlog-t11c.log" 2>&1; then
+  fail "run-log refusal (D13): land --gate pass with --page outside the project exited 0 — the land path must not bypass the --page refusal (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): land --gate pass with --page outside the project wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses land --gate pass with --page outside the project (exit 2, nothing written)"
+fi
+# (12) symlink artifact (inside design/, target outside) → exit 2,
+# nothing written (F2). Skipped, not failed, where the environment
+# cannot create a symlink.
+rl_reset_artifacts
+printf 'GATE RESULT: PASS\n' > "$work/outside-evil.log"
+touch -d '2030-01-01' "$work/outside-evil.log"
+if mv "$rl_proj/design/gate-leg1.log" "$rl_proj/design/gate-leg1.real" && ln -s "$work/outside-evil.log" "$rl_proj/design/gate-leg1.log" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t12.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with a symlink artifact exited 0 — a symlink to a file outside the project must be refused (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with a symlink artifact wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with a symlink artifact (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design/gate-leg1.log"
+  mv "$rl_proj/design/gate-leg1.real" "$rl_proj/design/gate-leg1.log"
+else
+  if [[ -f "$rl_proj/design/gate-leg1.real" ]]; then
+    rm -f "$rl_proj/design/gate-leg1.log"
+    mv "$rl_proj/design/gate-leg1.real" "$rl_proj/design/gate-leg1.log"
+  fi
+  unverified "run-log symlink-artifact refusal case skipped — this environment cannot create a symlink"
+fi
+# (13) R1 (fix round 2): design/ itself symlinked to a directory outside
+# the project → exit 2, nothing written. The outside dir holds
+# marker-only logs + tokens.css, so the pre-fix validator passes them.
+rl_reset_artifacts
+mkdir -p "$work/rl-outdesign"
+printf 'GATE RESULT: PASS\n' > "$work/rl-outdesign/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$work/rl-outdesign/gate-leg2.log"
+printf ':root{}\n' > "$work/rl-outdesign/tokens.css"
+touch -d '2026-11-11 12:00' "$work/rl-outdesign/tokens.css"
+if mv "$rl_proj/design" "$work/rl-design-backup" && ln -s "$work/rl-outdesign" "$rl_proj/design" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t13.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with design/ symlinked outside the project exited 0 — a design/ outside the project must be refused (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with design/ symlinked outside the project wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with design/ symlinked outside the project (exit 2, nothing written)"
+  fi
+  # (13b) R1 on land: same shape, after a clear cross-check recorded
+  # through the symlinked design/ (the cross-check itself needs no
+  # validator, so it lands in the outside dir's log, where land reads it).
+  if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t13b-cc.log" 2>&1; then
+    rl_before="$(rl_lines)"
+    if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t13b.log" 2>&1; then
+      fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project exited 0 — the land path must not bypass the design/ refusal (exit 2)"
+    elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+      fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project wrote to the run log — a refused entry must write nothing"
+    else
+      ok "run-log refuses land --gate pass with design/ symlinked outside the project (exit 2, nothing written)"
+    fi
+  else
+    fail "run-log refusal (D13): setup cross-check failed for the symlinked-design/ land case — see $work/runlog-t13b-cc.log"
+    cat "$work/runlog-t13b-cc.log" >&2 || true
+  fi
+  rm -f "$rl_proj/design"
+  mv "$work/rl-design-backup" "$rl_proj/design"
+else
+  if [[ -d "$work/rl-design-backup" && ! -e "$rl_proj/design" ]]; then
+    mv "$work/rl-design-backup" "$rl_proj/design"
+  fi
+  unverified "run-log symlinked-design/ refusal case skipped — this environment cannot move/symlink the design directory"
+fi
+# (13c) R1 positive control: design/ symlinked to a directory INSIDE the
+# project is accepted (containment, not outright rejection) → exit 0.
+rl_reset_artifacts
+if mv "$rl_proj/design" "$rl_proj/design-real" && ln -s design-real "$rl_proj/design" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t13c.log" 2>&1; then
+    if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+      ok "run-log records record --gate pass with design/ symlinked inside the project (exit 0)"
+    else
+      fail "run-log refusal (D13): record --gate pass with design/ symlinked inside the project exited 0 but did not append exactly one line"
+    fi
+  else
+    fail "run-log refusal (D13): record --gate pass with design/ symlinked inside the project failed — an inside-project design/ symlink must be accepted (exit 0); see $work/runlog-t13c.log"
+    cat "$work/runlog-t13c.log" >&2 || true
+  fi
+  rm -f "$rl_proj/design"
+  mv "$rl_proj/design-real" "$rl_proj/design"
+else
+  if [[ -d "$rl_proj/design-real" && ! -e "$rl_proj/design" ]]; then
+    mv "$rl_proj/design-real" "$rl_proj/design"
+  fi
+  unverified "run-log inside-symlink design/ case skipped — this environment cannot move/symlink the design directory"
+fi
+# (14) R2 (fix round 2): --page as a hardlink to a leg artifact, with
+# stale artifacts → exit 2, nothing written (the hardlink shares the
+# leg's inode, so it is the artifact even though its realpath differs).
+rl_reset_artifacts
+touch -d '2020-01-01' "$rl_proj/design/gate-leg1.log" "$rl_proj/design/gate-leg2.log"
+if ln "$rl_proj/design/gate-leg1.log" "$rl_proj/design/page-hard.html" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page-hard.html >"$work/runlog-t14.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with --page hardlinked to a leg artifact exited 0 — an artifact cannot be its own freshness reference (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with --page hardlinked to a leg artifact wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with --page hardlinked to gate-leg1.log (exit 2, nothing written)"
+  fi
+  # (14b) R2 on land, same hardlink (the case-(4) cross-check is still clear).
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page-hard.html >"$work/runlog-t14b.log" 2>&1; then
+    fail "run-log refusal (D13): land --gate pass with --page hardlinked to a leg artifact exited 0 — the land path must not bypass the hardlink---page refusal (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): land --gate pass with --page hardlinked to a leg artifact wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses land --gate pass with --page hardlinked to gate-leg1.log (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design/page-hard.html"
+else
+  unverified "run-log hardlink---page refusal case skipped — this environment cannot create a hardlink"
+fi
+# (14c) R2, leg-2 variant: --page hardlinked to gate-leg2.log → exit 2.
+if ln "$rl_proj/design/gate-leg2.log" "$rl_proj/design/page-hard.html" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page-hard.html >"$work/runlog-t14c.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with --page hardlinked to gate-leg2.log exited 0 — an artifact cannot be its own freshness reference (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with --page hardlinked to gate-leg2.log wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with --page hardlinked to gate-leg2.log (exit 2, nothing written)"
+  fi
+  # (14d) R2 leg-2 variant on land.
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page-hard.html >"$work/runlog-t14d.log" 2>&1; then
+    fail "run-log refusal (D13): land --gate pass with --page hardlinked to gate-leg2.log exited 0 — the land path must not bypass the hardlink---page refusal (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): land --gate pass with --page hardlinked to gate-leg2.log wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses land --gate pass with --page hardlinked to gate-leg2.log (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design/page-hard.html"
+else
+  unverified "run-log hardlink---page (leg 2) refusal case skipped — this environment cannot create a hardlink"
+fi
+rl_reset_artifacts
+# (15) R3 (fix round 2): --page an old .html inside design/ (2019), older
+# than tokens.css → exit 2, nothing written (anchor: tokens <= page).
+printf '<html>old</html>\n' > "$rl_proj/design/ancient.html"
+touch -d '2019-01-01' "$rl_proj/design/ancient.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/ancient.html >"$work/runlog-t15.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page older than tokens.css exited 0 — a page older than the locked tokens must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page older than tokens.css wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with an ancient --page inside design/ (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/ancient.html"
+# (16) R3: --page a non-HTML file outside design/ (README.md) → exit 2.
+printf '# readme\n' > "$rl_proj/README.md"
+touch -d '2019-01-01' "$rl_proj/README.md"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page README.md >"$work/runlog-t16.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page README.md exited 0 — the freshness reference must be the built .html page inside design/ (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page README.md wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page README.md (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/README.md"
+# (17) R3: --page a freshly created file backdated to 2019 → exit 2.
+printf '<html>new-old</html>\n' > "$rl_proj/design/brand-new-old.html"
+touch -d '2019-01-01' "$rl_proj/design/brand-new-old.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/brand-new-old.html >"$work/runlog-t17.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a freshly created backdated --page exited 0 — a page older than the locked tokens must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a freshly created backdated --page wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with a freshly created backdated --page (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/brand-new-old.html"
+# (18) R3 fallback: design/tokens.css symlinked to an old in-design file,
+# no --page → exit 2, nothing written (the fallback reference must be
+# the real tokens file, not a link).
+rl_reset_artifacts
+printf ':root{old}\n' > "$rl_proj/design/old.css"
+touch -d '2019-01-01' "$rl_proj/design/old.css"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && ln -s old.css "$rl_proj/design/tokens.css" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t18.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with a symlinked design/tokens.css fallback exited 0 — the fallback reference must be the real tokens file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with a symlinked design/tokens.css fallback wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with a symlinked design/tokens.css fallback (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+else
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then
+    rm -f "$rl_proj/design/tokens.css"
+    mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  fi
+  unverified "run-log symlinked-tokens.css fallback case skipped — this environment cannot create a symlink"
+fi
+rm -f "$rl_proj/design/old.css"
+# (19) R4 (fix round 2): a passing log containing FAILURE/FAILED lines
+# (plus a realistic green log's `0 failed checks` / `0 failures` /
+# `FAILURE count: 0`) → exit 0, recorded.
+rl_reset_artifacts
+printf '0 failed checks\n0 failures\nFAILURE count: 0\nGATE RESULT: PASS\nGATE RESULT: FAILURE is not a verdict\nGATE RESULT: FAILED too\n' > "$rl_proj/design/gate-leg1.log"
+printf '0 failed checks\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t19.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with FAILURE/FAILED lines in a passing log (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with FAILURE/FAILED lines in a passing log exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with FAILURE/FAILED lines in a passing log failed — FAILURE/FAILED are not FAIL verdicts (exit 0); see $work/runlog-t19.log"
+  cat "$work/runlog-t19.log" >&2 || true
+fi
+# (20a) R5 (fix round 2): --gate fail with an outside --page → exit 0,
+# fail recorded, stored page: null, warning on stderr.
+rl_reset_artifacts
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page "$work/ancient-page.html" >"$work/runlog-t20a.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":null' && grep -q 'WARNING' "$work/runlog-t20a.log"; then
+    ok "run-log records --gate fail with an outside --page as page: null with a warning (exit 0)"
+  else
+    fail "run-log refusal (D13): --gate fail with an outside --page exited 0 but did not record page: null with a warning"
+  fi
+else
+  fail "run-log refusal (D13): --gate fail with an outside --page failed — a fail record must be recorded with page: null (exit 0); see $work/runlog-t20a.log"
+  cat "$work/runlog-t20a.log" >&2 || true
+fi
+# (20b) R5: --gate fail with --page as an artifact → exit 0, page: null, warning.
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page design/gate-leg1.log >"$work/runlog-t20b.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":null' && grep -q 'WARNING' "$work/runlog-t20b.log"; then
+    ok "run-log records --gate fail with --page as an artifact as page: null with a warning (exit 0)"
+  else
+    fail "run-log refusal (D13): --gate fail with --page as an artifact exited 0 but did not record page: null with a warning"
+  fi
+else
+  fail "run-log refusal (D13): --gate fail with --page as an artifact failed — a fail record must be recorded with page: null (exit 0); see $work/runlog-t20b.log"
+  cat "$work/runlog-t20b.log" >&2 || true
+fi
+# (20c) R5 positive: --gate fail with a valid --page → exit 0, canonical page stored.
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page design/page.html >"$work/runlog-t20c.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/page.html"'; then
+    ok "run-log records --gate fail with a valid --page (exit 0, canonical page stored)"
+  else
+    fail "run-log refusal (D13): --gate fail with a valid --page exited 0 but did not store the canonical page"
+  fi
+else
+  fail "run-log refusal (D13): --gate fail with a valid --page failed — see $work/runlog-t20c.log"
+  cat "$work/runlog-t20c.log" >&2 || true
+fi
+# (21) R3 positive: --page a fresh .html inside design/ → exit 0.
+# (Case (6) left page.html at 12:00, older than the copied tokens.css, so
+# both are set to 12:00 here — equal mtimes allowed — to keep the
+# tokens <= page anchor and the artifacts >= page freshness both true.)
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t21.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/page.html"'; then
+    ok "run-log records record --gate pass with a fresh --page inside design/ (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with a fresh --page exited 0 but did not store the canonical page"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a fresh --page failed — see $work/runlog-t21.log"
+  cat "$work/runlog-t21.log" >&2 || true
+fi
+# (22) R3 positive: --page design/tokens.css itself → exit 0.
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/tokens.css >"$work/runlog-t22.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/tokens.css"'; then
+    ok "run-log records record --gate pass with --page design/tokens.css (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with --page design/tokens.css exited 0 but did not store the canonical page"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with --page design/tokens.css failed — see $work/runlog-t22.log"
+  cat "$work/runlog-t22.log" >&2 || true
+fi
+# (23) R3 positive: --page a hardlink to tokens.css → exit 0.
+if ln "$rl_proj/design/tokens.css" "$rl_proj/design/tokens-hard.css" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/tokens-hard.css >"$work/runlog-t23.log" 2>&1; then
+    if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/tokens-hard.css"'; then
+      ok "run-log records record --gate pass with --page hardlinked to tokens.css (exit 0)"
+    else
+      fail "run-log refusal (D13): record --gate pass with --page hardlinked to tokens.css exited 0 but did not store the canonical page"
+    fi
+  else
+    fail "run-log refusal (D13): record --gate pass with --page hardlinked to tokens.css failed — see $work/runlog-t23.log"
+    cat "$work/runlog-t23.log" >&2 || true
+  fi
+  rm -f "$rl_proj/design/tokens-hard.css"
+else
+  unverified "run-log hardlink-to-tokens.css --page case skipped — this environment cannot create a hardlink"
+fi
+# (24) S1 (fix round 3): design/tokens.css as a directory (empty, current
+# mtime) + --page design/page.html → exit 2, nothing written. The anchor
+# must be the real tokens file, mirroring the no---page fallback.
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && mkdir "$rl_proj/design/tokens.css" 2>/dev/null; then
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css"
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t24.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a directory exited 0 — the freshness anchor must be the real tokens file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a directory wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with design/tokens.css as a directory (exit 2, nothing written)"
+  fi
+  # (24b) S1 on land: same shape, after a fresh clear cross-check.
+  if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t24b-cc.log" 2>&1; then
+    rl_before="$(rl_lines)"
+    if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t24b.log" 2>&1; then
+      fail "run-log refusal (D13): land --gate pass with design/tokens.css as a directory exited 0 — the land path must not bypass the anchor refusal (exit 2)"
+    elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+      fail "run-log refusal (D13): land --gate pass with design/tokens.css as a directory wrote to the run log — a refused entry must write nothing"
+    else
+      ok "run-log refuses land --gate pass with design/tokens.css as a directory (exit 2, nothing written)"
+    fi
+  else
+    fail "run-log refusal (D13): setup cross-check failed for the directory-tokens.css land case — see $work/runlog-t24b-cc.log"
+    cat "$work/runlog-t24b-cc.log" >&2 || true
+  fi
+  rm -rf "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  if [[ -d "$rl_proj/design/tokens.css" ]]; then rmdir "$rl_proj/design/tokens.css" 2>/dev/null || true; fi
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"; fi
+  fail "run-log refusal (D13): setup failed for the directory-tokens.css case — could not replace design/tokens.css with a directory"
+fi
+# (25) S2 (fix round 3): --page design/.html (empty basename) → exit 2,
+# nothing written.
+rl_reset_artifacts
+printf '<html>dot</html>\n' > "$rl_proj/design/.html"
+touch -d '2026-11-11 12:00' "$rl_proj/design/.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/.html >"$work/runlog-t25.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page design/.html exited 0 — a dotfile with an empty basename is not a built page (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page design/.html wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page design/.html (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/.html"
+# (26a) S3 (fix round 3): PASS line with NBSP (U+00A0, octal \302\240)
+# inside the marker → exit 0, recorded. A copied verdict line with
+# invisible unicode must not false-reject a real pass.
+rl_reset_artifacts
+printf 'GATE RESULT:\302\240PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t26a.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with NBSP inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with NBSP inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with NBSP inside the PASS line failed — invisible unicode must not false-reject a real pass (exit 0); see $work/runlog-t26a.log"
+  cat "$work/runlog-t26a.log" >&2 || true
+fi
+# (26b) S3: PASS line with a trailing ZWSP (U+200B, octal \342\200\213)
+# → exit 0, recorded.
+rl_reset_artifacts
+printf 'GATE RESULT: PASS\342\200\213\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t26b.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with a trailing ZWSP after the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with a trailing ZWSP after the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a trailing ZWSP after the PASS line failed — invisible unicode must not false-reject a real pass (exit 0); see $work/runlog-t26b.log"
+  cat "$work/runlog-t26b.log" >&2 || true
+fi
+# (27) Nested-symlink design/ (design -> inner link -> OUTSIDE dir) →
+# exit 2, nothing written. Only a direct symlink is tested by (13);
+# realpathSync must resolve the full chain.
+rl_reset_artifacts
+mkdir -p "$work/rl-nested-out"
+printf 'GATE RESULT: PASS\n' > "$work/rl-nested-out/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$work/rl-nested-out/gate-leg2.log"
+printf ':root{}\n' > "$work/rl-nested-out/tokens.css"
+touch -d '2026-11-11 12:00' "$work/rl-nested-out/tokens.css"
+rm -f "$work/rl-nested-mid"
+ln -s "$work/rl-nested-out" "$work/rl-nested-mid" 2>/dev/null
+if mv "$rl_proj/design" "$work/rl-design-backup2" && ln -s "$work/rl-nested-mid" "$rl_proj/design" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t27.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with a nested-symlink design/ exited 0 — a design/ resolving outside the project through a symlink chain must be refused (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with a nested-symlink design/ wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with a nested-symlink design/ (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design"
+  mv "$work/rl-design-backup2" "$rl_proj/design"
+else
+  if [[ -d "$work/rl-design-backup2" && ! -e "$rl_proj/design" ]]; then
+    mv "$work/rl-design-backup2" "$rl_proj/design"
+  fi
+  unverified "run-log nested-symlink design/ refusal case skipped — this environment cannot move/symlink the design directory"
+fi
+# (28) Missing design/tokens.css + --page → exit 2, nothing written (the
+# anchor cannot be computed — only old-page cases (15)/(17) tested it).
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t28.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with a missing design/tokens.css exited 0 — freshness cannot be anchored without the tokens file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with a missing design/tokens.css wrote to the run log — a refused entry must write nothing"
+  else
+    ok "run-log refuses record --gate pass with a missing design/tokens.css plus --page (exit 2, nothing written)"
+  fi
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  fail "run-log refusal (D13): setup failed for the missing-tokens.css case — could not move design/tokens.css aside"
+fi
+# (29a) R5: --gate fail with --page a directory → exit 0, fail recorded,
+# stored page: null, warning on stderr.
+rl_reset_artifacts
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page design >"$work/runlog-t29a.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":null' && grep -q 'WARNING' "$work/runlog-t29a.log"; then
+    ok "run-log records --gate fail with --page a directory as page: null with a warning (exit 0)"
+  else
+    fail "run-log refusal (D13): --gate fail with --page a directory exited 0 but did not record page: null with a warning"
+  fi
+else
+  fail "run-log refusal (D13): --gate fail with --page a directory failed — a fail record must be recorded with page: null (exit 0); see $work/runlog-t29a.log"
+  cat "$work/runlog-t29a.log" >&2 || true
+fi
+# (29b) R5: --gate fail with --page nonexistent → exit 0, page: null, warning.
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page design/nope.html >"$work/runlog-t29b.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":null' && grep -q 'WARNING' "$work/runlog-t29b.log"; then
+    ok "run-log records --gate fail with a nonexistent --page as page: null with a warning (exit 0)"
+  else
+    fail "run-log refusal (D13): --gate fail with a nonexistent --page exited 0 but did not record page: null with a warning"
+  fi
+else
+  fail "run-log refusal (D13): --gate fail with a nonexistent --page failed — a fail record must be recorded with page: null (exit 0); see $work/runlog-t29b.log"
+  cat "$work/runlog-t29b.log" >&2 || true
+fi
+# (29c) R5: --gate fail with --page "" (empty string) → exit 0, page: null,
+# NO warning — an empty string is falsy, consistent with absent --page.
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page "" >"$work/runlog-t29c.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":null' && ! grep -q 'WARNING' "$work/runlog-t29c.log"; then
+    ok "run-log records --gate fail with an empty --page as page: null with no warning (exit 0)"
+  else
+    fail "run-log refusal (D13): --gate fail with an empty --page exited 0 but did not record page: null with no warning"
+  fi
+else
+  fail "run-log refusal (D13): --gate fail with an empty --page failed — a fail record must be recorded with page: null (exit 0); see $work/runlog-t29c.log"
+  cat "$work/runlog-t29c.log" >&2 || true
+fi
+# (30) B7e: --gate fail + symlinked design/ + valid --page → exit 0,
+# stored page: null, WARNING; the record lands in the OUTSIDE dir's log
+# (logPath joins project/design without realpath) while the project's
+# real log gains no line — the stored VALUES are correct, only the log
+# LOCATION follows the symlink (documented consequence, not a fix).
+rl_reset_artifacts
+mkdir -p "$work/rl-b7e-out"
+printf '<html><body><main id="main">x</main></body></html>\n' > "$work/rl-b7e-out/page.html"
+if mv "$rl_proj/design" "$work/rl-design-backup3" && ln -s "$work/rl-b7e-out" "$rl_proj/design" 2>/dev/null; then
+  rl_real_before="$(grep -c . "$work/rl-design-backup3/run-log.jsonl" || true)"
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate fail --page design/page.html >"$work/runlog-t30.log" 2>&1; then
+    if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":null' && grep -q 'WARNING' "$work/runlog-t30.log" && [[ "$(grep -c . "$work/rl-design-backup3/run-log.jsonl" || true)" == "$rl_real_before" ]]; then
+      ok "run-log records --gate fail with a symlinked design/ and valid --page as page: null with a warning, real log unchanged (exit 0)"
+    else
+      fail "run-log refusal (D13): --gate fail with a symlinked design/ and valid --page exited 0 but did not record page: null with a warning and an unchanged real log"
+    fi
+  else
+    fail "run-log refusal (D13): --gate fail with a symlinked design/ and valid --page failed — a fail record must be recorded with page: null (exit 0); see $work/runlog-t30.log"
+    cat "$work/runlog-t30.log" >&2 || true
+  fi
+  rm -f "$rl_proj/design"
+  mv "$work/rl-design-backup3" "$rl_proj/design"
+else
+  if [[ -d "$work/rl-design-backup3" && ! -e "$rl_proj/design" ]]; then
+    mv "$work/rl-design-backup3" "$rl_proj/design"
+  fi
+  unverified "run-log symlinked-design/ fail case skipped — this environment cannot move/symlink the design directory"
+fi
+# (31) S2 shape: --page design/page.htm → exit 2, nothing written.
+rl_reset_artifacts
+printf '<html>htm</html>\n' > "$rl_proj/design/page.htm"
+touch -d '2026-11-11 12:00' "$rl_proj/design/page.htm"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.htm >"$work/runlog-t31.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page design/page.htm exited 0 — the freshness reference must be an .html file (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page design/page.htm wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page design/page.htm (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/page.htm"
+# (32) Trailing-slash --page design/page.html/ → exit 0, stored
+# canonically as design/page.html (path.resolve normalises the slash).
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html/ >"$work/runlog-t32.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/page.html"'; then
+    ok "run-log records record --gate pass with a trailing-slash --page (exit 0, canonical page stored)"
+  else
+    fail "run-log refusal (D13): record --gate pass with a trailing-slash --page exited 0 but did not store the canonical page"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a trailing-slash --page failed — see $work/runlog-t32.log"
+  cat "$work/runlog-t32.log" >&2 || true
+fi
+# (33) R4 mixed-case: leg-1 log with `Gate Result: Fail` and
+# `GATE RESULT: Fail` lines alongside the real PASS line → exit 0,
+# recorded (the FAIL marker is the gate's uppercase verdict line).
+rl_reset_artifacts
+printf 'Gate Result: Fail\nGATE RESULT: Fail\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t33.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with mixed-case FAIL lines alongside a real PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with mixed-case FAIL lines alongside a real PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with mixed-case FAIL lines alongside a real PASS line failed — mixed-case FAIL is not the uppercase verdict (exit 0); see $work/runlog-t33.log"
+  cat "$work/runlog-t33.log" >&2 || true
+fi
+# (34) T1 (fix round 4): PASS line with U+2003 EM SPACE (octal
+# \342\200\203) inside the marker → exit 0, recorded. The fix-round-3
+# normaliser handled only NBSP + zero-width/BOM; the round-4 fold covers
+# the full Unicode White_Space class.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\203PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t34.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+2003 inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+2003 inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+2003 inside the PASS line failed — invisible unicode must not false-reject a real pass (exit 0); see $work/runlog-t34.log"
+  cat "$work/runlog-t34.log" >&2 || true
+fi
+# (35) T1 leg 2 (fix round 4): `===== gate verdict:<U+2003>GREEN =====`
+# → exit 0, recorded.
+rl_reset_artifacts
+printf '===== gate verdict:\342\200\203GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t35.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+2003 inside the leg-2 PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+2003 inside the leg-2 PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+2003 inside the leg-2 PASS line failed — invisible unicode must not false-reject a real pass (exit 0); see $work/runlog-t35.log"
+  cat "$work/runlog-t35.log" >&2 || true
+fi
+# (36) T1 FAILhide leg 1 (fix round 4): `GATE RESULT:<U+2003>FAIL
+# (3 issue(s))` followed by a real `GATE RESULT: PASS` → exit 2 via the
+# FAIL-verdict message, nothing written. The exotic-space FAIL line must
+# not hide behind the real PASS line.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\203FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t36.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t36.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t36.log"
+  cat "$work/runlog-t36.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2003 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (37) T1 FAILhide leg 2 (fix round 4): `===== gate verdict:<U+2003>FAIL
+# (exit 1) =====` followed by a real GREEN line → exit 2 via the
+# FAIL-verdict message, nothing written.
+rl_reset_artifacts
+printf '===== gate verdict:\342\200\203FAIL (exit 1) =====\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t37.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line alongside a real GREEN line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line alongside a real GREEN line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t37.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line alongside a real GREEN line exited 2 but not via the FAIL-verdict message — see $work/runlog-t37.log"
+  cat "$work/runlog-t37.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2003 FAIL line alongside a real GREEN line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (38) T2 ZWSP-substitution leg 1 (fix round 4): `GATE RESULT:<U+200B>PASS`
+# (ZWSP, octal \342\200\213, REPLACING the space after the colon) →
+# exit 0, recorded. The fix-round-3 strip-only normaliser read this as
+# `GATE RESULT:PASS`; the round-4 map variant reads it as the verdict.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\213PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t38.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with ZWSP substituting for the space in the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with ZWSP substituting for the space in the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with ZWSP substituting for the space in the PASS line failed — a zero-width character substituting for a space must not false-reject a real pass (exit 0); see $work/runlog-t38.log"
+  cat "$work/runlog-t38.log" >&2 || true
+fi
+# (39) T2 ZWSP-substitution leg 2 (fix round 4): `===== gate verdict:
+# <U+200B>GREEN =====` → exit 0, recorded.
+rl_reset_artifacts
+printf '===== gate verdict:\342\200\213GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t39.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with ZWSP substituting for the space in the leg-2 PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with ZWSP substituting for the space in the leg-2 PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with ZWSP substituting for the space in the leg-2 PASS line failed — a zero-width character substituting for a space must not false-reject a real pass (exit 0); see $work/runlog-t39.log"
+  cat "$work/runlog-t39.log" >&2 || true
+fi
+# (40) T2 ZWSP-substitution FAILhide leg 1 (fix round 4):
+# `GATE RESULT:<U+200B>FAIL (3 issue(s))` + real PASS → exit 2 via the
+# FAIL-verdict message, nothing written.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\213FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t40.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-substituted FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-substituted FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t40.log"; then
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-substituted FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t40.log"
+  cat "$work/runlog-t40.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a ZWSP-substituted FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (41) T2 ZWSP-substitution FAILhide leg 2 (fix round 4): `===== gate
+# verdict:<U+200B>FAIL (exit 1) =====` + real GREEN → exit 2 via the
+# FAIL-verdict message, nothing written.
+rl_reset_artifacts
+printf '===== gate verdict:\342\200\213FAIL (exit 1) =====\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t41.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-substituted FAIL line alongside a real GREEN line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-substituted FAIL line alongside a real GREEN line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t41.log"; then
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-substituted FAIL line alongside a real GREEN line exited 2 but not via the FAIL-verdict message — see $work/runlog-t41.log"
+  cat "$work/runlog-t41.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a ZWSP-substituted FAIL line alongside a real GREEN line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (42) U+180E leg 1 (fix round 4): `GATE RESULT:<U+180E>PASS` (Mongolian
+# vowel separator, octal \341\240\216 — not Unicode White_Space, handled
+# for completeness as the historical straggler) → exit 0, recorded.
+rl_reset_artifacts
+printf 'GATE RESULT:\341\240\216PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t42.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+180E inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+180E inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+180E inside the PASS line failed — U+180E must not false-reject a real pass (exit 0); see $work/runlog-t42.log"
+  cat "$work/runlog-t42.log" >&2 || true
+fi
+# (43) U+180E leg 2 (fix round 4): `===== gate verdict:<U+180E>GREEN
+# =====` → exit 0, recorded.
+rl_reset_artifacts
+printf '===== gate verdict:\341\240\216GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t43.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+180E inside the leg-2 PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+180E inside the leg-2 PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+180E inside the leg-2 PASS line failed — U+180E must not false-reject a real pass (exit 0); see $work/runlog-t43.log"
+  cat "$work/runlog-t43.log" >&2 || true
+fi
+# (44) S1 FIFO (fix round 4): design/tokens.css as a FIFO + --page
+# design/page.html → exit 2, nothing written (the S1 isFile() anchor
+# check covers FIFOs exactly as it covers directories).
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && mkfifo "$rl_proj/design/tokens.css" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t44.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a FIFO exited 0 — the freshness anchor must be the real tokens file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a FIFO wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "is not a regular file" "$work/runlog-t44.log"; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a FIFO exited 2 but not via the regular-file message — see $work/runlog-t44.log"
+    cat "$work/runlog-t44.log" >&2 || true
+  else
+    ok "run-log refuses record --gate pass with design/tokens.css as a FIFO (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  if [[ -p "$rl_proj/design/tokens.css" ]]; then rm -f "$rl_proj/design/tokens.css"; fi
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"; fi
+  fail "run-log refusal (D13): setup failed for the FIFO-tokens.css case — could not replace design/tokens.css with a FIFO"
+fi
+# (45) S1 Unix socket (fix round 4): design/tokens.css as a Unix-domain
+# socket (python3 AF_UNIX bind; the socket file persists after the
+# binder exits) + --page design/page.html → exit 2, nothing written.
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && python3 -c "import socket; s = socket.socket(socket.AF_UNIX); s.bind('$rl_proj/design/tokens.css'); s.close()" 2>/dev/null; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t45.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a Unix socket exited 0 — the freshness anchor must be the real tokens file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a Unix socket wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "is not a regular file" "$work/runlog-t45.log"; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a Unix socket exited 2 but not via the regular-file message — see $work/runlog-t45.log"
+    cat "$work/runlog-t45.log" >&2 || true
+  else
+    ok "run-log refuses record --gate pass with design/tokens.css as a Unix socket (exit 2, nothing written)"
+  fi
+  rm -f "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  if [[ -S "$rl_proj/design/tokens.css" ]]; then rm -f "$rl_proj/design/tokens.css"; fi
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"; fi
+  fail "run-log refusal (D13): setup failed for the socket-tokens.css case — could not replace design/tokens.css with a Unix socket (python3 AF_UNIX bind)"
+fi
+# (46) S1 directory on the FALLBACK path (fix round 4): design/tokens.css
+# as a directory, NO --page → exit 2, nothing written, via the unchanged
+# fallback message (only the --page path was tested by (24)).
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && mkdir "$rl_proj/design/tokens.css" 2>/dev/null; then
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css"
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t46.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a directory and no --page exited 0 — the fallback anchor must be the real tokens file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a directory and no --page wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "freshness cannot be checked" "$work/runlog-t46.log"; then
+    fail "run-log refusal (D13): record --gate pass with design/tokens.css as a directory and no --page exited 2 but not via the unchanged fallback message — see $work/runlog-t46.log"
+    cat "$work/runlog-t46.log" >&2 || true
+  else
+    ok "run-log refuses record --gate pass with design/tokens.css as a directory and no --page (exit 2, fallback message, nothing written)"
+  fi
+  rm -rf "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  if [[ -d "$rl_proj/design/tokens.css" ]]; then rmdir "$rl_proj/design/tokens.css" 2>/dev/null || true; fi
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"; fi
+  fail "run-log refusal (D13): setup failed for the directory-tokens.css fallback case — could not replace design/tokens.css with a directory"
+fi
+# (47) S1 directory + --page the directory itself (fix round 4):
+# design/tokens.css as a directory + --page design/tokens.css → exit 2,
+# nothing written, via the "--page must be a regular file" message (the
+# --page regular-file check fires before the tokens.css exception).
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && mkdir "$rl_proj/design/tokens.css" 2>/dev/null; then
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css"
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/tokens.css >"$work/runlog-t47.log" 2>&1; then
+    fail "run-log refusal (D13): record --gate pass with --page design/tokens.css when tokens.css is a directory exited 0 — --page must be a regular file (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): record --gate pass with --page design/tokens.css when tokens.css is a directory wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "must be a regular file" "$work/runlog-t47.log"; then
+    fail "run-log refusal (D13): record --gate pass with --page design/tokens.css when tokens.css is a directory exited 2 but not via the regular-file message — see $work/runlog-t47.log"
+    cat "$work/runlog-t47.log" >&2 || true
+  else
+    ok "run-log refuses record --gate pass with --page design/tokens.css when tokens.css is a directory (exit 2, nothing written)"
+  fi
+  rm -rf "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  if [[ -d "$rl_proj/design/tokens.css" ]]; then rmdir "$rl_proj/design/tokens.css" 2>/dev/null || true; fi
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"; fi
+  fail "run-log refusal (D13): setup failed for the directory-tokens.css --page case — could not replace design/tokens.css with a directory"
+fi
+# (48) S2 --page design/..html (fix round 4): basename 6, stem "." — a
+# real .html file in design/ with the freshness chain intact → exit 0,
+# stored "page":"design/..html".
+rl_reset_artifacts
+printf '<html>dd</html>\n' > "$rl_proj/design/..html"
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/..html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/..html >"$work/runlog-t48.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/..html"'; then
+    ok "run-log records record --gate pass with --page design/..html (exit 0, stored page design/..html)"
+  else
+    fail "run-log refusal (D13): record --gate pass with --page design/..html exited 0 but did not store the canonical page"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with --page design/..html failed — a real .html file in design/ is a built page (exit 0); see $work/runlog-t48.log"
+  cat "$work/runlog-t48.log" >&2 || true
+fi
+rm -f "$rl_proj/design/..html"
+# (49) S2 --page design/a.html plus a trailing space (fix round 4): the
+# extension check sees ".html " not ".html" → exit 2, nothing written.
+rl_reset_artifacts
+printf '<html>ts</html>\n' > "$rl_proj/design/a.html "
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/a.html "
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page "design/a.html " >"$work/runlog-t49.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page design/a.html plus a trailing space exited 0 — the freshness reference must be an .html file (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page design/a.html plus a trailing space wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page design/a.html plus a trailing space (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/a.html "
+# (50) S2 --page design/.HTML (fix round 4): dotfile with an uppercase
+# extension — basename length 5, no stem before ".HTML" → exit 2,
+# nothing written.
+rl_reset_artifacts
+printf '<html>du</html>\n' > "$rl_proj/design/.HTML"
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/.HTML"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/.HTML >"$work/runlog-t50.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page design/.HTML exited 0 — a dotfile with an empty basename is not a built page (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page design/.HTML wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page design/.HTML (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/.HTML"
+# (51) S2 --page design/x.html.html (fix round 4): double extension —
+# ends with ".html", basename 10 → exit 0, stored canonically as
+# "page":"design/x.html.html".
+rl_reset_artifacts
+printf '<html>de</html>\n' > "$rl_proj/design/x.html.html"
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/x.html.html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/x.html.html >"$work/runlog-t51.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/x.html.html"'; then
+    ok "run-log records record --gate pass with --page design/x.html.html (exit 0, stored page design/x.html.html)"
+  else
+    fail "run-log refusal (D13): record --gate pass with --page design/x.html.html exited 0 but did not store the canonical page"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with --page design/x.html.html failed — a double extension ending in .html is a built page (exit 0); see $work/runlog-t51.log"
+  cat "$work/runlog-t51.log" >&2 || true
+fi
+rm -f "$rl_proj/design/x.html.html"
+# (52) S2 --page design/html (fix round 4): a file named exactly "html",
+# no dot — does not end with ".html" → exit 2, nothing written.
+rl_reset_artifacts
+printf '<html>nh</html>\n' > "$rl_proj/design/html"
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/html"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/html >"$work/runlog-t52.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with --page design/html exited 0 — a file named exactly html is not an .html file (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with --page design/html wrote to the run log — a refused entry must write nothing"
+else
+  ok "run-log refuses record --gate pass with --page design/html (exit 2, nothing written)"
+fi
+rm -f "$rl_proj/design/html"
+# (53) F2 Cf FAILhide leg 1 (fix round 5): `GATE RESULT:<U+2060>FAIL
+# (3 issue(s))` (word joiner, octal \342\201\240) followed by a real
+# `GATE RESULT: PASS` → exit 2 via the FAIL-verdict message, nothing
+# written. The round-4 normaliser had no Cf-format member, so a Cf
+# character before FAIL hid the FAIL verdict; strip-all deletes it.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\201\240FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t53.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2060 FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2060 FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t53.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2060 FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t53.log"
+  cat "$work/runlog-t53.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2060 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (54) F2 Cf FAILhide leg 2 (fix round 5): `===== gate verdict:<U+2060>FAIL
+# (exit 1) =====` followed by a real GREEN line → exit 2 via the
+# FAIL-verdict message, nothing written.
+rl_reset_artifacts
+printf '===== gate verdict:\342\201\240FAIL (exit 1) =====\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t54.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2060 FAIL line alongside a real GREEN line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2060 FAIL line alongside a real GREEN line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t54.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2060 FAIL line alongside a real GREEN line exited 2 but not via the FAIL-verdict message — see $work/runlog-t54.log"
+  cat "$work/runlog-t54.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2060 FAIL line alongside a real GREEN line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (55) F2 Cf PASS-sub leg 1 (fix round 5): `GATE RESULT:<U+2060>PASS`
+# → exit 0, recorded. A Cf character substituting for the space must
+# not false-reject a real pass.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\201\240PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t55.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+2060 inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+2060 inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+2060 inside the PASS line failed — a Cf-format character must not false-reject a real pass (exit 0); see $work/runlog-t55.log"
+  cat "$work/runlog-t55.log" >&2 || true
+fi
+# (56) F3 in-word FAILhide leg 1 (fix round 5): `GATE RESULT: FA<NBSP>IL
+# (3 issue(s))` (NBSP, octal \302\240, INSIDE the word FAIL) followed by
+# a real `GATE RESULT: PASS` → exit 2 via the FAIL-verdict message,
+# nothing written. The round-4 fold mapped the NBSP to a space and
+# split the word, so the FAIL hid; strip-all deletes it.
+rl_reset_artifacts
+printf 'GATE RESULT: FA\302\240IL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t56.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with an NBSP inside the FAIL word alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with an NBSP inside the FAIL word alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t56.log"; then
+  fail "run-log refusal (D13): record --gate pass with an NBSP inside the FAIL word alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t56.log"
+  cat "$work/runlog-t56.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with an NBSP inside the FAIL word alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (57) F3 in-word FAILhide leg 2 (fix round 5): `===== gate verdict:
+# FA<U+2003>IL (exit 1) =====` (EM SPACE, octal \342\200\203, inside the
+# word FAIL) followed by a real GREEN line → exit 2 via the FAIL-verdict
+# message, nothing written.
+rl_reset_artifacts
+printf '===== gate verdict: FA\342\200\203IL (exit 1) =====\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t57.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 inside the FAIL word alongside a real GREEN line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 inside the FAIL word alongside a real GREEN line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t57.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 inside the FAIL word alongside a real GREEN line exited 2 but not via the FAIL-verdict message — see $work/runlog-t57.log"
+  cat "$work/runlog-t57.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2003 inside the FAIL word alongside a real GREEN line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (58) F4 FAILURE-split leg 1 (fix round 5): `GATE RESULT: FAIL<ZWSP>URE
+# (0 issues)` followed by a real `GATE RESULT: PASS` → exit 0, recorded.
+# The round-4 map variant turned this into `FAIL URE` and the R4 boundary
+# matched; strip-all recovers `FAILURE` and the boundary blocks it.
+rl_reset_artifacts
+printf 'GATE RESULT: FAIL\342\200\213URE (0 issues)\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t58.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with a ZWSP-split FAILURE line alongside a real PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with a ZWSP-split FAILURE line alongside a real PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-split FAILURE line alongside a real PASS line failed — a split FAILURE is not a FAIL verdict (exit 0); see $work/runlog-t58.log"
+  cat "$work/runlog-t58.log" >&2 || true
+fi
+# (59) F4 FAILURE-split leg 2 (fix round 5): `===== gate verdict:
+# FAIL<ZWSP>URE =====` followed by a real GREEN line → exit 0, recorded.
+rl_reset_artifacts
+printf '===== gate verdict: FAIL\342\200\213URE =====\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t59.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with a ZWSP-split FAILURE line alongside a real GREEN line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with a ZWSP-split FAILURE line alongside a real GREEN line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a ZWSP-split FAILURE line alongside a real GREEN line failed — a split FAILURE is not a FAIL verdict (exit 0); see $work/runlog-t59.log"
+  cat "$work/runlog-t59.log" >&2 || true
+fi
+# (60) U+180E FAILhide leg 1 (fix round 5): `GATE RESULT:<U+180E>FAIL
+# (3 issue(s))` (octal \341\240\216) followed by a real `GATE RESULT:
+# PASS` → exit 2 via the FAIL-verdict message, nothing written. Only
+# the PASS side of U+180E was cased before ((42)/(43)).
+rl_reset_artifacts
+printf 'GATE RESULT:\341\240\216FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t60.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+180E FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+180E FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t60.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+180E FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t60.log"
+  cat "$work/runlog-t60.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+180E FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (61) U+180E FAIL-alone leg 1 (fix round 5): `GATE RESULT:<U+180E>FAIL
+# (3 issue(s))`, no PASS line → exit 2 via the FAIL-verdict message
+# (not the missing-PASS message), nothing written.
+rl_reset_artifacts
+printf 'GATE RESULT:\341\240\216FAIL (3 issue(s))\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t61.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+180E FAIL line and no PASS line exited 0 — a FAIL verdict with no PASS must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+180E FAIL line and no PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t61.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+180E FAIL line and no PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t61.log"
+  cat "$work/runlog-t61.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+180E FAIL line and no PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (62) ZWNJ-substitution PASS leg 1 (fix round 5): `GATE RESULT:<U+200C>PASS`
+# (zero-width non-joiner, octal \342\200\214) → exit 0, recorded. Only
+# ZWSP was cased individually before ((38)–(41)).
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\214PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t62.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with ZWNJ substituting for the space in the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with ZWNJ substituting for the space in the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with ZWNJ substituting for the space in the PASS line failed — a zero-width character substituting for a space must not false-reject a real pass (exit 0); see $work/runlog-t62.log"
+  cat "$work/runlog-t62.log" >&2 || true
+fi
+# (63) ZWJ-substitution PASS leg 1 (fix round 5): `GATE RESULT:<U+200D>PASS`
+# (zero-width joiner, octal \342\200\215) → exit 0, recorded.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\215PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t63.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with ZWJ substituting for the space in the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with ZWJ substituting for the space in the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with ZWJ substituting for the space in the PASS line failed — a zero-width character substituting for a space must not false-reject a real pass (exit 0); see $work/runlog-t63.log"
+  cat "$work/runlog-t63.log" >&2 || true
+fi
+# (64) BOM-substitution PASS leg 1 (fix round 5): `GATE RESULT:<U+FEFF>PASS`
+# (byte order mark, octal \357\273\277) → exit 0, recorded.
+rl_reset_artifacts
+printf 'GATE RESULT:\357\273\277PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t64.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with BOM substituting for the space in the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with BOM substituting for the space in the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with BOM substituting for the space in the PASS line failed — a BOM substituting for a space must not false-reject a real pass (exit 0); see $work/runlog-t64.log"
+  cat "$work/runlog-t64.log" >&2 || true
+fi
+# (65) Extra-White_Space PASS-in leg 1 (fix round 5): `GATE RESULT:<U+1680>PASS`
+# (OGHAM SPACE MARK, octal \341\232\200) → exit 0, recorded. Only U+2003
+# was cased among the extra White_Space four before.
+rl_reset_artifacts
+printf 'GATE RESULT:\341\232\200PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t65.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+1680 inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+1680 inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+1680 inside the PASS line failed — an exotic space must not false-reject a real pass (exit 0); see $work/runlog-t65.log"
+  cat "$work/runlog-t65.log" >&2 || true
+fi
+# (66) FAIL-alone exotic leg 1 (fix round 5): `GATE RESULT:<U+2003>FAIL
+# (3 issue(s))`, no PASS line → exit 2 via the FAIL-verdict message
+# (not the missing-PASS message), nothing written. No FAIL-alone case
+# in an exotic space existed before.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\203FAIL (3 issue(s))\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t66.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line and no PASS line exited 0 — a FAIL verdict with no PASS must be refused (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line and no PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t66.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2003 FAIL line and no PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t66.log"
+  cat "$work/runlog-t66.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2003 FAIL line and no PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (67) Land variant of (36) (fix round 5): U+2003 FAILhide leg 1 on `land`
+# → exit 2, lines unchanged (cross-check line only). All round-4 cases
+# were record-only, so a land-only divergence would not have been caught.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\203FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t67-cc.log" 2>&1; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t67.log" 2>&1; then
+    fail "run-log refusal (D13): land --gate pass with a U+2003 FAIL line alongside a real PASS line exited 0 — the land path must not bypass the FAIL refusal (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): land --gate pass with a U+2003 FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t67.log"; then
+    fail "run-log refusal (D13): land --gate pass with a U+2003 FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t67.log"
+    cat "$work/runlog-t67.log" >&2 || true
+  else
+    ok "run-log refuses land --gate pass with a U+2003 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+  fi
+else
+  fail "run-log refusal (D13): setup cross-check failed for the U+2003 FAILhide land case — see $work/runlog-t67-cc.log"
+  cat "$work/runlog-t67-cc.log" >&2 || true
+fi
+# (68) Land variant of (38) (fix round 5): ZWSP-substitution PASS leg 1 on
+# `land` → exit 0, recorded.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\213PASS\n' > "$rl_proj/design/gate-leg1.log"
+if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t68-cc.log" 2>&1; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t68.log" 2>&1; then
+    if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+      ok "run-log records land --gate pass with ZWSP substituting for the space in the PASS line (exit 0)"
+    else
+      fail "run-log refusal (D13): land --gate pass with ZWSP substituting for the space in the PASS line exited 0 but did not append exactly one line"
+    fi
+  else
+    fail "run-log refusal (D13): land --gate pass with ZWSP substituting for the space in the PASS line failed — see $work/runlog-t68.log"
+    cat "$work/runlog-t68.log" >&2 || true
+  fi
+else
+  fail "run-log refusal (D13): setup cross-check failed for the ZWSP-substitution PASS land case — see $work/runlog-t68-cc.log"
+  cat "$work/runlog-t68-cc.log" >&2 || true
+fi
+# (69) Land variant of (44) (fix round 5): design/tokens.css as a FIFO +
+# --page design/page.html on `land` → exit 2, nothing written.
+rl_reset_artifacts
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+if mv "$rl_proj/design/tokens.css" "$rl_proj/design/tokens.real" && mkfifo "$rl_proj/design/tokens.css" 2>/dev/null; then
+  if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t69-cc.log" 2>&1; then
+    rl_before="$(rl_lines)"
+    if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >"$work/runlog-t69.log" 2>&1; then
+      fail "run-log refusal (D13): land --gate pass with design/tokens.css as a FIFO exited 0 — the freshness anchor must be the real tokens file (exit 2)"
+    elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+      fail "run-log refusal (D13): land --gate pass with design/tokens.css as a FIFO wrote to the run log — a refused entry must write nothing"
+    elif ! grep -q "is not a regular file" "$work/runlog-t69.log"; then
+      fail "run-log refusal (D13): land --gate pass with design/tokens.css as a FIFO exited 2 but not via the regular-file message — see $work/runlog-t69.log"
+      cat "$work/runlog-t69.log" >&2 || true
+    else
+      ok "run-log refuses land --gate pass with design/tokens.css as a FIFO (exit 2, nothing written)"
+    fi
+  else
+    fail "run-log refusal (D13): setup cross-check failed for the FIFO-tokens.css land case — see $work/runlog-t69-cc.log"
+    cat "$work/runlog-t69-cc.log" >&2 || true
+  fi
+  rm -f "$rl_proj/design/tokens.css"
+  mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"
+  touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/page.html"
+else
+  if [[ -p "$rl_proj/design/tokens.css" ]]; then rm -f "$rl_proj/design/tokens.css"; fi
+  if [[ -f "$rl_proj/design/tokens.real" ]]; then mv "$rl_proj/design/tokens.real" "$rl_proj/design/tokens.css"; fi
+  fail "run-log refusal (D13): setup failed for the FIFO-tokens.css land case — could not replace design/tokens.css with a FIFO"
+fi
+# (70) Land variant of (48) (fix round 5): --page design/..html on `land`
+# → exit 0, stored "page":"design/..html".
+rl_reset_artifacts
+printf '<html>dd</html>\n' > "$rl_proj/design/..html"
+touch -d '2026-11-11 12:00' "$rl_proj/design/tokens.css" "$rl_proj/design/..html"
+if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t70-cc.log" 2>&1; then
+  rl_before="$(rl_lines)"
+  if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/..html >"$work/runlog-t70.log" 2>&1; then
+    if [[ "$(rl_lines)" == "$((rl_before + 1))" ]] && tail -n 1 "$rl_log" | grep -q '"page":"design/..html"'; then
+      ok "run-log records land --gate pass with --page design/..html (exit 0, stored page design/..html)"
+    else
+      fail "run-log refusal (D13): land --gate pass with --page design/..html exited 0 but did not store the canonical page"
+    fi
+  else
+    fail "run-log refusal (D13): land --gate pass with --page design/..html failed — a real .html file in design/ is a built page (exit 0); see $work/runlog-t70.log"
+    cat "$work/runlog-t70.log" >&2 || true
+  fi
+else
+  fail "run-log refusal (D13): setup cross-check failed for the --page design/..html land case — see $work/runlog-t70-cc.log"
+  cat "$work/runlog-t70-cc.log" >&2 || true
+fi
+rm -f "$rl_proj/design/..html"
+# (71) ZWJ FAILhide leg 1 (fix round 5): `GATE RESULT:<U+200D>FAIL
+# (3 issue(s))` (zero-width joiner, octal \342\200\215) followed by a real
+# `GATE RESULT: PASS` → exit 2 via the FAIL-verdict message, nothing
+# written. The ZWJ PASS side is cased in (63); this locks in the FAIL side.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\200\215FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t71.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a ZWJ FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a ZWJ FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t71.log"; then
+  fail "run-log refusal (D13): record --gate pass with a ZWJ FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t71.log"
+  cat "$work/runlog-t71.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a ZWJ FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (72) F7 U+3164 FAILhide leg 1 (fix round 6): `GATE RESULT:<U+3164>FAIL
+# (3 issue(s))` (HANGUL FILLER, octal \343\205\244) followed by a real
+# `GATE RESULT: PASS` → exit 2 via the FAIL-verdict message, nothing
+# written. A blank-rendering Lo character before FAIL hid the FAIL
+# verdict under strip-all; the F7 denylist deletes it.
+rl_reset_artifacts
+printf 'GATE RESULT:\343\205\244FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t72.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+3164 FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+3164 FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t72.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+3164 FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t72.log"
+  cat "$work/runlog-t72.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+3164 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (73) F7 U+2800 FAILhide leg 1 (fix round 6): `GATE RESULT:<U+2800>FAIL
+# (3 issue(s))` (BRAILLE PATTERN BLANK, octal \342\240\200) followed by
+# a real `GATE RESULT: PASS` → exit 2 via the FAIL-verdict message,
+# nothing written. U+2800 is So, not covered by any strip class; the
+# F7 denylist deletes it.
+rl_reset_artifacts
+printf 'GATE RESULT:\342\240\200FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t73.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+2800 FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+2800 FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t73.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+2800 FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t73.log"
+  cat "$work/runlog-t73.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+2800 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (74) F7 U+3164 PASS-sub leg 1 (fix round 6): `GATE RESULT:<U+3164>PASS`
+# → exit 0, recorded. A blank-rendering filler substituting for the
+# space must not false-reject a real pass.
+rl_reset_artifacts
+printf 'GATE RESULT:\343\205\244PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t74.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with U+3164 inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with U+3164 inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with U+3164 inside the PASS line failed — a blank-rendering filler must not false-reject a real pass (exit 0); see $work/runlog-t74.log"
+  cat "$work/runlog-t74.log" >&2 || true
+fi
+# (75) F7 U+3164 FAILhide leg 2 (fix round 6): `===== gate verdict:
+# <U+3164>FAIL (exit 1) =====` followed by a real GREEN line → exit 2
+# via the FAIL-verdict message, nothing written.
+rl_reset_artifacts
+printf '===== gate verdict:\343\205\244FAIL (exit 1) =====\n===== gate verdict: GREEN =====\n' > "$rl_proj/design/gate-leg2.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t75.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+3164 FAIL line alongside a real GREEN line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+3164 FAIL line alongside a real GREEN line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t75.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+3164 FAIL line alongside a real GREEN line exited 2 but not via the FAIL-verdict message — see $work/runlog-t75.log"
+  cat "$work/runlog-t75.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+3164 FAIL line alongside a real GREEN line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (76) F9 NFC FAILhide leg 1 (fix round 6): `GATE RESULT: FÄIL
+# (3 issue(s))`, Ä = U+00C4 precomposed (NFC, octal \303\204),
+# followed by a real `GATE RESULT: PASS` → exit 2 via the
+# FAIL-verdict message, nothing written. NFD decomposes Ä to A +
+# U+0308, the mark strips, and FAIL is recovered.
+rl_reset_artifacts
+printf 'GATE RESULT: F\303\204IL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t76.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with an NFC FÄIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with an NFC FÄIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t76.log"; then
+  fail "run-log refusal (D13): record --gate pass with an NFC FÄIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t76.log"
+  cat "$work/runlog-t76.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with an NFC FÄIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (77) F9 NFD FAILhide leg 1 (fix round 6): same shape as (76) with Ä
+# decomposed (A + U+0308, octal \314\210) → exit 2 via the FAIL-verdict
+# message, nothing written. Pairs with (76): the two canonically
+# equivalent forms must get the same verdict. Lock-in vs round-5 AND
+# round-4 (round-4 already stripped the combining mark).
+rl_reset_artifacts
+printf 'GATE RESULT: FA\314\210IL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t77.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with an NFD FÄIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with an NFD FÄIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t77.log"; then
+  fail "run-log refusal (D13): record --gate pass with an NFD FÄIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t77.log"
+  cat "$work/runlog-t77.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with an NFD FÄIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (78) F9 NFC PASS-sub leg 1 (fix round 6): `GATE RESULT: PÀSS`,
+# À = U+00C0 precomposed (NFC, octal \303\200) → exit 0, recorded.
+# NFD decomposes À to A + U+0300, the mark strips, and PASS is
+# recovered — the precomposed form must not false-reject a real pass.
+rl_reset_artifacts
+printf 'GATE RESULT: P\303\200SS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t78.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with NFC PÀSS inside the PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with NFC PÀSS inside the PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with NFC PÀSS inside the PASS line failed — a precomposed letter must not false-reject a real pass (exit 0); see $work/runlog-t78.log"
+  cat "$work/runlog-t78.log" >&2 || true
+fi
+# (79) F8 U+FFFD-insertion FAILhide leg 1 (fix round 6): `GATE RESULT:
+# FA<U+FFFD>IL (3 issue(s))` (octal \357\277\275, INSERTED between
+# letters) followed by a real `GATE RESULT: PASS` → exit 2 via the
+# FAIL-verdict message, nothing written. Lock-in vs round-5 (round-5
+# already stripped the inserted footprint); FAILs vs round-4 (no U+FFFD
+# member there). Pairs with (80): insertion is fixed, substitution is not.
+rl_reset_artifacts
+printf 'GATE RESULT: FA\357\277\275IL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t79.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+FFFD-inserted FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+FFFD-inserted FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t79.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+FFFD-inserted FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t79.log"
+  cat "$work/runlog-t79.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+FFFD-inserted FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
+fi
+# (80) F8 U+FFFD-substitution FAILhide leg 1 (fix round 6): `GATE RESULT:
+# F<U+FFFD>IL (3 issue(s))` (octal \357\277\275, SUBSTITUTING for the A)
+# followed by a real `GATE RESULT: PASS` → exit 0, 1 line recorded.
+# KNOWN LIMITATION (F8 residual): stripping recovers inserted noise
+# only — when the stripped character replaces a letter, the letter is
+# gone and no normaliser can recover it. This case pins the boundary,
+# it does NOT pin a fix; do not "fix" it with fuzzy matching.
+rl_reset_artifacts
+printf 'GATE RESULT: F\357\277\275IL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t80.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with a U+FFFD-substituted FAIL line alongside a real PASS line (exit 0, KNOWN LIMITATION (F8 residual))"
+  else
+    fail "run-log refusal (D13): record --gate pass with a U+FFFD-substituted FAIL line alongside a real PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a U+FFFD-substituted FAIL line alongside a real PASS line failed — substitution is a KNOWN LIMITATION (F8 residual), expected exit 0; see $work/runlog-t80.log"
+  cat "$work/runlog-t80.log" >&2 || true
+fi
+# (81) F8 real-invalid-byte substitution FAILhide leg 1 (fix round 6):
+# `GATE RESULT: F<0xFF>IL (3 issue(s))` with a REAL 0xFF byte in the
+# leg file (octal \377), SUBSTITUTING for the A, followed by a real
+# `GATE RESULT: PASS` → exit 0, 1 line recorded.
+# KNOWN LIMITATION (F8 residual): the byte decodes to U+FFFD and
+# strips to FIL — the FAIL is gone, same as (80) but with a real
+# invalid byte, not an escape. This case pins the boundary; it does
+# NOT pin a fix.
+rl_reset_artifacts
+printf 'GATE RESULT: F\377IL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t81.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with a real-0xFF-substituted FAIL line alongside a real PASS line (exit 0, KNOWN LIMITATION (F8 residual))"
+  else
+    fail "run-log refusal (D13): record --gate pass with a real-0xFF-substituted FAIL line alongside a real PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with a real-0xFF-substituted FAIL line alongside a real PASS line failed — substitution is a KNOWN LIMITATION (F8 residual), expected exit 0; see $work/runlog-t81.log"
+  cat "$work/runlog-t81.log" >&2 || true
+fi
+# (82) F7 boundary flip leg 1 (fix round 6): `GATE RESULT: FAIL<U+3164>URE
+# (0 issues)` (HANGUL FILLER, octal \343\205\244, inside FAILURE)
+# followed by a real `GATE RESULT: PASS` → exit 0, 1 line recorded.
+# The denylist is applied to the boundary side too: the filler strips
+# to FAILURE and the R4 boundary blocks it — the same word the round-5
+# code false-rejected (re-red-team #5 C10: exit 2 on round-5 code).
+rl_reset_artifacts
+printf 'GATE RESULT: FAIL\343\205\244URE (0 issues)\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t82.log" 2>&1; then
+  if [[ "$(rl_lines)" == "$((rl_before + 1))" ]]; then
+    ok "run-log records record --gate pass with FAIL<U+3164>URE alongside a real PASS line (exit 0)"
+  else
+    fail "run-log refusal (D13): record --gate pass with FAIL<U+3164>URE alongside a real PASS line exited 0 but did not append exactly one line"
+  fi
+else
+  fail "run-log refusal (D13): record --gate pass with FAIL<U+3164>URE alongside a real PASS line failed — the denylist strips the filler to FAILURE, which the boundary must accept (exit 0); see $work/runlog-t82.log"
+  cat "$work/runlog-t82.log" >&2 || true
+fi
+# (83) F7 sweep-extra U+13441 FAILhide leg 1 (fix round 6): `GATE RESULT:
+# <U+13441>FAIL (3 issue(s))` (EGYPTIAN HIEROGLYPH FULL BLANK, octal
+# \360\223\221\201) followed by a real `GATE RESULT: PASS` → exit 2 via
+# the FAIL-verdict message, nothing written. The §3 sweep found U+13441
+# (and U+13442) beyond the five demonstrated code points; this case
+# locks in at least one sweep-extra member of the denylist.
+rl_reset_artifacts
+printf 'GATE RESULT:\360\223\221\201FAIL (3 issue(s))\nGATE RESULT: PASS\n' > "$rl_proj/design/gate-leg1.log"
+rl_before="$(rl_lines)"
+if node "$run_log_mjs" --project "$rl_proj" record --round 9 --grader none --scores none --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t83.log" 2>&1; then
+  fail "run-log refusal (D13): record --gate pass with a U+13441 FAIL line alongside a real PASS line exited 0 — the FAIL verdict must be caught (exit 2)"
+elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+  fail "run-log refusal (D13): record --gate pass with a U+13441 FAIL line alongside a real PASS line wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t83.log"; then
+  fail "run-log refusal (D13): record --gate pass with a U+13441 FAIL line alongside a real PASS line exited 2 but not via the FAIL-verdict message — see $work/runlog-t83.log"
+  cat "$work/runlog-t83.log" >&2 || true
+else
+  ok "run-log refuses record --gate pass with a U+13441 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
 fi
 
 # --- 6. Playwright eyes ------------------------------------------------------
@@ -1765,7 +3525,7 @@ for _cb in google-chrome google-chrome-stable chromium chromium-browser; do
   if command -v "$_cb" >/dev/null 2>&1; then chrome_bin="$(command -v "$_cb")"; break; fi
 done
 [[ -z "$chrome_bin" && -x /opt/google/chrome/chrome ]] && chrome_bin="/opt/google/chrome/chrome"
-# macOS app-bundle locations (mirror scripts/gate/consistency.mjs
+# macOS app-bundle locations (mirror skills/frontend-kit/scripts/gate/consistency.mjs
 # findChrome, which already lists these before the Linux paths).
 for _cp in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "/Applications/Chromium.app/Contents/MacOS/Chromium" "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium"; do
   if [[ -z "$chrome_bin" && -x "$_cp" ]]; then chrome_bin="$_cp"; break; fi

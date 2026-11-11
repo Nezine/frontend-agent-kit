@@ -130,9 +130,10 @@ label is INVALID.
 3. **Gate-only loop** — shell, no vision. The grade is exactly **"gate
    green, vision not available"**, never a faked 4/5. The human gate carries
    the full taste judgement. The round IS recordable: `run-log.mjs record
-   --round N --grader none --scores none --gate <pass|fail>` (probe G-4 —
+   --round N --grader none --scores none --gate <pass|fail> [--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log]` (probe G-4 —
    the old script rejected no-grade records; `--grader none` with scores
-   is still rejected).
+   is still rejected). With `--gate pass`, the step-3 artifact flags are
+   required (SKILL.md step 3); `--gate fail` needs no artifact.
 4. **Static-only** — no shell: MCP fallback for eyes, `detect` for gate.
    Same rule: no vision grade without an independent judge; the human gate
    carries the taste judgement.

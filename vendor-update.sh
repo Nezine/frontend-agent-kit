@@ -83,9 +83,9 @@ refresh_manifest() {
   (cd "$KIT_ROOT" && find vendor -type f ! -name SHA256SUMS -exec sha256sum {} + | sort -k2 > "$MANIFEST")
 }
 
-# GAP-9 (D9): regenerate scripts/gate/vendored-allowlist.txt (the gate 1.2
+# GAP-9 (D9): regenerate skills/frontend-kit/scripts/gate/vendored-allowlist.txt (the gate 1.2
 # hash exemption manifest) at every taste re-pin, next to refresh_manifest.
-# The set is the INCLUSION list in scripts/gate/vendored-runtime-list.txt —
+# The set is the INCLUSION list in skills/frontend-kit/scripts/gate/vendored-runtime-list.txt —
 # a file enters the manifest ONLY if it is listed there. The list is the
 # single source of truth shared with verify.sh §3b, which reads the SAME
 # file: the generator and the checker cannot drift, by construction
@@ -118,8 +118,8 @@ refresh_manifest() {
 # lab/demo/catalog tooling -> leave it out. New upstream bytes are not
 # grandfathered on trust.
 regenerate_vendored_allowlist() {
-  local allowlist="$KIT_ROOT/scripts/gate/vendored-allowlist.txt"
-  local runtime_list="$KIT_ROOT/scripts/gate/vendored-runtime-list.txt"
+  local allowlist="$KIT_ROOT/skills/frontend-kit/scripts/gate/vendored-allowlist.txt"
+  local runtime_list="$KIT_ROOT/skills/frontend-kit/scripts/gate/vendored-runtime-list.txt"
   local assets_root="$KIT_ROOT/vendor/taste/skills/taste-skill/assets"
   [ -f "$MANIFEST" ] || { echo "vendor-update.sh: vendor/SHA256SUMS missing — cannot regenerate the vendored allowlist" >&2; return 1; }
   [ -d "$assets_root" ] || { echo "vendor-update.sh: taste assets tree missing at $assets_root — cannot regenerate the vendored allowlist" >&2; return 1; }
@@ -200,7 +200,7 @@ regenerate_vendored_allowlist() {
   # Fail loudly unless the manifest path's parent dir exists beforehand,
   # the path itself is NOT a symlink, and the copy lands as a regular
   # file holding exactly the expected entry count.
-  [ -d "$(dirname -- "$allowlist")" ] || { echo "vendor-update.sh: scripts/gate/ dir missing — cannot write the vendored allowlist" >&2; rm -f "$tmp_entries" "$tmp_manifest" "$tmp_list" "$tmp_tree"; return 1; }
+  [ -d "$(dirname -- "$allowlist")" ] || { echo "vendor-update.sh: skills/frontend-kit/scripts/gate/ dir missing — cannot write the vendored allowlist" >&2; rm -f "$tmp_entries" "$tmp_manifest" "$tmp_list" "$tmp_tree"; return 1; }
   if [[ -L "$allowlist" ]]; then
     echo "vendor-update.sh: manifest path $allowlist is a symlink — refusing to copy through it (recreate it as a regular file first)" >&2; rm -f "$tmp_entries" "$tmp_manifest" "$tmp_list" "$tmp_tree"; return 1
   fi
@@ -216,8 +216,8 @@ regenerate_vendored_allowlist() {
     echo "vendor-update.sh: manifest at $allowlist holds $allow_written entries, expected $new_count — refusing" >&2; rm -f "$tmp_entries" "$tmp_manifest" "$tmp_list" "$tmp_tree"; return 1
   fi
   rm -f "$tmp_entries" "$tmp_manifest" "$tmp_list" "$tmp_tree"
-  echo "vendor-update.sh: scripts/gate/vendored-allowlist.txt regenerated ($new_count entries)."
-  echo "vendor-update.sh: STOP — re-classify the sink sites for the new pin (w-gap9-analysis.md §1 method) AND review the $review_count unlisted sink file(s) printed above against scripts/gate/vendored-runtime-list.txt (runtime -> add to the list; lab/demo/catalog -> leave out) BEFORE committing this manifest. New upstream bytes are not grandfathered on trust."
+  echo "vendor-update.sh: skills/frontend-kit/scripts/gate/vendored-allowlist.txt regenerated ($new_count entries)."
+  echo "vendor-update.sh: STOP — re-classify the sink sites for the new pin (w-gap9-analysis.md §1 method) AND review the $review_count unlisted sink file(s) printed above against skills/frontend-kit/scripts/gate/vendored-runtime-list.txt (runtime -> add to the list; lab/demo/catalog -> leave out) BEFORE committing this manifest. New upstream bytes are not grandfathered on trust."
 }
 
 update_pin_marker() { # <component> <tag> <commit> [extra k=v ...]
