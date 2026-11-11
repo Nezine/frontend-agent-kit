@@ -57,7 +57,14 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   one recipe file in `references/style-recipes/` (INDEX first, then the
   one file) — never the whole catalog. Read `references/anti-cliche.md`
   before writing anything: the blocklist names the generic patterns this
-  step must not lock in.
+  step must not lock in. **GetLayers (optional).** When a free GetLayers
+  layer's motion, depth, or atmosphere matches the brief, it may serve
+  as an additional reference direction alongside the screenshot
+  references — see `references/getlayers.md`; record the chosen layer
+  (name + URL) in the run log and in the Design Read. Conditional only
+  ("when a free layer fits the brief") — never mandatory, never a
+  substitute for the locked tokens, never the build's source; free tier
+  only, no account, no purchase, no MCP.
 - **Design Read (step 1.2, before tokens).** Summarise the brief in
   `design/DESIGN-READ.md`: artifact, audience, visual language (a
   specific family, not "modern / clean"), mode (greenfield / extension /
@@ -68,8 +75,49 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   must affect real decisions (layout variation, motion, content per
   viewport, real-asset effort, preservation strictness) or they are
   decorative labels. No dial value may be cited as evidence for any
-  grade or stop decision, and the judge NEVER receives the dials. Copy
+  grade or stop decision, and the judge NEVER receives the dials. When
+  a free GetLayers layer is the reference direction, name it here
+  (name + URL); when a free GetLayers AI design tool supplies an
+  effect, name the tool here on its own line (`Effect source:
+  GetLayers <tool name> — free in-browser tool`,
+  `references/getlayers.md` §3). Copy
   the dials into `design/PLAN.md` § Design Read.
+- **High-end bar (human-feel target, recorded 2026-11-11).** On top
+  of the gates above, the loop aims at the human's feel target: **8/10
+  overall — not slop AND beautiful/refined, with motion and 3D as plus
+  points, like the Anthropic/Apple sites he sent.** The feeling:
+  refined and high-end ("High-end rất quan trọng" — high-end is very
+  important); "Ko nhạt nhào mà lại ko diêm dúa" — not bland, but not
+  gaudy either. His human grades on the 3 probe builds are 6/10 overall
+  for all three (see `research/judge-calibration.md`); the judge's mean
+  was 3.5/5 (≈7/10), so the judge runs ~1 point hot versus his feel.
+  The bar is a direction for the taste lock and the Design Read (record
+  one line per build: how this build aims at it), never a score the
+  loop grades itself and never a stop input. **UNCHANGED by this bar:**
+  the 60% slop-free acceptance bar, the 4 grading axes (Type / Layout /
+  Colour / Space), and the stop rule (≥4 on every axis AND gate green,
+  or 3 rounds). The scroll-motion recipe
+  (`references/style-recipes/scroll-motion.md`) already encodes the
+  restraint half of this bar (1–2 dealt moments, one moving thing per
+  viewport, small distances, short durations) — the high-end bar is
+  the feel that restraint is in service of, not a second gate.
+  **Canonical example of restrained depth (user, 2026-11-11 11:51;
+  verified in the image by the manager and re-verified here):** the
+  Vercel reference shot (`brief3/ref-1-vercel.png` — the locked
+  reference for probe build 3, sha256
+  `d57e1a98506a1038d25c4848817dd7b2fd034cad9ccfc998aefcde1f23a7827f`)
+  has ONE big black triangle in the middle of the hero with a soft
+  blurred shadow beneath it, making it feel like it floats in 3D.
+  ONE geometric shape + ONE soft blurred shadow = 3D feel. The
+  triangle is in the Vercel REFERENCE, not in the Alex Nguyen build
+  — the build has NO such depth cue anywhere (flat), which is why it
+  reads bland. **The depth rule, in his words:** "lồng ghép tinh tế
+  vừa đủ như các web công ty tỷ đô" (weave effects in subtly, just
+  enough, like billion-dollar companies' sites); "ko diêm dúa nhưng
+  phải tinh tế" (not gaudy, but must be refined); "đừng nhét hiệu ứng
+  vô tội vạ" (don't stuff effects in indiscriminately); flat = bland.
+  So the loop's depth rule is: a few purposeful, well-placed depth
+  cues — never flat, never overloaded.
 - Write `design/tokens.css`: type scale, colour roles, space scale,
   radius, motion. Start from the template's values only as a starting
   point; the locked reference overrides them.

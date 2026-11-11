@@ -285,6 +285,40 @@ for general Three.js work.
   never parallax text. If the travel is visible as "movement" rather
   than felt as "depth", it is too much — halve it.
 
+### Effect sources — GetLayers free AI design tools (optional)
+
+Patterns 1–8 and the ThreeUI hero above name the motion. Where an
+effect itself — not a scroll pattern — needs a source, the 13 free
+GetLayers AI design tools in the browser are an optional effect
+source. Full list, names, and the free/paid boundary:
+`references/getlayers.md` §3. The 13, by name: Text Animations,
+Custom Cursors, ASCII Studio, Particle Forms, Holographic Cloth,
+Image Compressor, Image Motion, SVG to 3D, Refract, Liquid Colour,
+Orb Studio, Dither Art, Shader Backgrounds.
+
+- **Free in the browser:** every tool is free to run, tune, copy,
+  and download, signed out included; saving a look needs a free
+  account — https://www.getlayers.ai/docs (accessed 2026-11-11).
+  Pick a preset in the tool, preview it, copy the prompt that
+  rebuilds it, and build the effect from that prompt. The prompt
+  text itself was not observed via text fetch
+  (`references/getlayers.md` §2.3) — do not describe it.
+- **An effect is still one dealt moment.** A tool-supplied effect
+  counts as one of the page's 1–2 dealt moments (restraint rule 1)
+  and obeys every restraint rule in this file: transform/opacity
+  only, once and short, reduced motion respected, mobile calmer.
+  Naming a tool never exempts its effect from the bar.
+- **Image Compressor is a utility, not an effect source.** It
+  compresses images and has no saved looks; it supplies no visual
+  effect.
+- **Record it in the Design Read** on its own line (`Effect source:
+  GetLayers <tool name> — free in-browser tool`), per SKILL.md step
+  1.2. No tool named = no tool effect.
+- **Browser route only.** Agent use of these tools via the MCP is
+  paid-only (Full Stack Lifetime — `references/getlayers.md` §9);
+  the kit never routes an effect through the MCP. Only 12 of the 13
+  tools work via MCP at all (Image Compressor does not).
+
 ## Motion tokens (copy-ready)
 
 Add to `tokens.css` at the taste lock (the lock replaces the starter

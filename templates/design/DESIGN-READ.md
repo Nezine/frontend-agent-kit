@@ -33,6 +33,15 @@ exactly that. Delete these comments as you fill the file in. -->
 - Anchor / recipe (if any): [e.g. "aesop" →
   skills/frontend-kit/references/style-recipes/aesop.md, or "custom",
   or "none". Load only the ONE recipe file you use, never the catalog.]
+- High-end bar: [one line — how this build aims at the refined,
+  high-end 8/10 feel: motion + 3D as plus points, neither bland nor
+  gaudy; e.g. "one hero moment, restrained palette, Pattern 2". See
+  skills/frontend-kit/references/workflow.md §1.]
+- GetLayers layer (if any): [name + URL of the free layer used as a
+  reference direction, or "none". See
+  skills/frontend-kit/references/getlayers.md.]
+- Effect source (if any): [e.g. "GetLayers Text Animations — free
+  in-browser tool", or "none".]
 
 ## The five dials
 

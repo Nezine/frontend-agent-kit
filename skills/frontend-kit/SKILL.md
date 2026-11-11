@@ -19,7 +19,10 @@ The full loop spec lives in `references/workflow.md`. The grade rubric lives in
 `references/grader-rubric.md`. The stop rules and the degradation ladder live
 in `references/stop-rules.md`. The expert pack (11 independent domain
 specialists + call rules) lives in `references/expert-pack.md` and
-`experts/<domain>.md`. The 5 variants as concrete token directions live in
+`experts/<domain>.md`. The GetLayers free-layer reference lives in
+`references/getlayers.md`: an optional step-1 reference direction and
+effect source, used only when a free layer or a free tool fits the
+brief — never mandatory, never a grading input. The 5 variants as concrete token directions live in
 `references/variant-briefs.md`; the variant scoring procedure
 (blind, random order, play first) lives in
 `references/variant-scoring.md`. The human-gate question bank lives in
@@ -119,6 +122,14 @@ prompt for discussion.
    the whole catalog. Read `references/anti-cliche.md` before writing
    anything: the blocklist names the generic patterns this step must not
    lock in.
+   **GetLayers (optional).** When a free GetLayers layer's motion, depth,
+   or atmosphere matches the brief, it may serve as an additional
+   reference direction alongside the screenshot references — read
+   `references/getlayers.md` and record the chosen layer (name + URL)
+   in the run log and in the Design Read. Conditional only ("when a
+   free layer fits the brief") — never mandatory, never a substitute
+   for the locked tokens, and never the build's source. Free tier
+   only: no account, no purchase, no MCP.
 2. **Design Read (end of step 1, before tokens).** Summarise the brief in
    `design/DESIGN-READ.md` (template: `templates/design/DESIGN-READ.md`):
    artifact, audience, visual language (a specific family, not "modern /
@@ -130,12 +141,15 @@ prompt for discussion.
    variation, motion, content per viewport, real-asset effort,
    preservation strictness) or they are decorative labels. No dial value
    may be cited as evidence for any grade or stop decision, and the judge
-   NEVER receives the dials. If the brief wants scroll motion, name the motion patterns by number from `references/style-recipes/scroll-motion.md` (at most two, e.g. "Pattern 2 + Pattern 5") in the Design Read; no pattern named = no motion beyond the fixed header and hover states. When a motion pattern is named, also record its implementation skill in the Design Read on the same line, in this format: `Motion: Pattern 2 + Pattern 5 — implementation skill: vendor/gsap/gsap-scrolltrigger/SKILL.md`. The pattern → skill map (all 8 patterns; the routing follows the recipe's Build-it text, not the pattern name alone):
+   NEVER receives the dials. Record one line in the Design Read for the
+   high-end bar (`references/workflow.md` §1): how this build aims at the
+   refined, high-end 8/10 feel — motion + 3D as plus points, neither bland
+   nor gaudy. If the brief wants scroll motion, name the motion patterns by number from `references/style-recipes/scroll-motion.md` (at most two, e.g. "Pattern 2 + Pattern 5") in the Design Read; no pattern named = no motion beyond the fixed header and hover states. When a motion pattern is named, also record its implementation skill in the Design Read on the same line, in this format: `Motion: Pattern 2 + Pattern 5 — implementation skill: vendor/gsap/gsap-scrolltrigger/SKILL.md`. The pattern → skill map (all 8 patterns; the routing follows the recipe's Build-it text, not the pattern name alone):
    - Pattern 1 (condensing wordmark) → none — a vanilla class toggle (`scroll-motion.md:95–101`); no implementation skill.
    - Patterns 2, 3, 6, 8 → `vendor/gsap/gsap-scrolltrigger/SKILL.md` (scrub / pin / parallax). Pattern 3 is "Hero settle: scale-on-scroll" — the routing is a scrub because its Build-it text says the scale is "scrubbed to scroll over the hero's own height" (`scroll-motion.md:147–149`).
    - Pattern 5 (reveal) → `vendor/gsap/gsap-scrolltrigger/SKILL.md` by default; vanilla `IntersectionObserver` only when no other named pattern uses GSAP, so the page does not load GSAP for one reveal — record the reason on the same line.
    - Pattern 7 (Lenis smooth scroll) → the upstream Lenis docs at https://github.com/darkroomengineering/lenis (no vendored Lenis doc exists in the kit), plus `vendor/gsap/gsap-scrolltrigger/SKILL.md` only if combined with a scrubbed pattern (2, 3, 6, 8).
-   When the brief asks for a 3D or shader hero, name the component and record it on its own line: `3D: <component from the ThreeUI catalog> — implementation skill: skills/threeui/SKILL.md`. threeui covers catalog components only — its trigger forbids general Three.js work, and custom 3D/shader work has no skill at all; say so instead of misrouting it to threeui. A Design Read that names a pattern or a 3D component without its implementation skill or an explicit 'none' is incomplete — the round-brief generator fails loudly on it (see "Round briefs + per-role context budgets" below). Copy the dials into `design/PLAN.md`
+   When the brief asks for a 3D or shader hero, name the component and record it on its own line: `3D: <component from the ThreeUI catalog> — implementation skill: skills/threeui/SKILL.md`. threeui covers catalog components only — its trigger forbids general Three.js work, and custom 3D/shader work has no skill at all; say so instead of misrouting it to threeui. When a free GetLayers AI design tool supplies an effect (not a scroll pattern), name the tool on its own line: `Effect source: GetLayers <tool name> — free in-browser tool (references/getlayers.md §3)`. The effect still counts as one of the page's 1–2 dealt moments and still obeys the restraint rules in `references/style-recipes/scroll-motion.md`. A Design Read that names a pattern or a 3D component without its implementation skill or an explicit 'none' is incomplete — the round-brief generator fails loudly on it (see "Round briefs + per-role context budgets" below). Copy the dials into `design/PLAN.md`
    § Design Read. (Adapted from garden-skills `web-design-engineer`
    Step 2b — five dials, categorical here instead of its 1–10 numbers;
    see SOURCES.md for the no-vendoring note.)

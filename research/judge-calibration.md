@@ -5,11 +5,11 @@ precondition for P6 (triggers consume judge scores), P11 (pairwise), P13
 (carried-score abolition) and P14 (jury). It measures, and only it
 measures, judge–human agreement.
 
-**Status: judge side complete 2026-11-10; human side pending.**
-The human blind-grades the same 3 builds once, on the same 4 axes,
-blind to the judge's scores. Until the human grades land, no agreement
-rate and no overshoot can be computed — the tables below carry the
-judge's side only, and the computation section is a template.
+**Status: judge side complete 2026-11-10; human OVERALL grades landed
+2026-11-11 (6/10 for all 3 builds); human per-axis grades still pending.**
+Until the human per-axis grades land, no per-axis agreement rate and no
+per-axis overshoot can be computed — the tables below carry the judge's
+side only, and the computation section is a template.
 
 ## Gold set — the 3 probe builds
 
@@ -117,7 +117,25 @@ missing phone gutter (builds 1 and 3), and dead empty bands (all
 three). Whether this is judge consistency or a real property of the
 builds is what the human side will test.
 
-## Human's blind grades (PENDING)
+## Human's blind grades (PER-AXIS PENDING — overall landed 2026-11-11)
+
+### Human's overall grades (landed 2026-11-11)
+
+The human graded all 3 builds **6/10 overall** — by feel, not as an
+expert (recorded 2026-11-11 11:49–11:50). His target is 8/10: not slop
+AND beautiful/refined, with motion and 3D as plus points, like the
+Anthropic/Apple sites he sent — refined and high-end, "not bland, but
+not gaudy". The judge's mean across the 4 axes is 3.5/5 on every build
+((4+3+4+3)/4), i.e. ≈7/10 — so **the judge runs ~1 point hot versus
+his feel**. This is an overall-only comparison: no per-axis human
+scores were given, and none are invented here — the per-axis table
+below stays BLANK until he grades per axis.
+
+| Build | Human overall | Judge mean (4 axes) | Gap (judge − human, ≈/10) |
+|-------|---------------|---------------------|---------------------------|
+| 1 — Fifteen landing | 6/10 | 3.5/5 (≈7/10) | ≈ +1 |
+| 2 — Hilltop dashboard | 6/10 | 3.5/5 (≈7/10) | ≈ +1 |
+| 3 — Alex Nguyen portfolio | 6/10 | 3.5/5 (≈7/10) | ≈ +1 |
 
 The human grades the same 3 builds once, on the same 4 axes, blind to
 the judge's scores above — do not read this file's judge table before
@@ -132,8 +150,10 @@ notes, not in the repo.
 | 2 — Hilltop dashboard | _ | _ | _ | _ | _ |
 | 3 — Alex Nguyen portfolio | _ | _ | _ | _ | _ |
 
-## Computed agreement (PENDING — template until the human grades land)
+## Computed agreement (PENDING — template until the human per-axis grades land)
 
+The landed overall grades (6/10 for all 3 builds) do NOT enable this
+computation — it needs per-axis human scores, which are still pending.
 Computed per axis: exact-match rate, within-1 rate, and mean signed
 overshoot (`judge − human`, in points). Plus overall exact/within-1.
 Cohen's κ is NOT computed at n=12 (unstable) — only when the sample
