@@ -108,7 +108,7 @@ Council (2–1, dissent recorded in `build-notes/sr2-council/decision.md` §5; S
 
 ## D12 — macOS support: bash-3.2 rewrite, OS dispatch, darwin binaries, CI matrix (2026-11-11)
 
-Coordinator decision (macOS phase, for Ngọc Anh's MacBook and the 14/11
+Coordinator decision (macOS phase, for a teammate's MacBook and the 14/11
 buffet run). Stock macOS ships bash 3.2.57 as `/bin/bash` and GitHub
 Actions macOS runners default to it; the scripts must run under it.
 
@@ -118,8 +118,11 @@ for CI. The bash-4-only constructs are rewritten in bash-3.2-compatible
 form: the `DONE_DIRS` dir→host map becomes two parallel indexed arrays
 plus a linear lookup (`install.sh`); the line-to-array reads become
 `while IFS= read -r` loops (`verify.sh`, `scripts/gate/gate.sh` ×6). A CI
-lint step greps for the banned constructs (`declare -A`, `mapfile`,
-`readarray`) in all five scripts so regressions fail fast. The same
+lint step greps for the full banned-construct list (`declare -A`,
+`mapfile`, `readarray`, `${var^^}` / `${var,,}`, `local -n`, `globstar`,
+`&>>`, `;;&`, `coproc`) in all five scripts so regressions fail fast
+(`bash -n` is syntax-only and cannot catch these — the grep is the
+guard). The same
 rewrite also guards the empty-array-under-`set -u` abort that bash older
 than 4.4 has (index loops / length guards where an array can be empty).
 `bash -n` runs on all five scripts in CI.

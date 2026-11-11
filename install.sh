@@ -803,8 +803,51 @@ playwright_browser_version() { # <browser-name> — browserVersion from the CLI 
   [[ -f "$bj" ]] || return 1
   node -e "const b=require(process.argv[1]).browsers.find((x)=>x.name===process.argv[2]); if(!b || !b.browserVersion) process.exit(1); console.log(b.browserVersion)" "$bj" "$name" 2>/dev/null
 }
+playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the CLI registry, else refuse (1) with a message
+  # Cross-check (red-team H4): the cache dir name comes from
+  # browsers.json, so a URL serving a different build would be placed
+  # under the wrong revision and marked complete. Refuse on mismatch.
+  # CFT URLs carry a browser VERSION (compare to browserVersion, like the
+  # GCS branch); only ffmpeg URLs carry a numeric REVISION (compare to
+  # the revision). Comparing a CFT version against the revision always
+  # refuses (F-3, 2026-11-11: 158.0.8127.18 != 1254) — that was the old
+  # shared CDN branch, and it dead-ended all four new darwin CDN CFT arms
+  # (and the pre-existing Linux ones). If the registry has no version for
+  # this browser (e.g. ffmpeg), the version check is skipped.
+  local url="$1" name="$2" rev="$3" _url_ver _bj_ver _url_kind _url_seg
+  case "$url" in
+    https://storage.googleapis.com/chrome-for-testing-public/*)
+      _url_ver="$(printf '%s' "$url" | sed -E 's#.*chrome-for-testing-public/([^/]+)/.*#\1#')"
+      _bj_ver="$(playwright_browser_version "$name" 2>/dev/null || true)"
+      if [[ -n "$_bj_ver" && "$_url_ver" != "$_bj_ver" ]]; then
+        printf 'curl fallback: URL version %s does not match the CLI registry browserVersion %s for %s — refusing to place it.\n' "$_url_ver" "$_bj_ver" "$name"
+        return 1
+      fi
+      ;;
+    https://cdn.playwright.dev/*)
+      _url_kind="$(printf '%s' "$url" | sed -E 's#.*/builds/([^/]+)/.*#\1#')"
+      _url_seg="$(printf '%s' "$url" | sed -E 's#.*/builds/(cft|ffmpeg)/([^/]+)/.*#\2#')"
+      if [[ "$_url_kind" == "cft" ]]; then
+        _bj_ver="$(playwright_browser_version "$name" 2>/dev/null || true)"
+        if [[ -n "$_bj_ver" && "$_url_seg" != "$_bj_ver" ]]; then
+          printf 'curl fallback: URL version %s does not match the CLI registry browserVersion %s for %s — refusing to place it.\n' "$_url_seg" "$_bj_ver" "$name"
+          return 1
+        fi
+      elif [[ "$_url_kind" == "ffmpeg" ]]; then
+        if [[ -n "$_url_seg" && "$_url_seg" != "$rev" ]]; then
+          printf 'curl fallback: URL revision %s does not match the CLI registry revision %s for %s — refusing to place it.\n' "$_url_seg" "$rev" "$name"
+          return 1
+        fi
+      else
+        printf 'curl fallback: unknown CDN builds kind %s in URL %s — refusing to place it.\n' "$_url_kind" "$url"
+        return 1
+      fi
+      ;;
+  esac
+  return 0
+}
 playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and place it
-  local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name _url_ver _bj_ver _url_rev
+  local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name
   fname="$(basename -- "${url%%\?*}")"
   case "$url" in
     # Host-anchored (red-team H4): the mapping trusts shape = identity,
@@ -858,29 +901,10 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
       return 1 ;;
   esac
   rev="$(playwright_revision "$name")" || { printf 'curl fallback: cannot read the %s revision from the CLI bundle (browsers.json).\n' "$name"; return 1; }
-  # Cross-check (red-team H4): the cache dir name comes from
-  # browsers.json, so a URL serving a different build would be placed
-  # under the wrong revision and marked complete. Refuse on mismatch.
-  # CFT URLs carry a version (compare to browserVersion); CDN URLs
-  # carry a revision (compare to the revision above). If the registry
-  # has no version for this browser (e.g. ffmpeg), the check is skipped.
-  case "$url" in
-    https://storage.googleapis.com/chrome-for-testing-public/*)
-      _url_ver="$(printf '%s' "$url" | sed -E 's#.*chrome-for-testing-public/([^/]+)/.*#\1#')"
-      _bj_ver="$(playwright_browser_version "$name" 2>/dev/null || true)"
-      if [[ -n "$_bj_ver" && "$_url_ver" != "$_bj_ver" ]]; then
-        printf 'curl fallback: URL version %s does not match the CLI registry browserVersion %s for %s — refusing to place it.\n' "$_url_ver" "$_bj_ver" "$name"
-        return 1
-      fi
-      ;;
-    https://cdn.playwright.dev/*)
-      _url_rev="$(printf '%s' "$url" | sed -E 's#.*/builds/(cft|ffmpeg)/([^/]+)/.*#\2#')"
-      if [[ -n "$_url_rev" && "$_url_rev" != "$rev" ]]; then
-        printf 'curl fallback: URL revision %s does not match the CLI registry revision %s for %s — refusing to place it.\n' "$_url_rev" "$rev" "$name"
-        return 1
-      fi
-      ;;
-  esac
+  # Cross-check (red-team H4): see playwright_curl_check_url — the cache
+  # dir name comes from browsers.json, so a URL serving a different build
+  # would be placed under the wrong revision and marked complete.
+  playwright_curl_check_url "$url" "$name" "$rev" || return 1
   dir_name="${name//-/_}-$rev"
   mkdir -p "$state_dir/playwright-downloads"
   zip_path="$state_dir/playwright-downloads/$fname"
