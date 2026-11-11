@@ -168,6 +168,41 @@ and belong in the kit's deterministic gate.
   `grep -rInE 'dangerouslySetInnerHTML|innerHTML|outerHTML|document\.write\(' -- <diff files>`
   and confirm each hit is either removed or wrapped in DOMPurify
   sanitization. Severity: BLOCK. Anchor: OWASP LLM10:2026, A05:2025; ASVS v5.0.0-1.2.1, v5.0.0-1.3.1, v5.0.0-3.2.2.
+  Vendored taste runtime exemption (GAP-9, D9): gate 1.2 exempts a file
+  only if its project-relative path AND sha256 both match
+  `scripts/gate/vendored-allowlist.txt` (taste pin v2.5.1, 27 runtime
+  files). Scope is byte-identical vendored taste runtime assets ONLY —
+  lab/demo/catalog files are never exempt (a copied lab file fails the
+  gate; the fix is to stop copying it), a vendored file copied to any
+  other project path does not match, and vendored JS must stay as
+  separate files under `assets/` (inlining is unsupported — leg-2 1.2
+  still fails it). Residual risk, owned by THIS check (the security
+  expert's per-occurrence taint check, per build, pre-land and pre-ship):
+  the runtime class-E sites `ui/notify/fragment.js:16` (`opts.items`
+  raw HTML), `ui/search/fragment.js:20` (`rowsHTML(opts.queries…)` raw),
+  `scenes/letter-bar-floods-the-ground/scene.js:41` (page headline text
+  re-parsed as HTML), plus `ui/ui.js:106` (fetched local `fragment.html`
+  carrying client copy), `diagrams/diagram.js:229` (fetched local icon
+  SVG through hand-rolled regex cleaning — a partial strip, not a
+  sanitiser: it strips `<?xml`, comments, `<title>`, `<script>` and
+  double-quoted `on*=` only), and the class-C feeds generally
+  (fragment/component/meta/index/preset/type files as rewritten with
+  client copy). For each: record what the actual feed contains in THIS
+  build and whether any of it is user / model / API derived. Two hard
+  rules: (1) notify/search callers passing user, model, or API data into
+  `opts.items` / `opts.queries` are a BLOCK; (2) a lab/demo page must not
+  ship — `diagrams/lab.html:126` (user-typed textarea content rendered
+  via `innerHTML` on a JSON parse error) is never exempt and fails the
+  gate if copied. **BLOCK if the taint check is skipped:** a build that
+  vendors taste runtime without this per-occurrence taint check, pre-land
+  AND pre-ship, is BLOCK under the fail-closed rule ("a check that cannot
+  run is a BLOCK, not a pass") — the exemption is void without its owner.
+  There is no gate-time mechanical check for the skipped taint check, by
+  design: the expert cross-check runs pre-land/pre-ship, AFTER the loop's
+  gate runs, so a gate-time check for its record would be a chicken-and-egg
+  (the record does not exist yet when the gate runs) — the blocking
+  procedural rule above plus the gate's printed residual list on every
+  exemption is the control.
 - [ ] **1.3 — No code execution from untrusted input.** What to
   look for: `eval()` / `Function()` / `setTimeout(string)` /
   `setInterval(string)` with untrusted or model-generated input; no

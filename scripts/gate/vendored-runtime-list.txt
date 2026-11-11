@@ -1,0 +1,54 @@
+# vendored-runtime-list.txt — GAP-9 (D9): the INCLUSION list for the vendored taste runtime manifest.
+#
+# A file enters scripts/gate/vendored-allowlist.txt ONLY if it is listed here.
+# This is the single source of truth shared by vendor-update.sh (the generator)
+# and verify.sh §3b (the checker) — both read THIS file, so the two cannot drift.
+#
+# Why inclusion, not exclusion (fix round 2, 2026-11-11): the round-1
+# pattern-based exclusion (is_lab_file) could not be closed — every new lab
+# naming family (numbered lab2.html, unhyphenated newlab.html, mid-name
+# my-lab-page.html, preview/playground/sandbox/...) defeated it, because a
+# new role word always beats a closed pattern list. An exclusion-list error
+# fails OPEN (a lab file silently lands in the manifest); an inclusion-list
+# error fails CLOSED (a new file — runtime or lab — is simply NOT in the
+# manifest, and the gate fails loudly on it if copied until re-pin
+# re-classification adds it here). That asymmetry is the whole point.
+#
+# Maintenance (at each taste re-pin, BLOCKING, before the manifest ships):
+#   1. vendor-update.sh prints the review set: every sink file in the
+#      vendored tree NOT listed here (today: the 17 lab/demo/catalog files,
+#      plus any NEW file upstream added). Review each one against the GAP-9
+#      classification (w-gap9-analysis.md §1–§2): runtime sink file -> add
+#      it here (and only here — the generator derives the manifest from
+#      this list); lab/demo/catalog tooling -> leave it out.
+#   2. Never add a file here without that classification. Never hand-edit
+#      the manifest — regenerate it with vendor-update.sh.
+# Format: one asset-relative path per line (assets/<relpath>), sorted.
+# Lines starting with '#' and blank lines are ignored.
+assets/backgrounds/backgrounds.js
+assets/components/fx-bars/component.js
+assets/components/fx-chart/component.js
+assets/components/fx-feature-card/component.js
+assets/components/fx-map/component.js
+assets/components/shared.js
+assets/diagrams/diagram.js
+assets/moments/liquid-type/moment.js
+assets/moments/marquee-row/moment.js
+assets/motion/motion.js
+assets/objects/_print-core/print3d.js
+assets/objects/_scenes/kit.js
+assets/objects/dither-sequence/object.js
+assets/objects/exploded-layers/object.js
+assets/objects/split-reveal/object.js
+assets/scenes/letter-bar-floods-the-ground/scene.js
+assets/system.js
+assets/ui/apps/fragment.js
+assets/ui/calendar/fragment.js
+assets/ui/cursor/fragment.js
+assets/ui/integrations/fragment.js
+assets/ui/notify/fragment.js
+assets/ui/search/fragment.js
+assets/ui/stat/fragment.js
+assets/ui/terminal-run/fragment.js
+assets/ui/ui.js
+assets/ui/voice/fragment.js

@@ -69,3 +69,12 @@ orchestrator's spine (Impeccable + tokens + fresh-context grade) there
 and take only taste's checker/gate and copy-lint, not its section
 library. Never present a taste-skill claim (scores, timings) as measured
 by this kit — the author's blind-test numbers are self-reported.
+
+Vendoring scope (D9; see `frontend-kit` SKILL.md Step 2.1b, which
+governs): taste governs WHICH runtime code is used — the motion layer
+is "not optional" — and frontend-kit governs HOW MUCH is copied: only
+the runtime files the page loads, as separate files under `assets/`,
+never the whole `assets/` tree and never lab/demo/catalog tooling.
+Byte-identical vendored runtime files pass gate 1.2 by path + sha256
+against `scripts/gate/vendored-allowlist.txt`; vendored JS is never
+inlined into the page.

@@ -203,6 +203,41 @@ the same defect twice. Each check carries one tag:
 | 1.11 | Rate limits / token budgets / step caps present on LLM or API features (unbounded consumption). WARN, BLOCK if the feature handles money or sensitive data. | [GATE] | OWASP LLM06:2026; A06:2025 |
 | 1.12 | Installs in CI run with lifecycle scripts disabled; any dependency needing one is on an explicit allowlist with a reason. | [GATE] | Supply-chain worker S5 |
 
+**Check 1.2 — vendored taste runtime exemption (GAP-9, D9).** Gate 1.2
+exempts a file only if its project-relative path AND sha256 both match
+`scripts/gate/vendored-allowlist.txt` (taste pin v2.5.1, 27 runtime
+files). Scope is byte-identical vendored taste runtime assets ONLY —
+lab/demo/catalog files are never exempt (a copied lab file fails the
+gate; the fix is to stop copying it), a vendored file copied to any
+other project path does not match, and vendored JS must stay as separate
+files under `assets/` (inlining is unsupported — leg-2 1.2 still fails
+it). The gate stops being the control for the grandfathered sites; the
+expert becomes it. Per build, pre-land and pre-ship, taint-check the
+residual list the gate prints on every exemption: the runtime class-E
+sites `ui/notify/fragment.js:16` (`opts.items` raw HTML),
+`ui/search/fragment.js:20` (`rowsHTML(opts.queries…)` raw),
+`scenes/letter-bar-floods-the-ground/scene.js:41` (page headline text
+re-parsed as HTML), plus `ui/ui.js:106` (fetched local `fragment.html`
+carrying client copy), `diagrams/diagram.js:229` (fetched local icon SVG
+through hand-rolled regex cleaning — a partial strip, not a sanitiser),
+and the class-C feeds generally (fragment/component/meta/index/preset/
+type files as rewritten with client copy) — for each, what the actual
+feed contains in THIS build and whether any of it is user / model / API
+derived. Two hard rules: (1) notify/search callers passing user, model,
+or API data into `opts.items` / `opts.queries` are a BLOCK; (2) a
+lab/demo page must not ship — `diagrams/lab.html:126` (user-typed
+textarea content rendered via `innerHTML` on a JSON parse error) is
+never exempt and fails the gate if copied. **BLOCK if the taint check is
+skipped:** a build that vendors taste runtime without this per-occurrence
+taint check, pre-land AND pre-ship, is BLOCK under the fail-closed rule
+("a check that cannot run is a BLOCK, not a pass") — the exemption is
+void without its owner. There is no gate-time mechanical check for the
+skipped taint check, by design: the expert cross-check runs
+pre-land/pre-ship, AFTER the loop's gate runs, so a gate-time check for
+its record would be a chicken-and-egg (the record does not exist yet
+when the gate runs) — the blocking procedural rule above plus the gate's
+printed residual list on every exemption is the control.
+
 ### Stage 2 — Assembled-app checks (post-build, semantic + runtime) — BLOCK
 
 | # | Check | Tag | Anchor |

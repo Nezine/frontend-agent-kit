@@ -15,6 +15,12 @@
 #      reported version must equal the vendored scripts/VERSION exactly.
 #      A mismatch FAILS LOUDLY — the 62-rule registry lives in the engine,
 #      so a wrong engine silently applies the wrong registry;
+#   3b. Vendored-allowlist manifest vs taste tree (GAP-9, D9): the
+#      scripts/gate/vendored-allowlist.txt pin header must equal the
+#      SOURCES.md taste pin, every entry's sha256 must equal the vendored
+#      tree file's, and the key set must equal the tree's recomputed
+#      runtime sink-file set. A mismatch FAILS LOUDLY — a stale manifest
+#      must never ship as if it were current;
 #   4. `impeccable detect` runs on a clean fixture;
 #   5. the deterministic gate (scripts/gate/gate.sh) runs on the fixture;
 #   6. Playwright eyes: `playwright-cli --help`, serve over http (never
@@ -609,6 +615,127 @@ else
         fi
         ;;
     esac
+  fi
+fi
+
+# --- 3b. Vendored-allowlist manifest vs taste tree (GAP-9, D9) — FAIL LOUDLY on mismatch --------
+# Same style as the engine lockstep check (§3): the manifest
+# scripts/gate/vendored-allowlist.txt must match the vendored taste
+# assets tree for the pinned taste version, or a stale manifest ships
+# as if it were current. Three checks, all FAILs:
+#   (a) the manifest's pin header (tag + commit) equals the SOURCES.md
+#       taste pin;
+#   (b) every manifest entry's sha256 equals the vendored tree file's
+#       sha256 for that asset-relative path, and every entry names a
+#       file that exists in the tree;
+#   (c) the manifest's key set equals the runtime INCLUSION list
+#       (scripts/gate/vendored-runtime-list.txt) — the SAME file the
+#       generator (vendor-update.sh) reads, so the two cannot drift, by
+#       construction (RR-04, fix round 2: the old mirrored regex is gone;
+#       the generator and this check share one source of truth, and a
+#       manifest entry not in the inclusion list FAILS here).
+# A missing manifest FAILS (no exemption is silently assumed). What this
+# does NOT check, stated plainly: whether a fresh classification of the
+# sink sites was recorded for the pin (w-gap9-analysis.md §1 method) —
+# that is a re-pin process step owned by the vendor-update.sh reminder,
+# not a file verify.sh can read; the manifest header records the pin so
+# the classification note can be matched to it by hand.
+# RT-06 (2026-11-11): §3b is self-consistency only — it cannot detect a
+# tampered tree + refreshed SHA256SUMS + regenerated manifest, because
+# all three inputs (manifest, tree, SOURCES.md pin) are produced by the
+# same vendor-update.sh run from the same upstream clone. No cheap real
+# anchor exists inside this checkout: anyone who can rewrite the tree +
+# SHA256SUMS + manifest can also rewrite gate.sh / verify.sh themselves
+# (same trust boundary as the manifest itself — RT-12: manifest integrity
+# = repo-checkout integrity), so an in-checkout upstream check (e.g.
+# resolving the tag via git ls-remote) would be theatre against that
+# attack — it checks the pin label, not the tree bytes, and the attacker
+# controls the checker. The tamper control is therefore the re-pin
+# review itself (diff + re-classification + git-history review by a
+# human), not this check; §3b's job is detecting inconsistency
+# (stale/mismatched manifest), and it does that. No anchor was built
+# here deliberately.
+taste_allowlist="$root/scripts/gate/vendored-allowlist.txt"
+taste_assets="$root/vendor/taste/skills/taste-skill/assets"
+taste_pin="$(sed -n 's/^<!-- PIN: taste | repo=[^ |]* | tag=\([^ |]*\) | commit=\([^ >]*\).*/\1 \2/p' "$root/SOURCES.md" | head -n 1)"
+if [[ ! -f "$taste_allowlist" ]]; then
+  fail "vendored-allowlist.txt missing ($taste_allowlist) — gate 1.2 has no hash exemption; regenerate it with vendor-update.sh taste <tag>"
+elif [[ -z "$taste_pin" ]]; then
+  fail "cannot establish the SOURCES.md taste pin — vendored-allowlist lockstep cannot be checked"
+elif [[ ! -d "$taste_assets" ]]; then
+  fail "vendored taste assets tree missing at $taste_assets — vendored-allowlist lockstep cannot be checked"
+else
+  manifest_pin="$(sed -n 's/^# pin: taste | tag=\([^ |]*\) | commit=\([^ ]*\).*/\1 \2/p' "$taste_allowlist" | head -n 1)"
+  if [[ "$manifest_pin" != "$taste_pin" ]]; then
+    fail_loud "vendored-allowlist.txt pin header '$manifest_pin' != SOURCES.md taste pin '$taste_pin' — the manifest is stale for this pin. Re-run vendor-update.sh taste <tag> (and re-classify the sink sites first)."
+  else
+    ok "vendored-allowlist.txt pin header matches the SOURCES.md taste pin ($taste_pin)"
+  fi
+  allowlist_bad=0
+  while IFS= read -r allow_line; do
+    case "$allow_line" in \#*|"") continue ;; esac
+    allow_hash="${allow_line%%  *}"; allow_path="${allow_line#*  }"
+    tree_file="$taste_assets/${allow_path#assets/}"
+    if [[ ! -f "$tree_file" ]]; then
+      allowlist_bad=1; printf 'FAIL: vendored-allowlist.txt lists %s but no such file exists in the vendored taste tree\n' "$allow_path"
+    elif command -v sha256sum >/dev/null 2>&1; then
+      actual_hash="$(sha256sum -- "$tree_file" 2>/dev/null | awk '{print $1}')"
+      if [[ "$actual_hash" != "$allow_hash" ]]; then
+        allowlist_bad=1; printf 'FAIL: vendored-allowlist.txt hash mismatch for %s (manifest %s, tree %s)\n' "$allow_path" "$allow_hash" "$actual_hash"
+      fi
+    else
+      allowlist_bad=1; printf 'FAIL: cannot hash %s (no sha256sum) — vendored-allowlist lockstep cannot be proven\n' "$tree_file"
+    fi
+  done < "$taste_allowlist"
+  # Reverse direction: the manifest's key set must equal the runtime
+  # INCLUSION list (scripts/gate/vendored-runtime-list.txt) — the SAME
+  # file vendor-update.sh generates from (RR-04, fix round 2: single
+  # source of truth, no mirrored pattern). Separately, and
+  # informationally only (NOT a fail — the 17 lab/demo/catalog files are
+  # unlisted by design), print the review set: sink files in the tree
+  # NOT on the inclusion list, so a NEW upstream file is visible at
+  # verify time and must be reviewed against the list at re-pin.
+  runtime_list="$root/scripts/gate/vendored-runtime-list.txt"
+  allow_keys="$(grep -v '^#' "$taste_allowlist" | grep -v '^$' | awk '{print $2}' | sort)"
+  if [[ ! -f "$runtime_list" ]]; then
+    allowlist_bad=1
+    printf 'FAIL: vendored runtime inclusion list missing (%s) — the manifest cannot be checked against its source of truth\n' "$runtime_list"
+  else
+    # RR2-09 (fix round 3): §3b must agree with the generator about list
+    # hygiene, not just the key set. The generator refuses a duplicate or
+    # unsorted list (vendor-update.sh: duplicate check via sort -u count,
+    # sorted check via cmp against sort) while the old set-only comparison
+    # (sort -u) passed — so a re-pin was blocked while verify said OK.
+    # The two checks below mirror the generator's exactly (same cleaning
+    # pipeline, same plain `sort`): a duplicate or unsorted list now
+    # fails §3b too.
+    list_raw="$(grep -v '^[[:space:]]*#' "$runtime_list" | grep -v '^[[:space:]]*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    list_keys="$(printf '%s\n' "$list_raw" | sort -u)"
+    if [[ "$(printf '%s\n' "$list_raw" | sort -u | grep -c . || true)" != "$(printf '%s\n' "$list_raw" | grep -c . || true)" ]]; then
+      allowlist_bad=1
+      printf 'FAIL: vendored runtime inclusion list has duplicate entries (%s) — the generator refuses such a list; deduplicate it first\n' "$runtime_list"
+    fi
+    if ! cmp -s <(printf '%s\n' "$list_raw") <(printf '%s\n' "$list_raw" | sort); then
+      allowlist_bad=1
+      printf 'FAIL: vendored runtime inclusion list is not sorted (%s) — the generator refuses such a list; sort it first\n' "$runtime_list"
+    fi
+    if [[ "$allow_keys" != "$list_keys" ]]; then
+      allowlist_bad=1
+      printf 'FAIL: vendored-allowlist.txt key set != runtime inclusion list (%s). In manifest but not in inclusion list:\n%s\nIn inclusion list but not in manifest:\n%s\n' "$runtime_list" "$(comm -23 <(printf '%s\n' "$allow_keys") <(printf '%s\n' "$list_keys"))" "$(comm -13 <(printf '%s\n' "$allow_keys") <(printf '%s\n' "$list_keys"))"
+    fi
+    tree_sink_keys="$(
+      grep -rlE 'dangerouslySetInnerHTML|innerHTML[[:space:]]*=|outerHTML[[:space:]]*=|document\.write[[:space:]]*\(' "$taste_assets" 2>/dev/null \
+      | sed "s|^$taste_assets/|assets/|" | sort || true
+    )"
+    unlisted_sink="$(comm -13 <(printf '%s\n' "$list_keys") <(printf '%s\n' "$tree_sink_keys") || true)"
+    if [[ -n "$unlisted_sink" ]]; then
+      printf 'NOTE: %s sink file(s) in the vendored tree NOT on the inclusion list (lab/demo/catalog by classification, or NEW — review each against the inclusion list at re-pin; a new runtime file enters the manifest ONLY by being added to the list after classification):\n%s\n' "$(printf '%s\n' "$unlisted_sink" | grep -c .)" "$unlisted_sink"
+    fi
+  fi
+  if [[ "$allowlist_bad" == 0 ]]; then
+    ok "vendored-allowlist.txt matches the vendored taste tree hash-for-hash ($(printf '%s\n' "$allow_keys" | grep -c .) entries, pin $taste_pin)"
+  else
+    fail "vendored-allowlist.txt does not match the vendored taste tree — see lines above. Re-run vendor-update.sh taste <tag> (and re-classify the sink sites first)."
   fi
 fi
 

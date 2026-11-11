@@ -19,16 +19,128 @@
 #
 # Backstop: gate.sh's built-in 1.1 grep ALSO scans design/run-log.jsonl
 # for the same high-confidence secret patterns (AKIA / ghp_ / sk- /
-# private keys / api_key|secret|password assignments). A real secret in
-# the run log still FAILS the gate there even though gitleaks skips the
-# file. tokensHash itself does not match either grep pattern (no
+# private keys / api_key|secret|password assignments), AND a per-line JSON
+# check (gate.sh via scripts/gate/runlog-check.mjs, RR-06, fix round 2)
+# parses each line and checks the DECODED keys/values — a unicode-escaped
+# keyword, a multi-line split, an escaped-quote value, and a bare >=32-hex
+# value under a non-tokensHash key all FAIL there. A real secret in the
+# run log still FAILS the gate even though gitleaks skips the file.
+# tokensHash itself does not match either grep pattern (no
 # api_key/secret/password/access_token keyword on its line), so the lock
-# hash stays clean. Residual hole, stated plainly: a generic
-# high-entropy string on a non-tokensHash line in the run log, matching
-# neither built-in pattern, would be missed by both layers. The run log
-# is append-only machine-written JSON whose only high-entropy field by
+# hash stays clean. Residual hole, stated plainly (narrowed, RR-06): a
+# NON-hex high-entropy string on a non-tokensHash line in the run log, in
+# a shape no pattern recognises, would be missed by both layers. The run
+# log is append-only machine-written JSON whose only high-entropy field by
 # convention is tokensHash, so that hole needs a secret pasted into a
 # notes/findings field to bite.
+#
+# GAP-10 (D10, 2026-11-11): the Impeccable engine writes a per-roll seed
+# record at .impeccable/questions/seeds/<16-lower-hex>.json — one JSON
+# object, one key `key`, whose value is 32 lower-hex chars — and
+# gitleaks' generic-api-key rule flags that line as a leak (verified
+# 2026-11-11 against gitleaks 8.30.1, kit config and default rules
+# alike). The value is a local dice-roll identifier, not a credential:
+# random, per-roll, never sent anywhere except as an opaque identifier
+# in the roll request, granting access to nothing; its public stand-in
+# (the 16-hex reference, `seed:` + 16 hex) is designed to be committed
+# in briefs. The seed format is upstream-controlled (closed engine
+# binary; the kit writes no seed file), so the fix belongs in the
+# scanner layer, not the format.
+#
+# Scope — the same path-only narrowness as the run log, one directory
+# down: the seeds files (one per roll/reroll, new 16-hex filename each
+# time — one path rule covers them all) plus the exact in-tree salt
+# path .impeccable/questions/seed-salt (33 bytes, one 32-hex line; it
+# does not trip gitleaks today — bare hex, no keyword — but it
+# demonstrably lands in-tree in real probe builds, it is the same
+# material class, and a future gitleaks rule flagging bare high-entropy
+# strings would otherwise red the gate with no kit change). NOT the
+# whole .impeccable/ dir (it would also exempt config.json,
+# config.local.json, mocks/, build-phase state and serve-question hand
+# records — files whose future contents the kit does not control) and
+# NOT roll.json (it does not trip gitleaks — only the 16-hex reference
+# plus public catalog slugs/URLs — so exempting it would be scope
+# without a finding behind it; a real secret pasted into roll.json is
+# still caught by gitleaks). No regex allowlist on 32-hex content: the
+# OR semantics above would exempt every 32-hex secret in every file.
+#
+# Backstop (load-bearing, not decorative): gate.sh's built-in 1.1 grep
+# ALSO scans exactly these seed files with the same two patterns, before
+# the scanner branch — a known-shaped secret pasted into a seeds file or
+# the in-tree salt file still FAILS 1.1 there. The backstop also
+# structurally validates the seed files (a seeds file must be exactly
+# {"key": "<32-lower-hex>"}, the salt file exactly one 32-lower-hex
+# line — gate.sh via the node helper scripts/gate/seed-structural.mjs,
+# RR-07; the old python3 implementation is gone, so there is no fallback
+# to be inequivalent); see the residual-hole paragraph below for exactly
+# which evasion shapes that closes. Without the backstop the allowlist
+# would be a blind spot (verified: a planted token in a seeds file is
+# invisible to gitleaks under this allowlist). Correction to an earlier
+# gloss of that blind spot (council-2, verified): for a ghp_ + 20-char
+# token the backstop grep is the ONLY layer, not a second layer — gitleaks'
+# github-pat rule needs 36 chars, so gitleaks would not have caught it even
+# without the allowlist (a ghp_ + 36-char token fires as github-pat); the
+# backstop must never be dropped as "defence in depth we can skip".
+#
+# Residual hole, stated plainly (RT-09, 2026-11-11, updated fix round 2):
+# with gitleaks skipping the seed files, the backstop is the only layer
+# there, and it is now two checks, not one — (a) the grep patterns and
+# (b) a structural check (gate.sh via the node helper
+# scripts/gate/seed-structural.mjs) that a seeds file is exactly {"key":
+# "<32-lower-hex>"} and the salt file is exactly one 32-lower-hex line.
+# Together they close, in seeds/salt files: JSON-quoted assignments
+# ("api_key": "<secret>", with or without whitespace before the colon —
+# the assign pattern accepts an optional closing quote AND whitespace
+# after it, RT-04), unquoted bare-hex values (G6), an extra field holding
+# a bare 64-hex string (G1), a secret split across two fields (G2), a
+# unicode-escaped keyword (G3), a multi-line key/value split (G4), an
+# array of bare strings (G9), an escaped-quote value (G10), and an
+# apostrophe-split value (G17). The structural check FAILS CLOSED on any
+# input it cannot parse (RR-05): a UTF-8 BOM prefix, trailing garbage
+# after the JSON value, a bare string instead of an object, an empty file
+# — all FAIL 1.1 loudly, never a silent no-verdict — so the old hole
+# "(ii) a bare high-entropy string with no keyword in a seeds file that
+# no longer parses as JSON" is CLOSED. If node or the helper is
+# unavailable while seed files exist, 1.1 FAILS CLOSED naming node (RR-07)
+# — the old python3-absent degradation (note saying "degraded, not a
+# pass" next to a PASS line) is GONE with the python3 dependency.
+# What is STILL missed, by name: (i) a real credential written as the
+# "key" value itself in exactly 32 lower-hex form — indistinguishable from
+# the legitimate key by construction (sharpest form, unchanged); (ii) the
+# same bare-string hole in design/run-log.jsonl on a non-tokensHash line,
+# matching neither grep pattern — NARROWED, not closed (RR-06): the
+# run-log per-line JSON check (gate.sh via
+# scripts/gate/runlog-check.mjs) now closes the G3/G4/G10 shapes there
+# (unicode-escaped keyword, multi-line split, escaped-quote value) and
+# bare >=32-hex values under non-tokensHash keys, so what remains is a
+# NON-hex high-entropy string in a free-text field under a non-keyword
+# key, in a shape no pattern recognises; (RR2-03/04/05/06/11, fix round
+# 3): the run-log check now also rejects duplicate JSON keys, suffixed /
+# spaced keyword variants (api_key2, secret_key, "api key"), current-
+# format sk-proj-/sk-ant- keys, 32-hex values under *sha keys and 40-hex
+# values in non-sha fields (the *sha exemption is now key-AND-length, 40
+# or 64 hex only), and secret-shaped keys. And the 1.1-only grep pass
+# (gate.sh, RR2-07) now runs the same three patterns over ALL project
+# text files, not just code files — so a keyword-labelled or
+# high-confidence secret in a .txt/.md/.json/.env file fails 1.1 even
+# where gitleaks misses it (1 of 7 random AKIA keys missed by gitleaks
+# 8.30.1, reproduced 2026-11-11; the grep pass catches it). The miss is
+# format-dependent (re-QC #3, 2026-11-11): 0 of 7 fresh random AKIA keys
+# flagged in `aws_access_key_id = <key>` format (kit and default config
+# alike), while the same values in `key: <key>` format flag. The AWS docs
+# example key AKIAIOSFODNN7EXAMPLE is exempted from that pass only
+# (gitleaks passes it too); a bare word-phrase password with NO keyword
+# label is still missed everywhere. (iii) a newline-split assignment
+# ("api_key":\n"<secret>") in an ordinary CODE file — grep is line-based
+# and neither line matches alone (RR-08); it is closed in seeds files by
+# the structural check (JSON is whitespace-insensitive) and in the run log
+# by the per-line JSON check (a split across lines is unparseable), but
+# code files have no JSON normalisation to lean on. The seed files are
+# machine-written JSON whose only high-entropy field by construction is
+# the 32-hex key, gitignored (`*`) by the engine itself, and single-purpose
+# (one file per roll), so every remaining hole needs a secret pasted into
+# the seed record to bite. Known-shaped secrets still FAIL via the
+# backstop grep.
 #
 # [extend] useDefault = true keeps gitleaks' full default rule set and
 # merges this allowlist on top. A --config WITHOUT [extend] would REPLACE
@@ -42,5 +154,5 @@
 useDefault = true
 
 [allowlist]
-description = "run-log tokensHash only: gitleaks skips design/run-log.jsonl, whose tokensHash sha256 content hash trips generic-api-key; a real secret in the run log still fails via gate.sh's built-in 1.1 grep over the same file"
-paths = ['''(^|/)design/run-log\.jsonl$''']
+description = "run-log tokensHash + Impeccable seed files only: gitleaks skips design/run-log.jsonl (tokensHash sha256 trips generic-api-key) and .impeccable/questions/seeds/*.json + questions/seed-salt (the 32-hex seed key trips generic-api-key); a real secret in any of these files still fails via gate.sh's built-in 1.1 grep over the same files"
+paths = ['''(^|/)design/run-log\.jsonl$''', '''(^|/)\.impeccable/questions/seeds/[^/]+\.json$''', '''(^|/)\.impeccable/questions/seed-salt$''']

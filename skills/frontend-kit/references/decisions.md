@@ -84,6 +84,69 @@ from those records in `research/judge-calibration.md`. "P8's gate-growth rule"
 in `references/anti-cliche.md` is a different thing — the rule that the gate
 grows only from observed failures — and is not labelled P8 there.
 
+## D9 — GAP-9: hash-based carve-out for byte-identical vendored taste runtime assets
+
+Council (3–0, amendments recorded above; scope split resolved for C3's
+narrowing — see reconciliation). **Adopt (b3):** `gate.sh` check 1.2 exempts a
+file only if its project-relative path and sha256 both match
+`scripts/gate/vendored-allowlist.txt` — a committed manifest generated at
+release/re-pin from `vendor/SHA256SUMS` restricted to the taste assets subtree
+and narrowed to the runtime sink files only (expected 27 files at pin v2.5.1;
+lab/demo/catalog files are never listed and fail the gate mechanically if
+copied). Paths are rebased to `assets/<relpath>`; a vendored file copied to any
+other project path does not match (fail closed on relocation). Rewrite (a),
+path-based (b1), and marker-based (b2) exemptions are rejected. **Settlement
+of the §2.1 contradiction:** taste governs runtime vendoring (motion layer
+"not optional"); frontend-kit Step 2's "one HTML file" governs the deliverable
+page shape; 2.1a's GSAP route is scroll-motion only. **Residual risk:** the 3
+runtime class-E sites and the class-C feeds are
+grandfathered as exact bytes; ownership transfers explicitly to the security
+expert's per-occurrence taint check (checklist 1.2, pre-land and pre-ship,
+per-build), and the gate's exemption note must print the residual list every
+time it exempts a file, naming pin v2.5.1. Notify/search callers passing
+user, model, or API data into `opts.items` / `opts.queries` are a BLOCK.
+**Regeneration:** `vendor-update.sh` taste branch regenerates the manifest next
+to `refresh_manifest` (fail loudly on failure); `verify.sh` checks manifest vs
+tree; re-classification of changed sites is required at each re-pin before the
+new manifest ships (blocking); a missing or stale manifest means no exemption
+(fail closed, with a printed note when missing). **Inlining vendored JS stays
+unsupported** (leg-2 1.2) — document "do not inline vendored JS, keep it as
+separate files under `assets/`". Operative form: `scripts/gate/gate.sh` §1.2 +
+`scripts/gate/vendored-allowlist.txt` + `vendor-update.sh` + `verify.sh` +
+`skills/frontend-kit/SKILL.md` Step 2 (new 2.1b) + `skills/taste-reference/SKILL.md`
++ `skills/frontend-kit/references/security-checklist.md` check 1.2 +
+`skills/frontend-kit/experts/security.md` check 1.2. Non-blocking upstream
+follow-up (not this wave): report the 3 runtime class-E sites to
+Leonxlnx/taste-skill.
+
+## D10 — GAP-10: seeds-only gitleaks path allowlist + backstop grep
+
+Council (3–0, amendments recorded above). **Adopt (b):** add to the single
+`[allowlist]` in `scripts/gate/.gitleaks.toml` (keeping `[extend] useDefault =
+true`) exactly `'''(^|/)\.impeccable/questions/seeds/[^/]+\.json$'''` and
+`'''(^|/)\.impeccable/questions/seed-salt$'''`, with the mechanism and
+residual-hole paragraphs in the config comment in the run-log comment's honest
+style. **Backstop (required):** `gate.sh` §1.1 gains a block mirroring the
+run-log backstop, placed before the scanner branch, grepping
+`seeds/*.json` + `questions/seed-salt` with the same two patterns; a hit fails
+1.1. **In scope for this fix:** widen the assign pattern to accept an optional
+closing quote between keyword and colon (verified strict superset by council-2;
+no new false positive on the seed shape or `tokensHash`) — it closes the
+identical gap in the run-log backstop; run it against the regression fixtures
+before shipping. **Rejected:** whole-`.impeccable/` allowlist, `roll.json`
+allowlist, regex allowlist on 32-hex content, format change (a), waiver
+process (c). **Correction to the worker's account (binding):** for a `ghp_` +
+20-char token the backstop grep is the ONLY layer, not a second layer
+(gitleaks' `github-pat` rule needs 36 chars; only the 36-char shape fires, as
+`github-pat`, not `generic-api-key`) — the config comment and any regression
+test must reflect this; do not cite the worker's §3b sentence as written.
+**Closing condition:** test trufflehog against the synthetic fixture and record
+the result before GAP-10 is claimed closed; if it flags the seeds file, record
+it as a documented limitation with the exact condition (gitleaks is the pinned
+scanner install.sh installs; a trufflehog-only machine needs its own exclusion
+or accepts the failure). Operative form: `scripts/gate/.gitleaks.toml` +
+`scripts/gate/gate.sh` §1.1.
+
 ## D11 — Judge fix drops `100vh`: resolve by minimal token-sum internal growth (candidate-B pattern), never by restoring `100vh` or exempting SR-2
 
 Council (2–1, dissent recorded in `build-notes/sr2-council/decision.md` §5; SR-2 vs judge fix 1, 2026-11-11). **Option (1) — adopt candidate B as-built as the next build / build of record, and its pattern as the standing resolution.**

@@ -157,6 +157,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# RT-08 fix (2026-11-11): strip trailing slashes from --target up front.
+# A trailing slash made project_dir end in "/", so the §1.2 exemption
+# case pattern became "<dir>//*" and never matched a find-printed path —
+# all 27 hash exemptions silently voided on an ordinary tab-completed
+# invocation (fail-closed, but with no hint of the cause). Normalising
+# here fixes every downstream use of $target/$project_dir at once.
+while [[ "$target" == */ && "$target" != "/" ]]; do target="${target%/}"; done
+
 if [[ "$self_test" == 1 ]]; then
   work="$(mktemp -d)"
   mkdir -p "$work/design"
@@ -220,16 +228,17 @@ if [[ -f "$target" ]]; then
 elif [[ "$target" == */design/variants || "$target" == */design/variants/ ]]; then
   # Bash 3.2 has no line-to-array builtin (stock macOS /bin/bash is 3.2;
   # the feature arrived in bash 4) — read-loop instead (macOS phase, D12).
-  # Same form at every site below.
+  # Same form at every site below. NUL-delimited (RR4-04): a newline in
+  # a filename must not split the list (find -print0, read -d '').
   html_files=()
-  while IFS= read -r _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f 2>/dev/null || true)
+  while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f -print0 2>/dev/null || true)
 else
   # .taste-skill/ excluded (G-7): the checker's own output dir must never
   # be scanned as build output. design/variants/ + design/demo.html +
   # design/v0.html excluded as before (unpicked alternatives / token-proof
   # artifact / skeleton — none of them is the deliverable).
   html_files=()
-  while IFS= read -r _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' 2>/dev/null || true)
+  while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do html_files+=("$_f"); done < <(find "$target" -name '*.html' -type f -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -not -path '*/design/demo.html' -not -path '*/design/v0.html' -print0 2>/dev/null || true)
 fi
 
 # --security-only runs ONLY the §6 security section below: legs 1–5 are
@@ -257,7 +266,7 @@ else
     fail "design/tokens.css under $project_dir defines no custom properties (--*) — not a taste lock, no pass"
   else
     css_files=()
-    while IFS= read -r _f || [[ -n "$_f" ]]; do css_files+=("$_f"); done < <(find "$project_dir" -name '*.css' -type f -not -name 'tokens.css' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' 2>/dev/null || true)
+    while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do css_files+=("$_f"); done < <(find "$project_dir" -name '*.css' -type f -not -name 'tokens.css' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -print0 2>/dev/null || true)
     used=0
     for tok in "${defined_tokens[@]}"; do
       if [[ "${#html_files[@]}" -gt 0 ]] && grep -qF -- "$tok" "${html_files[@]}" 2>/dev/null; then used=1; break; fi
@@ -438,7 +447,7 @@ else note "pa11y not installed — skipped (npx pa11y to add it)"; fi
 # scripts/gate/converge-check.mjs. BLOCKING: a failure here fails the
 # gate (no grade) and blocks the human gate (step 6.1). Runs only when
 # design/PLAN.md exists under the project dir; absence skips with a
-# note, never a failure (the verify.sh fixture has no plan). Never on
+# note, never a failure. Never on
 # a variants-dir target (unpicked alternatives are not the
 # deliverable) and never on the demo single-file target. When node is
 # absent the check is skipped with a warning and the orchestrator runs
@@ -492,16 +501,68 @@ secpass() { sec_pass=$((sec_pass+1)); printf 'SECURITY %s: PASS — %s\n' "$1" "
 secfail() { sec_fail_n=$((sec_fail_n+1)); fail "security $1: $2"; }
 secna() { sec_na=$((sec_na+1)); printf 'SECURITY %s: N/A — %s\n' "$1" "$2"; }
 
+# RT-01 fix (2026-11-11), scope narrowed in fix round 2 (RR-09 + re-QC
+# defect 2): fail closed on ANY symlink in the scanned scope. The §6 greps
+# build their file list with `find -type f`, which never yields a symlinked
+# file or anything under a symlinked directory, and gitleaks 8.30.1 likewise
+# does not follow symlinks (verified: a symlinked secret file scans as "no
+# leaks found", and a symlinked assets/ dir with a tampered sink passes 1.2
+# with SECURITY RESULT: PASS). A shipped static site has no legitimate need
+# for symlinks in its deliverable tree, so the gate fails loudly and names
+# every link instead of resolving them: `find -L` alone would fix the grep
+# layer but NOT the gitleaks 1.1 layer, so fail-on-symlink is the control
+# that closes both.
+# Scope, named explicitly (the FAIL message below says the same — the old
+# message claimed "symlink(s) under %s" with no qualification while dirs
+# were excluded): the project tree MINUS node_modules, .git and
+# .taste-skill. design/variants is NOT excluded here (re-QC defect 2):
+# variants are kit-owned, never legitimately symlinked, and the gate can be
+# run explicitly against a variants dir — so a symlink in design/variants
+# fails, even though a REGULAR sink file there still passes 1.2 by the
+# scans' design (unpicked alternatives, excluded from the scans; the
+# deliverable gate re-scans on copy). The symlink check is deliberately
+# stricter than the scans in variants.
+# Asymmetries, stated, not hidden: (a) a TOP-LEVEL node_modules symlink IS
+# caught (its path is ".../node_modules" with no trailing "/node_modules/"
+# segment, so the exclusion does not match it), while symlinks NESTED
+# inside node_modules are not — pnpm legitimately symlinks there, so
+# failing there would false-positive on real projects; a monorepo layout
+# that symlinks the node_modules directory itself therefore fails the gate
+# (copy the real directory in instead). (b) Symlinks inside .git/ and
+# .taste-skill/ are not caught — out of scan scope by design, and a symlink
+# there is no worse than a regular file there (neither is scanned, neither
+# is served). (c) TOCTOU is a labelled hypothesis, accepted, no fix: the
+# window between this find and the later scans is milliseconds and needs a
+# concurrent writer during the gate run; a writer active during the gate
+# could also modify files after the gate. The project dir itself being a
+# symlink fails too: GNU find with default -P does not descend into a
+# symlinked operand at all, so without the -L check below the scans would
+# go vacuous — that check is load-bearing, do not remove it.
+# (The seed backstop below still follows a symlinked seed file via its
+# glob + -f test — that asymmetry is now moot, since any symlink fails
+# here first.)
+sec_symlinks="$(find "$project_dir" -type l -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' 2>/dev/null | sort || true)"
+if [[ -L "$project_dir" ]]; then sec_symlinks="$project_dir"$'\n'"$sec_symlinks"; fi
+if [[ -n "$sec_symlinks" ]]; then
+  sec_fail_n=$((sec_fail_n+1))
+  printf 'SECURITY symlink: FAIL — symlink(s) under %s outside node_modules/.git/.taste-skill (the gate scans regular files only; a symlinked file or directory is invisible to the 1.1–1.12 greps and to gitleaks — remove the link(s) or copy the real file(s) in):\n' "$project_dir"
+  printf '%s\n' "$sec_symlinks" | head -20
+  fail "security symlink: symlink(s) under $project_dir outside node_modules/.git/.taste-skill are not scanned (find -type f + gitleaks both skip symlinks) — see SECURITY symlink lines above"
+fi
+
 # Files the sink/secret greps scan: the built .html files (the same set as
 # the rest of the gate) + local .js/.mjs/.css under the project (excluding
 # node_modules, .git, .taste-skill, design/variants) + package.json when
 # present. The built bundle is a scan subject for 1.1 ("or bundle").
+# RR4-04 (fix round 5): NUL-delimited throughout - a newline in a filename
+# must not split the list (find -print0, sort -z, read -d '' — no mapfile:
+# stock macOS /bin/bash is 3.2, which has no mapfile builtin).
 sec_scan_files=()
-while IFS= read -r _f || [[ -n "$_f" ]]; do sec_scan_files+=("$_f"); done < <({
-  if [[ "${#html_files[@]}" -gt 0 ]]; then printf '%s\n' "${html_files[@]}"; fi
-  find "$project_dir" \( -name '*.js' -o -name '*.mjs' -o -name '*.css' \) -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' 2>/dev/null
-  if [[ -f "$project_dir/package.json" ]]; then printf '%s\n' "$project_dir/package.json"; fi
-} | sort -u || true)
+while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_scan_files+=("$_f"); done < <({
+  if [[ "${#html_files[@]}" -gt 0 ]]; then printf '%s\0' "${html_files[@]}"; fi
+  find "$project_dir" \( -name '*.js' -o -name '*.mjs' -o -name '*.css' \) -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/variants/*' -print0 2>/dev/null
+  if [[ -f "$project_dir/package.json" ]]; then printf '%s\0' "$project_dir/package.json"; fi
+} | sort -z -u || true)
 
 # Grep an ERE over the scanned code files (not .css), printing
 # <file>:<line>:<match> lines. Never fails the script. Extra grep flags
@@ -527,24 +588,347 @@ sec_grep() {
 # FAILS, naming the missing tool (fail closed; a pattern scan is not a
 # secret scanner). A grep hit FAILS outright, scanner or not.
 # Gitleaks runs with the kit config scripts/gate/.gitleaks.toml (extends
-# gitleaks' defaults; allowlists ONLY design/run-log.jsonl — see the
-# config's own comment for the verified OR semantics and the residual
-# hole). The built-in grep below ALSO scans design/run-log.jsonl, so a
-# real secret in the run log still FAILS even though gitleaks skips the
-# file; tokensHash itself matches neither grep pattern.
-sec_11_pat='(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(live|test)-[A-Za-z0-9]{16,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'
-sec_11_assign_pat=$'(api[_-]?key|apikey|secret|passwd|password|access[_-]?token)[[:space:]]*[:=][[:space:]]*[\'"][^\'"]{16,}[\'"]'
-sec_11_hits="$(sec_grep "$sec_11_pat")"
+# gitleaks' defaults; allowlists ONLY design/run-log.jsonl and the
+# Impeccable seed files (.impeccable/questions/seeds/*.json +
+# questions/seed-salt) — see the config's own comment for the verified OR
+# semantics and the residual holes). The built-in grep below ALSO scans
+# design/run-log.jsonl AND the seed files, so a real secret in either
+# still FAILS even though gitleaks skips the file; tokensHash itself
+# matches neither grep pattern. GAP-10 correction (D10, council-2): for a
+# ghp_ + 20-char token the backstop grep is the ONLY layer — gitleaks'
+# github-pat rule needs 36 chars, so gitleaks would not have caught it
+# even without the allowlist; the backstop must never be dropped as
+# "defence in depth we can skip". The assign pattern accepts an optional
+# closing quote between keyword and colon (D10 widening) AND whitespace
+# after that quote (RT-04 fix), so a JSON-quoted "api_key": "..." and a
+# spaced "api_key" : "..." assignment both match — verified a strict
+# superset with no new false positive on the seed shape {"key": "<32-hex>"}
+# or on tokensHash lines. The unquoted pattern below (RT-09 G6) catches
+# a bare hex value ("api_key": <20-hex>, no quotes — not valid JSON, so
+# no JSON normalisation can save it). Hex-only, not general alnum: a
+# value such as process.env.DB_PASSWORD must NOT match (its first hex
+# run is short, then a dot breaks it). The hex run also requires a
+# TERMINATOR (RR-08, fix round 2): the character after the run must be a
+# non-hex, non-alphanumeric, non-dot character or end-of-line, so a
+# dotted identifier whose first run is 16+ hex chars
+# (api_key: <16-hex>.process) does NOT match — it is an identifier, not a
+# bare hex value. Both assign patterns are
+# case-insensitive (-i) at every use site.
+# KEYWORD WIDENING (RR2-04, fix round 3; RR3-02, fix round 4B): the
+# keyword fragment accepts an optional continuation that must start
+# with '_', a digit, '-', or '.' — or a space/tab starting a spaced
+# continuation — so api_key2, secret_key, secret-key, secret.key,
+# password-hash, api-key-2 and "api key" all match, while secretary (a
+# bare letter continuing the word) does NOT. A trailing space/tab also
+# matches. The dotted separator inside the base keyword (api.key,
+# access.token) is accepted too — dotted names occur in config-style
+# keys. The same widening lives in runlog-check.mjs's KEYWORD_RE —
+# change both together.
+# HIGH-CONFIDENCE WIDENING (RR2-05, fix round 3): the sk- family covers
+# the current vendor formats — OpenAI project keys sk-proj-, service-
+# account keys sk-svcacct- and admin keys sk-admin-, and Anthropic keys
+# sk-ant- (api03/admin01/oat01 and later, via the open sk-ant- arm).
+# CASE (RR3-06, fix round 4B): sec_11_pat is grepped with -i at EVERY
+# use site (sec_grep, run-log, seeds, text pass, and the example-strip
+# re-test below runs with nocasematch) — so SK-PROJ- / SK-ANT- match
+# too, agreeing with HIGH_CONF_RE's `i` flag and with the already
+# case-insensitive assign patterns. Issued keys are lowercase, so an
+# uppercased prefix is not a usable credential; the -i is for
+# layer agreement, not for a live credential shape.
+# MAINTENANCE HAZARD: this pattern is DUPLICATED in runlog-check.mjs's
+# HIGH_CONF_RE (same alternation, JS syntax vs bash ERE) — change both
+# together; they are kept as two copies because one lives in bash and
+# the other in a node module.
+sec_11_pat='(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(live|test)-[A-Za-z0-9]{16,}|sk-(proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)'
+sec_11_assign_pat=$'(api[_ .-]?key|apikey|secret|passwd|password|access[_ .-]?token)([_0-9.-][A-Za-z0-9_.-]*|[ \t][A-Za-z0-9_ \t.-]*)?[[:space:]]*["\']?[[:space:]]*[:=][[:space:]]*[\'"][^\'"]{16,}[\'"]'
+sec_11_assign_unquoted_pat=$'(api[_ .-]?key|apikey|secret|passwd|password|access[_ .-]?token)([_0-9.-][A-Za-z0-9_.-]*|[ \t][A-Za-z0-9_ \t.-]*)?[[:space:]]*["\']?[[:space:]]*[:=][[:space:]]*[0-9A-Fa-f]{16,}([^0-9A-Za-z.]|$)'
+sec_11_hits="$(sec_grep -i "$sec_11_pat")"
 sec_11_assign="$(sec_grep -i "$sec_11_assign_pat")"
+sec_11_assign_unq="$(sec_grep -i "$sec_11_assign_unquoted_pat")"
 sec_11_log_hits=""
 sec_11_log_assign=""
+sec_11_log_assign_unq=""
+sec_11_log_struct=""
 if [[ -f "$project_dir/design/run-log.jsonl" ]]; then
-  sec_11_log_hits="$(grep -HnE "$sec_11_pat" -- "$project_dir/design/run-log.jsonl" 2>/dev/null || true)"
+  sec_11_log_hits="$(grep -HnEi "$sec_11_pat" -- "$project_dir/design/run-log.jsonl" 2>/dev/null || true)"
   sec_11_log_assign="$(grep -HnEi "$sec_11_assign_pat" -- "$project_dir/design/run-log.jsonl" 2>/dev/null || true)"
+  sec_11_log_assign_unq="$(grep -HnEi "$sec_11_assign_unquoted_pat" -- "$project_dir/design/run-log.jsonl" 2>/dev/null || true)"
+  # RR-06 (fix round 2): the same evasion shapes the seeds structural
+  # check closes (unicode-escaped keyword G3, multi-line split G4,
+  # escaped-quote value G10) survive in the run log under the line-based
+  # grep alone, because the run log is gitleaks-allowlisted. run-log.mjs
+  # writes exactly one JSON object per line, so runlog-check.mjs parses
+  # each line and checks the DECODED keys/values (keyword-named field
+  # with a >=16-char string value, bare >=32-hex value under a
+  # non-tokensHash key, high-confidence token shape) — a multi-line split
+  # cannot survive one-JSON-value-per-line and surfaces as an unparseable
+  # line, which FAILS here, fail closed. See that file for the exact rules
+  # and the narrowed remainder of the old run-log residual hole (iii).
+  # Node is the gate's scripting runtime; if node or the helper is
+  # unavailable while a run log exists, the check FAILS CLOSED naming
+  # node — a security check that cannot run is a BLOCK, never a silent
+  # pass (same rule as the seeds structural check, RR-07).
+  sec_11_gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  if command -v node >/dev/null 2>&1 && [[ -f "$sec_11_gate_dir/runlog-check.mjs" ]]; then
+    sec_11_log_struct_out="$(node "$sec_11_gate_dir/runlog-check.mjs" "$project_dir/design/run-log.jsonl" 2>&1 || true)"
+    [[ -n "$sec_11_log_struct_out" ]] && sec_11_log_struct+="$sec_11_log_struct_out"$'\n'
+  else
+    sec_11_log_struct+="SECURITY 1.1: run-log structural check cannot run — node or scripts/gate/runlog-check.mjs not found (fail closed; a security check that cannot run is a BLOCK)"$'\n'
+  fi
 fi
-if [[ -n "$sec_11_hits" || -n "$sec_11_assign" || -n "$sec_11_log_hits" || -n "$sec_11_log_assign" ]]; then
+# GAP-10 (D10) backstop: gitleaks allowlists the Impeccable seed files,
+# so the built-in grep must scan exactly those files too — this block
+# runs BEFORE the scanner branch, so a hit fails 1.1 scanner or not.
+# Files: .impeccable/questions/seeds/*.json + questions/seed-salt, when
+# present (a project with no .impeccable/ dir is unaffected — the glob
+# simply matches nothing and the -f guard skips it).
+# RT-09 structural check (2026-11-11), rewritten as a node helper in fix
+# round 2 (RR-05 + RR-07): the engine writes exactly one shape per file —
+# a seeds file is {"key": "<32-lower-hex>"} and nothing else, the salt file
+# is one 32-lower-hex line — so any deviation fails 1.1 here, which closes
+# the pattern-evasion shapes at once: an extra field holding a bare 64-hex
+# string (G1), a secret split across two fields (G2), a unicode-escaped
+# keyword (G3 — JSON.parse decodes \u005f to _), a multi-line key/value
+# split (G4 — JSON is whitespace-insensitive), an array of bare strings
+# (G9 — not an object), an escaped-quote value (G10 — the decoded value is
+# not 32 lower-hex), an apostrophe-split value (G17 — same). The
+# unquoted-value pattern above closes G6, which is not valid JSON and so
+# cannot reach the structural check. FAIL-CLOSED on unparseable input
+# (RR-05): a file that does not parse as JSON FAILS 1.1 loudly — a UTF-8
+# BOM prefix (read with BOM stripping, the utf-8-sig equivalent, so a BOM
+# no longer switches the check off), trailing garbage after the JSON value
+# (JSON.parse requires exactly one value), a bare string instead of an
+# object, an empty file. A legitimate seeds file always parses, so "does
+# not parse" is a structural hit, never a silent no-verdict. The helper is
+# scripts/gate/seed-structural.mjs (node — the gate's existing scripting
+# runtime, same pattern as dompurify-call.mjs); the python3 dependency is
+# GONE, so there is no fallback to be inequivalent (RR-07). If node or the
+# helper is unavailable while seed files exist, 1.1 FAILS CLOSED naming
+# node — a security check that cannot run is a BLOCK, never a silent pass.
+# Format-pinning risk, stated: if upstream ever changes the seed format,
+# this check fails loudly and the kit must update the pinned shape — the
+# same class of pinned assumption as the gitleaks allowlist paths
+# themselves.
+sec_11_seed_hits=""
+sec_11_seed_assign=""
+sec_11_seed_assign_unq=""
+sec_11_seed_struct=""
+sec_11_gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+for sec_11_seed in "$project_dir"/.impeccable/questions/seeds/*.json "$project_dir/.impeccable/questions/seed-salt"; do
+  [[ -f "$sec_11_seed" ]] || continue
+  sec_11_seed_hit="$(grep -HnEi "$sec_11_pat" -- "$sec_11_seed" 2>/dev/null || true)"
+  [[ -n "$sec_11_seed_hit" ]] && sec_11_seed_hits+="$sec_11_seed_hit"$'\n'
+  sec_11_seed_asg="$(grep -HnEi "$sec_11_assign_pat" -- "$sec_11_seed" 2>/dev/null || true)"
+  [[ -n "$sec_11_seed_asg" ]] && sec_11_seed_assign+="$sec_11_seed_asg"$'\n'
+  sec_11_seed_asgu="$(grep -HnEi "$sec_11_assign_unquoted_pat" -- "$sec_11_seed" 2>/dev/null || true)"
+  [[ -n "$sec_11_seed_asgu" ]] && sec_11_seed_assign_unq+="$sec_11_seed_asgu"$'\n'
+  if command -v node >/dev/null 2>&1 && [[ -f "$sec_11_gate_dir/seed-structural.mjs" ]]; then
+    sec_11_seed_struct_hit="$(node "$sec_11_gate_dir/seed-structural.mjs" "$sec_11_seed" 2>&1 || true)"
+    [[ -n "$sec_11_seed_struct_hit" ]] && sec_11_seed_struct+="$sec_11_seed_struct_hit"$'\n'
+  else
+    sec_11_seed_struct+="SECURITY 1.1: seed structural check cannot run — node or scripts/gate/seed-structural.mjs not found (fail closed; a security check that cannot run is a BLOCK)"$'\n'
+  fi
+done
+# RR2-07 (fix round 3): 1.1-ONLY grep pass over ALL project text files.
+# sec_scan_files (above) covers only *.js/*.mjs/*.css + html +
+# package.json, so a secret in a .txt/.md/.json/.env/.csv file was
+# gitleaks-only — and gitleaks misses low-entropy secrets there (a
+# word-phrase password in notes.txt passed 1.1 entirely; 1 of 7 random
+# AKIA keys in .txt files was missed by gitleaks 8.30.1 — reproduced
+# 2026-11-11, the missed key caught by this grep pass). This pass runs
+# the same three 1.1 patterns over every regular file under the project
+# and ONLY feeds 1.1 — it is separate from sec_scan_files, so
+# 1.2/1.3/etc. never start failing on prose mentions. FP-checked
+# against the whole repo tree before shipping: the only hit is the AWS
+# documentation example key in skills/frontend-kit/experts/security.md
+# (an illustrative example, not a credential — gitleaks itself passes
+# it, verified 2026-11-11), so that exact literal is exempted below: a
+# hit line is kept only if a secret shape remains after stripping the
+# literal from it (a line holding ONLY the example key is dropped; a
+# line holding the example key PLUS a real secret is still kept). What
+# this pass does NOT catch, by name: a bare word-phrase password with
+# NO keyword label — no pattern recognises it; that remainder stays
+# documented.
+# EXCLUSIONS (RR3-04, fix round 4B; justification corrected fix round 5
+# per re-QC #4 OBS-1): this is a SECRET scan, not a build scan, so it does
+# NOT inherit sec_scan_files' design/variants/ exclusion — a secret in an
+# unpicked variant still ships in version control, and gitleaks' generic
+# rule there only fires next to a keyword label. design/variants/ IS
+# scanned here. node_modules/ and .taste-skill/ stay excluded (third-party
+# / vendored-upstream trees, normally gitignored, not user-written project
+# files — a secret there does not ship in version control). The residual
+# differs by subtree: gitleaks 8.30.1 scans ~0 bytes under node_modules/,
+# so a secret of ANY shape there passes all 1.1 layers; .taste-skill/ IS
+# scanned by gitleaks, so only a label-dependent gitleaks miss there is
+# unclosed by the grep pass. .git/ stays excluded (not project content).
+# ENCODING (RR3-03, fix round 4B): the pass is UTF-16-aware — see
+# sec_11_utf16_enc / sec_11_text_grep below. A UTF-16 file is binary
+# to grep -I (skipped) and NUL-interleaved to grep -a (patterns never
+# match), and gitleaks 8.30.1 misses UTF-16 too, so UTF-16 files are
+# transcoded to UTF-8 (iconv, NUL-strip fallback) before grepping.
+# Removing -I alone is NOT a fix and was not done.
+sec_11_text_hits=""
+sec_11_text_assign=""
+sec_11_text_assign_unq=""
+# Strip the AWS docs example key from a hit line and re-test it against
+# a pattern: a line is a real hit only if a secret shape remains.
+# Reads lines on stdin, prints the kept ones. Uses bash ERE (=~), the
+# same pattern syntax the grep calls use. nocasematch is on inside this
+# function so the re-test agrees with the -i grep calls (RR3-06): an
+# uppercased secret on an example-literal line must still be kept.
+sec_11_keep_unless_example_only() {
+  local pat="$1" line stripped
+  shopt -s nocasematch
+  while IFS= read -r line; do
+    stripped="${line//AKIAIOSFODNN7EXAMPLE/}"
+    if [[ "$stripped" =~ $pat ]]; then printf '%s\n' "$line"; fi
+  done
+}
+# RR3-03: detect a UTF-16 file and print its encoding (UTF-16LE /
+# UTF-16BE), or print nothing. BOM FF FE => LE, FE FF => BE; with no
+# BOM, the first 1 MiB is scanned for NUL-interleaved ASCII (fix round 5,
+# RR4-03: the old 512-byte window missed a file whose first 512 bytes were
+# NUL-free CJK text). NULs at odd byte offsets => LE, at even offsets => BE.
+# The vote is decode-first, NOT parity-majority (fix round 5, RR4-02): a
+# UTF-16LE character whose low byte is 00 (U+0100-U+FF00 range, incl. common
+# CJK like U+4E00) contributes an EVEN-offset NUL, so a LE file whose
+# non-ASCII content outweighs its ASCII is voted BE by parity alone — and
+# the wrong decode of U+xx00 text is ASCII soup (each U+xx00 char becomes
+# one ASCII byte), so a raw ASCII-byte count can vote wrong too (a 70-char
+# U+4E00 prefix out-counts a 62-char secret line). The decision rule is
+# therefore: the winning decode is trusted only when the LOSER shows at
+# most 2 ASCII bytes — a wrong decode yields ASCII only from U+xx00
+# characters, so a near-zero loser means the winner's ASCII is real; any
+# other split is AMBIGUOUS and prints the bare sentinel `UTF-16`, which
+# tells sec_11_text_grep to transcode the file BOTH ways and grep each
+# (a hit in either decoding fails the gate — the vote can no longer bury
+# a secret). When NEITHER decode shows ASCII in the window, parity is
+# the fallback (it can only misjudge a file with no ASCII secret in the
+# window), and parity ties go to LE, the common Windows case (the old code
+# sent ties to BE, contradicting this comment). The NUL count is done by
+# od -v piped to awk (fix round 5, RR4-01): od without -v collapses
+# repeated 16-byte lines into `*`, corrupting the count, and the bash
+# char-by-char loop over a hex string is replaced outright, which removes
+# the whole class. Remainder: the window is the first 1 MiB — a file whose
+# first 1 MiB carries no ASCII evidence for its true encoding (e.g. over
+# 1 MiB of U+xx00 CJK before the secret) can still be misdetected.
+# UTF-32 (FF FE 00 00) is NOT handled: it matches the LE BOM branch
+# and transcodes to NUL-separated ASCII the patterns still miss — a
+# documented remainder, not a tested shape.
+# Fix round 6 (RR5-01, RR5-02): the decode counts are only trusted when
+# iconv succeeds — GNU iconv stops at the first illegal sequence (a lone
+# surrogate is illegal) and outputs only the prefix, so a count from a
+# failed decode measures the prefix, not the file, and a failed decode
+# casts no decisive vote (ambiguous → both-ways). And a BOM is
+# corroborated, not trusted blindly: the decode vote runs even on BOM'd
+# files, and when it contradicts the BOM the vote wins (or the file goes
+# ambiguous); the BOM is trusted only when the window carries no ASCII
+# evidence at all.
+sec_11_utf16_enc() {
+  local f="$1" hex even_nul odd_nul le_ascii be_ascii le_rc be_rc bom_enc="" tmp
+  hex="$(od -An -tx1 -v -N 4 -- "$f" 2>/dev/null | tr -d ' \n')"
+  # RR5-02: a BOM is a claim about the body, not proof of it — record it
+  # and corroborate it with the decode vote below instead of returning
+  # on it here, so a BOM that contradicts its body cannot bury a secret.
+  case "$hex" in
+    fffe*) bom_enc='UTF-16LE' ;;
+    feff*) bom_enc='UTF-16BE' ;;
+  esac
+  # NUL parity over the first 1 MiB (od -v: no `*` collapsing; awk counts,
+  # so no bash loop over a hex string). od prints 16 bytes per line; awk
+  # tracks the running byte offset across lines.
+  read -r even_nul odd_nul <<< "$(od -An -tx1 -v -N 1048576 -- "$f" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) { if ($i == "00") { if ((pos % 2) == 0) even++; else odd++; } pos++ } } END { print even+0, odd+0 }')"
+  if (( even_nul + odd_nul == 0 )); then
+    # No NULs in the window: a NUL-free body carries no parity evidence.
+    # A BOM'd file still reports its BOM (e.g. a 2-byte BOM-only file);
+    # anything else is plain.
+    if [[ -n "$bom_enc" ]]; then printf '%s' "$bom_enc"; return 0; fi
+    return 0
+  fi
+  # Decode-first weighting (RR4-02): count ASCII bytes in a LE vs BE decode
+  # of the first 1 MiB. Real ASCII survives only under its true encoding;
+  # a wrong decode yields ASCII only from U+xx00 characters, so a loser
+  # count of at most 2 means the winner's ASCII is real. Anything else is
+  # ambiguous — the caller greps both decodings.
+  # RR5-01: capture iconv's exit status per decode. GNU iconv stops at the
+  # first illegal sequence (a lone surrogate is illegal) and outputs only
+  # the prefix, so a count from a failed decode measures the prefix, not
+  # the file. Either decode failing therefore falls through to the bare
+  # `UTF-16` sentinel (ambiguous): the caller transcodes both ways and
+  # greps each, and a failed transcode there falls back to NUL-stripping,
+  # which catches this shape. Noncharacters (U+FFFE/U+FFFF) do NOT poison:
+  # iconv accepts them, so only the error case is handled here.
+  tmp="$(mktemp)" || { printf '%s' 'UTF-16'; return 0; }
+  head -c 1048576 -- "$f" 2>/dev/null | iconv -f UTF-16LE -t UTF-8 > "$tmp" 2>/dev/null; le_rc=$?
+  le_ascii="$(LC_ALL=C tr -cd ' -~\n\t' < "$tmp" | wc -c)"
+  head -c 1048576 -- "$f" 2>/dev/null | iconv -f UTF-16BE -t UTF-8 > "$tmp" 2>/dev/null; be_rc=$?
+  be_ascii="$(LC_ALL=C tr -cd ' -~\n\t' < "$tmp" | wc -c)"
+  rm -f "$tmp"
+  le_ascii="${le_ascii//[[:space:]]/}"; be_ascii="${be_ascii//[[:space:]]/}"
+  if (( le_rc != 0 || be_rc != 0 )); then printf '%s' 'UTF-16'; return 0; fi
+  if (( le_ascii > be_ascii && be_ascii <= 2 )); then printf '%s' 'UTF-16LE'; return 0; fi
+  if (( be_ascii > le_ascii && le_ascii <= 2 )); then printf '%s' 'UTF-16BE'; return 0; fi
+  if (( le_ascii == 0 && be_ascii == 0 )); then
+    # No ASCII evidence either way: trust the BOM if one was present (it
+    # is the only evidence left), else fall back to parity.
+    if [[ -n "$bom_enc" ]]; then printf '%s' "$bom_enc"; return 0; fi
+    if (( even_nul > odd_nul )); then printf '%s' 'UTF-16BE';
+    elif (( odd_nul > 0 )); then printf '%s' 'UTF-16LE'; fi
+    return 0
+  fi
+  printf '%s' 'UTF-16'
+}
+# RR3-03: grep one 1.1 pattern over the text-pass file list,
+# encoding-aware. Usage: sec_11_text_grep <pattern> [extra grep flags].
+# Plain (non-UTF-16) files take the old bulk path (grep -I skips
+# binaries). Each UTF-16 file is transcoded to UTF-8 with iconv into a
+# temp file and grepped from there with --label=<real path>, so hit
+# lines still name the project file; if iconv fails, the fallback
+# strips NUL bytes (tr -d '\0') and greps that stream instead — the
+# ASCII survives either way. The temp file is removed per file; no
+# trap state is touched. A file whose encoding is AMBIGUOUS
+# (sec_11_utf16_enc prints the bare sentinel `UTF-16`) is transcoded
+# BOTH ways and grepped each — a hit in either decoding fails the gate.
+sec_11_text_grep() {
+  local pat="$1"; shift
+  local f enc tmp i
+  local plain_files=() utf16_paths=() utf16_encs=()
+  for f in "${sec_11_text_files[@]}"; do
+    enc="$(sec_11_utf16_enc "$f")"
+    if [[ "$enc" == "UTF-16" ]]; then
+      # Ambiguous encoding (RR4-02): transcode both ways, grep each — a
+      # hit in either decoding fails the gate, so the vote cannot bury it.
+      utf16_paths+=("$f" "$f"); utf16_encs+=("UTF-16LE" "UTF-16BE")
+    elif [[ -n "$enc" ]]; then utf16_paths+=("$f"); utf16_encs+=("$enc"); else plain_files+=("$f"); fi
+  done
+  if [[ "${#plain_files[@]}" -gt 0 ]]; then
+    grep -HnIE "$@" "$pat" -- "${plain_files[@]}" 2>/dev/null || true
+  fi
+  if [[ "${#utf16_paths[@]}" -gt 0 ]]; then
+  for i in "${!utf16_paths[@]}"; do
+    f="${utf16_paths[$i]}"; enc="${utf16_encs[$i]}"
+    tmp="$(mktemp)"
+    if iconv -f "$enc" -t UTF-8 -- "$f" > "$tmp" 2>/dev/null; then
+      grep -HnE "$@" --label="$f" "$pat" - < "$tmp" 2>/dev/null || true
+    else
+      tr -d '\0' < "$f" 2>/dev/null | grep -HnE "$@" --label="$f" "$pat" - 2>/dev/null || true
+    fi
+    rm -f "$tmp"
+  done
+  fi
+}
+# RR4-04 (fix round 5): NUL-delimited — a newline in a filename must not
+# split the list (find -print0, sort -z, read -d '').
+sec_11_text_files=()
+while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -print0 2>/dev/null | sort -z -u || true)
+if [[ "${#sec_11_text_files[@]}" -gt 0 ]]; then
+  sec_11_text_hits="$(sec_11_text_grep "$sec_11_pat" -i | sec_11_keep_unless_example_only "$sec_11_pat" || true)"
+  sec_11_text_assign="$(sec_11_text_grep "$sec_11_assign_pat" -i | sec_11_keep_unless_example_only "$sec_11_assign_pat" || true)"
+  sec_11_text_assign_unq="$(sec_11_text_grep "$sec_11_assign_unquoted_pat" -i | sec_11_keep_unless_example_only "$sec_11_assign_unquoted_pat" || true)"
+fi
+if [[ -n "$sec_11_hits" || -n "$sec_11_assign" || -n "$sec_11_assign_unq" || -n "$sec_11_text_hits" || -n "$sec_11_text_assign" || -n "$sec_11_text_assign_unq" || -n "$sec_11_log_hits" || -n "$sec_11_log_assign" || -n "$sec_11_log_assign_unq" || -n "$sec_11_log_struct" || -n "$sec_11_seed_hits" || -n "$sec_11_seed_assign" || -n "$sec_11_seed_assign_unq" || -n "$sec_11_seed_struct" ]]; then
   secfail "1.1" "secret scan: high-confidence secret pattern found (built-in grep)"
-  { [[ -n "$sec_11_hits" ]] && printf '%s\n' "$sec_11_hits"; [[ -n "$sec_11_assign" ]] && printf '%s\n' "$sec_11_assign"; [[ -n "$sec_11_log_hits" ]] && printf '%s\n' "$sec_11_log_hits"; [[ -n "$sec_11_log_assign" ]] && printf '%s\n' "$sec_11_log_assign"; } | sort -u | head -20
+  { [[ -n "$sec_11_hits" ]] && printf '%s\n' "$sec_11_hits"; [[ -n "$sec_11_assign" ]] && printf '%s\n' "$sec_11_assign"; [[ -n "$sec_11_assign_unq" ]] && printf '%s\n' "$sec_11_assign_unq"; [[ -n "$sec_11_text_hits" ]] && printf '%s\n' "$sec_11_text_hits"; [[ -n "$sec_11_text_assign" ]] && printf '%s\n' "$sec_11_text_assign"; [[ -n "$sec_11_text_assign_unq" ]] && printf '%s\n' "$sec_11_text_assign_unq"; [[ -n "$sec_11_log_hits" ]] && printf '%s\n' "$sec_11_log_hits"; [[ -n "$sec_11_log_assign" ]] && printf '%s\n' "$sec_11_log_assign"; [[ -n "$sec_11_log_assign_unq" ]] && printf '%s\n' "$sec_11_log_assign_unq"; [[ -n "$sec_11_log_struct" ]] && printf '%s\n' "$sec_11_log_struct"; [[ -n "$sec_11_seed_hits" ]] && printf '%s\n' "$sec_11_seed_hits"; [[ -n "$sec_11_seed_assign" ]] && printf '%s\n' "$sec_11_seed_assign"; [[ -n "$sec_11_seed_assign_unq" ]] && printf '%s\n' "$sec_11_seed_assign_unq"; [[ -n "$sec_11_seed_struct" ]] && printf '%s\n' "$sec_11_seed_struct"; } | sort -u | head -20
 elif command -v gitleaks >/dev/null 2>&1; then
   # Kit config lives next to this script. When it is absent (gate.sh
   # copied alone), run without it — the run-log tokensHash false positive
@@ -576,27 +960,123 @@ fi
 
 # --- 1.2 HTML sinks (innerHTML / document.write) ---------------------------
 # Flag any dangerouslySetInnerHTML / innerHTML= / outerHTML= /
-# document.write( in a file that does not also use DOMPurify.sanitize
-# (the sanctioned sanitizer per OWASP LLM10:2026). A file WITH DOMPurify is
-# passed with a note — the per-occurrence taint check (is THIS sink fed
+# document.write( in a file that does not also CALL DOMPurify.sanitize
+# (the sanctioned sanitizer per OWASP LLM10:2026). A file that calls it
+# is passed with a note — the per-occurrence taint check (is THIS sink fed
 # by untrusted data?) is checklist territory (Stage 1.2 human/LLM half);
 # the gate enforces the mechanical half: no unsanitized sink at all.
-sec_12_files="$(sec_grep 'dangerouslySetInnerHTML|innerHTML[[:space:]]*=|outerHTML[[:space:]]*=|document\.write[[:space:]]*\(' | cut -d: -f1 | sort -u || true)"
+# RT-02 fix (2026-11-11), hardened in fix round 2 (RR-01, RR-02, RR-10,
+# RR-13): the exception requires a genuine CALL, not the bare string —
+# scripts/gate/dompurify-call.mjs strips comments, string/template
+# literals and regex literals (regex-vs-division heuristic) before testing
+# for an ANCHORED call site (the DOMPurify identifier itself, optionally
+# behind window./globalThis./self.; x.DOMPurify, notDOMPurify and
+# $DOMPurify do NOT count; bracket notation DOMPurify['sanitize']() DOES
+# count), so a comment mentioning DOMPurify.sanitize no longer passes a
+# sink. See that file for the stated limits (template ${...} calls,
+# aliasing, the regex/division heuristic's ambiguous cases).
+# Fix round 3 (RR2-01/02/08/10): the stripped text is normalised
+# (\s*\.\s* -> '.') before the anchor runs, so whitespace around a dot
+# can no longer smuggle a foreign-object call past it; the tokenizer
+# tracks statement position after if/while/for/with and treats
+# whitespace as neutral; bracket access on the global alias
+# (window['DOMPurify']) counts, and regex flags are [dgimsuvy] only.
+# NO grep fallback (RR-13, fix round 2): the old fallback (a call-shaped
+# grep excluding full-line comment lines) passed a trailing-comment call
+# shape — `el.innerHTML=q; // DOMPurify.sanitize(q)` — exactly the shape
+# RT-02 was about, so the fallback was strictly weaker than the helper in
+# the one shape that matters. The fallback is DELETED: when node or the
+# helper is unavailable, a sink file that is not hash-exempt FAILS 1.2
+# loudly naming node/the helper (fail closed; a security check that
+# cannot run is a BLOCK, never a silent pass — same rule as 1.1's
+# structural checks, RR-07/RR-12). A byte-identical vendored file still
+# passes by exemption without the helper, since the exemption needs no
+# call-site verification. A project with no sink files passes 1.2
+# vacuously with or without the helper.
+#
+# GAP-9 (D9) hash exemption: a file is ALSO passed with a note if its
+# path relative to the project dir AND its sha256 both match
+# scripts/gate/vendored-allowlist.txt (committed manifest, taste pin
+# v2.5.1, 27 runtime files). Lab/demo/catalog files are NEVER listed —
+# if one is copied into a project, 1.2 fails on it. A vendored file
+# copied to any other project path does not match (fail closed on
+# relocation). A missing manifest means no exemption, with a printed
+# note; a stale manifest (hash mismatch) likewise exempts nothing —
+# that loud failure is the correct behaviour, not a bug. Do NOT inline
+# vendored JS into the page: leg-2 1.2 (gate.mjs) scans only the page
+# file, so inlined vendored JS still fails there — keep vendored JS as
+# separate files under assets/.
+# Residual risk, printed on EVERY exemption (the security expert's
+# per-occurrence taint check owns it, checklist 1.2, pre-land and
+# pre-ship): the runtime class-E sites ui/notify/fragment.js:16,
+# ui/search/fragment.js:20,
+# scenes/letter-bar-floods-the-ground/scene.js:41 (caller-/page-fed,
+# unescaped), ui/ui.js:106 (fetched local fragment.html carrying client
+# copy), diagrams/diagram.js:229 (fetched local icon SVG through
+# hand-rolled regex cleaning), plus the class-C feeds generally.
+# diagrams/lab.html:126 is NOT exempt and NOT on this list.
+# RR5-03 (fix round 6): NUL-delimited — the old `sec_grep | cut -d: -f1`
+# list split a newline-named sink file into bogus paths (and a colon-named
+# file at the colon), and the loop then failed each bogus path because the
+# DOMPurify helper cannot verify a nonexistent file, so a sanitized sink
+# FAILed 1.2. The file list is now built with grep -lZ over the same
+# scanned set sec_grep uses (sec_scan_files minus .css), sorted -z and
+# read with read -d '', so newlines and colons in filenames survive.
+# (The RR5 HYPOTHESIS — a list fragment coinciding with a real exempt
+# path — is mooted by removing the newline-joined construction entirely.)
+sec_12_pat='dangerouslySetInnerHTML|innerHTML[[:space:]]*=|outerHTML[[:space:]]*=|document\.write[[:space:]]*\('
+sec_12_scan_files=()
+if [[ "${#sec_scan_files[@]}" -gt 0 ]]; then
+  for sec_f in "${sec_scan_files[@]}"; do case "$sec_f" in *.css) ;; *) sec_12_scan_files+=("$sec_f");; esac; done
+fi
+sec_12_files=()
+if [[ "${#sec_12_scan_files[@]}" -gt 0 ]]; then
+  sec_12_files=()
+  while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_12_files+=("$_f"); done < <(grep -l -Z -E "$sec_12_pat" -- "${sec_12_scan_files[@]}" 2>/dev/null | sort -z -u || true)
+fi
+sec_12_manifest="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/vendored-allowlist.txt"
+if [[ "${#sec_12_files[@]}" -gt 0 && ! -f "$sec_12_manifest" ]]; then
+  note "SECURITY 1.2: vendored-allowlist.txt not found next to gate.sh — no hash exemption applied (fail closed)"
+fi
 sec_12_bad=0
-while IFS= read -r sec_f; do
-  [[ -z "$sec_f" ]] && continue
-  if grep -q 'DOMPurify\.sanitize' "$sec_f" 2>/dev/null; then
-    note "SECURITY 1.2: $sec_f uses an HTML sink but also DOMPurify.sanitize — passed with note (per-occurrence taint check is checklist territory)"
-  else
-    sec_12_bad=1
-    printf 'SECURITY 1.2: unsanitized sink in %s:\n' "$sec_f"
-    grep -nE 'dangerouslySetInnerHTML|innerHTML[[:space:]]*=|outerHTML[[:space:]]*=|document\.write[[:space:]]*\(' "$sec_f" 2>/dev/null | head -10
-  fi
-done <<< "$sec_12_files"
-if [[ "$sec_12_bad" == 1 ]]; then
+sec_12_unverifiable=0
+if [[ "${#sec_12_files[@]}" -gt 0 ]]; then
+  for sec_f in "${sec_12_files[@]}"; do
+    [[ -z "$sec_f" ]] && continue
+    sec_12_rel=""
+    case "$sec_f" in "$project_dir"/*) sec_12_rel="${sec_f#"$project_dir"/}" ;; esac
+    sec_12_hash=""
+    if [[ -n "$sec_12_rel" && -f "$sec_12_manifest" ]] && command -v sha256sum >/dev/null 2>&1; then
+      sec_12_hash="$(sha256sum -- "$sec_f" 2>/dev/null | awk '{print $1}')"
+    fi
+    sec_12_sanitized=0
+    sec_12_helper_missing=0
+    sec_12_gate_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    if command -v node >/dev/null 2>&1 && [[ -f "$sec_12_gate_dir/dompurify-call.mjs" ]]; then
+      if node "$sec_12_gate_dir/dompurify-call.mjs" "$sec_f" 2>/dev/null; then sec_12_sanitized=1; fi
+    else
+      sec_12_helper_missing=1
+    fi
+    if [[ "$sec_12_sanitized" == 1 ]]; then
+      note "SECURITY 1.2: $sec_f uses an HTML sink but also calls DOMPurify.sanitize — passed with note (per-occurrence taint check is checklist territory)"
+    elif [[ -n "$sec_12_rel" && -n "$sec_12_hash" ]] && grep -qxF "$sec_12_hash  $sec_12_rel" "$sec_12_manifest" 2>/dev/null; then
+      note "SECURITY 1.2: $sec_12_rel is a byte-identical vendored taste runtime asset (pin v2.5.1, D9) — exempt by path + sha256. Residual risk, expert taint check required pre-land and pre-ship (checklist 1.2): ui/notify/fragment.js:16, ui/search/fragment.js:20, scenes/letter-bar-floods-the-ground/scene.js:41, ui/ui.js:106, diagrams/diagram.js:229, plus the class-C feeds generally. Do not inline vendored JS — keep it as separate files under assets/."
+    elif [[ "$sec_12_helper_missing" == 1 ]]; then
+      sec_12_unverifiable=1
+      printf 'SECURITY 1.2: cannot verify DOMPurify call site in %s — node or scripts/gate/dompurify-call.mjs unavailable (fail closed; a security check that cannot run is a BLOCK)\n' "$sec_f"
+    else
+      sec_12_bad=1
+      printf 'SECURITY 1.2: unsanitized sink in %s:\n' "$sec_f"
+      grep -nE 'dangerouslySetInnerHTML|innerHTML[[:space:]]*=|outerHTML[[:space:]]*=|document\.write[[:space:]]*\(' "$sec_f" 2>/dev/null | head -10
+    fi
+  done
+fi
+if [[ "$sec_12_unverifiable" == 1 ]]; then
+  secfail "1.2" "HTML sink call-site check could not run (node or scripts/gate/dompurify-call.mjs unavailable) — fail closed, see lines above"
+elif [[ "$sec_12_bad" == 1 ]]; then
   secfail "1.2" "HTML sink (innerHTML/outerHTML/document.write/dangerouslySetInnerHTML) without DOMPurify sanitization — see lines above"
 else
-  secpass "1.2" "no unsanitized HTML sink (any file using a sink also uses DOMPurify.sanitize)"
+  secpass "1.2" "no unsanitized HTML sink (every sink file either calls DOMPurify.sanitize or is a byte-identical vendored taste asset, D9)"
 fi
 
 # --- 1.3 code-execution sinks (eval / Function / string timers) ------------
