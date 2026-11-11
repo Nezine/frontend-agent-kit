@@ -179,9 +179,23 @@ declare -a EXPECTED=()
 for d in "$root"/skills/*/; do [[ -f "${d}SKILL.md" ]] && EXPECTED+=("$(basename "$d")"); done
 for d in "$root"/vendor/gsap/*/; do [[ -f "${d}SKILL.md" ]] && EXPECTED+=("$(basename "$d")"); done
 [[ -d "$root/vendor/impeccable" ]] && EXPECTED+=("impeccable")
+# A repo with no skills has a broken layout — nothing to verify. Fail
+# loudly here: the loops below expand EXPECTED, and expanding an empty
+# array under `set -u` aborts bash older than 4.4 (stock macOS bash 3.2)
+# instead of failing cleanly. (macOS phase, D12.)
+if [[ "${#EXPECTED[@]}" -eq 0 ]]; then
+  printf 'ERROR: no skills found under %s/skills (or vendor/gsap, vendor/impeccable) — repo layout broken, nothing to verify.\n' "$root" >&2
+  exit 1
+fi
 # de-duplicate, keep order
 declare -a UNI=()
-for n in "${EXPECTED[@]}"; do case " ${UNI[*]} " in *" $n "*) ;; *) UNI+=("$n") ;; esac; done
+for n in "${EXPECTED[@]}"; do
+  # Length guard: UNI starts empty, and expanding an empty array under
+  # `set -u` aborts bash older than 4.4 — seed the first element
+  # directly; the membership test only runs once UNI is non-empty.
+  if [[ "${#UNI[@]}" -eq 0 ]]; then UNI+=("$n"); continue; fi
+  case " ${UNI[*]} " in *" $n "*) ;; *) UNI+=("$n") ;; esac
+done
 EXPECTED=("${UNI[@]}")
 printf 'Hosts checked: %s\n' "${HOSTS[*]}"
 printf 'Skills expected per host: %s\n' "${EXPECTED[*]}"

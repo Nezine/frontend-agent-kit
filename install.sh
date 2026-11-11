@@ -921,7 +921,7 @@ for info in z.infolist():
   fi
   if [[ -n "$exe_rel" ]]; then
     [[ -f "$dest/$exe_rel" ]] || { printf 'curl fallback: expected executable %s not in the archive.\n' "$dest/$exe_rel"; return 1; }
-    [[ -x "$dest/$exe_rel" ]] || chmod 755 -- "$dest/$exe_rel"
+    [[ -x "$dest/$exe_rel" ]] || chmod 755 "$dest/$exe_rel"
     [[ -x "$dest/$exe_rel" ]] || { printf 'curl fallback: expected executable %s is not executable after permission restore.\n' "$dest/$exe_rel"; return 1; }
   fi
   : > "$dest/INSTALLATION_COMPLETE"
@@ -2074,7 +2074,11 @@ install_gitleaks() { # pinned tarball + published checksums, into ~/.local/bin
   fi
   mkdir -p "$user_home/.local/bin"
   cp -- "$tmpd/gitleaks" "$user_home/.local/bin/gitleaks" || { printf 'gitleaks install: copy to ~/.local/bin failed.\n'; rm -rf -- "$tmpd"; return 1; }
-  chmod 755 -- "$user_home/.local/bin/gitleaks"
+  # No `--` before the path: BSD chmod treats `--` after the mode as a
+  # filename ("chmod: --: No such file or directory" — seen on macOS CI
+  # 2026-11-11), not as an end-of-options marker. The path is absolute,
+  # so it can never start with `-`.
+  chmod 755 "$user_home/.local/bin/gitleaks"
   rm -rf -- "$tmpd"
   # Explicit return (QC 2026-11-11): the probe's exit status used to be
   # the function's return value, so a binary that failed to run was

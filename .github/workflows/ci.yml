@@ -62,6 +62,14 @@ jobs:
         shell: bash
         run: ./install.sh
 
+      # Gate 1.1 fails closed without a secret scanner on PATH, and the
+      # installer puts gitleaks in ~/.local/bin. Ubuntu runners already
+      # have ~/.local/bin on PATH; macOS runners do not — add it, exactly
+      # as the installer's own PENDING note instructs a user to do.
+      - name: Put ~/.local/bin on PATH (gitleaks lives there)
+        shell: bash
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Verify end to end (./verify.sh --strict)
         shell: bash
         run: ./verify.sh --strict

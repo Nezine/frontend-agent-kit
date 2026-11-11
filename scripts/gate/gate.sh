@@ -731,7 +731,12 @@ done
 if [[ -f "$project_dir/package.json" ]] && grep -qE '"(express|fastify|koa|hapi|next|nuxt|@nestjs/core)"' "$project_dir/package.json" 2>/dev/null; then sec_has_server=1; fi
 [[ "${#sec_server_files[@]}" -gt 0 ]] && sec_has_server=1
 if [[ "${#html_files[@]}" -gt 0 ]] && grep -qiE $'http-equiv=[\'"]?Content-Security-Policy' "${html_files[@]}" 2>/dev/null; then sec_csp=1; fi
-for sec_f in "${sec_server_files[@]}"; do grep -qi 'Content-Security-Policy' "$sec_f" 2>/dev/null && sec_csp=1; done
+# Length guard: a purely static build has no server files, and expanding
+# an empty array under `set -u` aborts bash older than 4.4 (stock macOS
+# bash 3.2). (macOS phase, D12.)
+if [[ "${#sec_server_files[@]}" -gt 0 ]]; then
+  for sec_f in "${sec_server_files[@]}"; do grep -qi 'Content-Security-Policy' "$sec_f" 2>/dev/null && sec_csp=1; done
+fi
 sec_acao=""
 if [[ "${#sec_server_files[@]}" -gt 0 ]]; then sec_acao="$(grep -rInE 'Access-Control-Allow-Origin:[[:space:]]*\*' "${sec_server_files[@]}" 2>/dev/null || true)"; fi
 if [[ "${#html_files[@]}" -gt 0 ]]; then sec_acao+="$(grep -HnE 'Access-Control-Allow-Origin:[[:space:]]*\*' "${html_files[@]}" 2>/dev/null || true)"; fi
