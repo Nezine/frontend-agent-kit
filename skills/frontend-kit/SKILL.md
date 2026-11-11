@@ -33,6 +33,11 @@ brief — never mandatory, never a grading input. The 5 variants as concrete tok
 recipe file the brief names — never the whole catalog). Read workflow,
 rubric, and stop-rules before starting step 0. If they disagree with this
 file, they win — they are the detailed record; this file is the route map.
+The metric-locked loop reference lives in
+`references/metric-locked-loop.md`: it maps the metric-first agent loop
+onto this taste-locked deterministic-gate loop — the lock defines the
+metric/eval before any builder runs, the gate IS the eval, and the gate's
+job is the last 10%. Read it before step 1.
 
 ## Precedence — READ THIS FIRST (before step 1.4 delegates anything)
 
@@ -200,7 +205,10 @@ prompt for discussion.
    (by content, not order), EARS acceptance criteria (5–8 WHEN / THE
    SYSTEM SHALL lines, including the 390px no-overflow rule and the
    three-width rule), the screen × state matrix, the Design Read dials
-   (copied from step 1.2), and the design-system pointer section. Record
+   (copied from step 1.2), and the design-system pointer section. Optional, light touch: when taking the brief, the
+   orchestrator may invite the user with the one-line conviction prompt in
+   `references/metric-locked-loop.md` §8 — an invitation, never a
+   requirement, never a gate. Record
    the plan's preferred structure for the variant auto-pick tie-break as
    one line in the plan: `Preferred structure: <variant name>` (e.g.
    `Preferred structure: glassy`); `variant-picker.mjs pick --auto`
@@ -236,7 +244,10 @@ prompt for discussion.
    (a) + (b) alone ARE the commit — never create a repo just for this, and
    never treat "saved the file" without the run-log lock as committed.
    The lock is immutable within a direction: a re-pick creates a NEW lock
-   version, recorded by a new `run-log.mjs lock` entry. The version is a
+   version, recorded by a new `run-log.mjs lock` entry. The lock is the
+   metric/eval, defined before any builder runs — see
+   `references/metric-locked-loop.md` §1 and §3: the gate IS the eval, and
+   the lock is what the gate checks against. The version is a
    script field, not a hand-written note: `--version N` records an
    explicit version (default: existing lock count + 1); re-using an
    existing version is rejected. The lock entry also records the sha256
@@ -616,7 +627,10 @@ assembled from it.
 ## Step 3 — Deterministic gate (before any vision grade)
 
 **The gate is TWO legs, BOTH required — a pass means both green on the
-same build.** Leg 1 is `gate.sh` (taste lock + `impeccable detect` + static
+same build.** The gate IS the eval (`references/metric-locked-loop.md`
+§3): the lock defines the metric before any builder runs, and the gate's
+job is the last 10% — a build that passes at 90% still fails the gate.
+Leg 1 is `gate.sh` (taste lock + `impeccable detect` + static
 checks, including a static visual-marker check). Leg 2 is `gate.mjs`
 (copy-lint + the consistency browser leg). A `gate.sh` PASS on its own is
 only leg 1 — it never means the gate passed. When the legs disagree, the
