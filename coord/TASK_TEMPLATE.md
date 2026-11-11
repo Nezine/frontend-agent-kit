@@ -4,8 +4,8 @@
 > template per slice BEFORE dispatch. **No board row is claimable until all
 > six fields are filled** — an agent that finds an unfilled row writes
 > `BLOCKED — template incomplete` in its own file and does not start.
-> Copy this file's sections into the board row's Notes (or link the filled
-> copy from the row); either way the six fields must exist before dispatch.
+> The filled copy lives at `coord/tasks/<slice-id>.md` (see
+> `coord/tasks/TEMPLATE.md`) and is linked from the board row's Notes.
 > The ownership table lives on `coord/BOARD.md` and is filled BEFORE dispatch
 > (file → agent → round); the coordinator deterministically rejects claims on
 > owned files.
@@ -14,6 +14,7 @@
 
 - **Slice id:** (e.g. `B6`)
 - **Board row:** `coord/BOARD.md` (status: `submitted` until claimed)
+- **Claim board-hash:** an agent claiming this slice writes `board-hash: <hash>` in its CLAIM line in its own file — the `buffet/main` commit hash it read the board at (`git rev-parse origin/buffet/main` after fetching the board). The coordinator rejects a stale-hash claim per runbook §5 (design §12). The hash belongs in the CLAIM, not in this task file.
 
 ## 1. Objective
 
@@ -40,7 +41,7 @@ agent cannot read is marked CHƯA ĐỌC and never cited as read.
 What the agent must NOT do: files it must not touch, branches it must not
 commit to or push, actions it must not take (e.g. "do NOT commit, do NOT push;
 do NOT touch `SKILL.md`, `tokens.css`, `scripts/gate/`, `P10/p10-held`,
-`W-LOOP-4/5`, `main`/`v1` branches; do NOT fill the §9 blank").
+`W-LOOP-4/5`, `main`/`v1` branches; do NOT push to `buffet/main").
 
 ## 5. Effort scale
 
@@ -49,10 +50,17 @@ A rough size so the coordinator can schedule it: `S` (<1 h, one file),
 planning aid, not a deadline — a slice that outgrows its scale is split on
 the board, not silently extended.
 
+**`expected-min` (numeric, binding):** the coordinator writes the numeric
+effort estimate in minutes at dispatch, on the board row and in the filled
+task file. Defaults: S = 60, M = 240, L = 480 minutes; the coordinator may
+set a smaller number for a short slice. This number drives the §5 lease: a
+claim lapses after 60 min without a push or 2× `expected-min`, whichever is
+shorter.
+
 ## 6. Definition of done
 
 Checkable conditions, each verifiable by someone other than the agent that
 did the work (e.g. "every file referenced by `BUFFET-MODE.md` exists —
-listed and checked"; "`node --check` passes"; "the §9 blank is still blank").
+listed and checked"; "`node --check` passes"; "`coord/BOARD.md` §9 records the decided access path (shared-repo branches primary, fork+PR fallback)").
 A slice is `completed` only when every condition holds; otherwise it is
 `failed` (with the failing condition named) or `input-required`.
