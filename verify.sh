@@ -667,32 +667,638 @@ if [[ -f "$state_dir/skipped-subsystems.txt" ]] && grep -qx 'eyes' "$state_dir/s
   eyes_skipped=1
 fi
 if [[ "$eyes_skipped" == 0 ]]; then
-  # Re-resolve the CLI before the check below (clean-env 2026-11-11,
-  # GAP-5): on mise-managed machines the shim can be transiently
-  # unresolvable right after install, so `command -v` is false even
-  # though the CLI is installed. Reshim + npm-prefix PATH before
-  # deciding the CLI is missing. PATH is restored after the §6 block
-  # (red-team H7): the prepend is for the eyes step only.
+  # Resolve the CLI + node to REAL binaries (clean-env 2026-11-11,
+  # GAP-5 redo — the round-1 fix was incomplete and run 3 proved it):
+  # `command -v playwright-cli` succeeding does NOT mean the CLI runs.
+  # On mise-managed machines the PATH entry is a mise shim, and the shim
+  # fails at EXEC time ("No version is set for shim: playwright-cli")
+  # when invoked from a cwd outside the mise config chain — this step
+  # runs its eyes commands from a temp dir under /tmp, so every eyes
+  # invocation failed in run 3 even though install-browser (run from the
+  # repo dir) had worked minutes earlier. Resolving the CLI to the real
+  # binary alone is NOT enough either: the CLI is a node script with a
+  # `#!/usr/bin/env node` shebang, and `node` on PATH is ALSO a mise
+  # shim that fails from /tmp — the real CLI binary fails there too
+  # (reproduced 2026-11-11). The fix is to prepend the npm-prefix bin
+  # dir to PATH: it holds BOTH the real playwright-cli AND the real
+  # node, so the shebang resolves to a real binary from any cwd. Do
+  # this UNCONDITIONALLY (when the real bin exists) — not only when
+  # `command -v` fails, as the round-1 code did — because a present
+  # shim is exactly the broken case. `mise which` is the fallback
+  # (same shape: its bin dir holds the real node too). PATH is restored
+  # after the §6 block (red-team H7): the prepend is for the eyes step
+  # only.
+  # TWIN BLOCK (L4 — drift risk): install.sh contains a near-duplicate
+  # of this resolve block (the Playwright eyes section). Any fix here
+  # MUST also land there (and vice versa) — the two blocks drifted
+  # apart before (round-1 fix incomplete, run 3 proved it) and only a
+  # paired edit keeps them in step.
   _pw_saved_path="$PATH"
+  _pw_saved_path_set=1
+  # L1: extend the EXIT trap (which already removes $work) to restore
+  # PATH too, so an early exit cannot leak the prepend into the
+  # caller's shell. The sequential restore below stays: the trap is the
+  # backstop, not the mechanism. NOTE: this script is EXECUTED, not
+  # sourced — do NOT source it. A sourced run would leave the prepend
+  # in the caller's shell if the script exits before the sequential
+  # restore, and installing this trap clobbers any EXIT trap the caller
+  # already had. The trap is unset (`trap - EXIT`) right after the
+  # sequential restore, so it cannot linger past this section ($work is
+  # removed eagerly there instead — it is not used past the restore).
+  # Sentinel-guarded (L2) so an empty original PATH still restores
+  # (empty, not unset). The trap ALSO removes the scratch dirs
+  # (capdir/probe dir) so an early exit does not leak them (M4); the
+  # normal path removes them too (idempotent).
+  # (M5: the trap's real trigger is signals/aborts — fail() only counts
+  # here and cannot trigger it, so "fail() between prepend and restore"
+  # cannot fire it; the comment used to claim otherwise. L6: the
+  # trap's `rm -rf "$work"` is guarded with -- and an empty-check.)
+  trap 'if [[ -n "${work:-}" ]]; then rm -rf -- "$work" 2>/dev/null || true; fi; if [[ -n "${_pw_saved_path_set:-}" ]]; then PATH="$_pw_saved_path"; hash -r; fi; if [[ "${_pw_capdir_own:-0}" == 1 && -n "${_pw_capdir:-}" ]]; then rm -rf -- "$_pw_capdir" 2>/dev/null || true; fi; if [[ -n "${_pw_probe_dir:-}" && "${_pw_probe_dir:-}" != "${work:-}" ]]; then rm -rf -- "$_pw_probe_dir" 2>/dev/null || true; fi' EXIT
+  # Probe helpers (round-3 re-QC: M-C, L-C, L-G). Every probe below runs
+  # through _pw_timeout30 so a hung mise/shim cannot stall the script
+  # forever; stderr is captured to files under $_pw_capdir and the first
+  # line printed on failure instead of discarded (L-C). Defined here,
+  # inside the block, so the block stays self-contained.
+  # (M6: timeout(1) can only run EXTERNAL commands — every probe
+  # argument below must be a PATH-resolved binary, never a shell
+  # function. Detected with `type -P` (file only) so a function named
+  # `timeout` cannot silently satisfy the check.)
+  _pw_have_timeout=0; type -P timeout >/dev/null 2>&1 && _pw_have_timeout=1
+  if [[ "$_pw_have_timeout" == 0 ]]; then printf 'WARNING: timeout(1) not found — probes run unbounded (a hung mise/shim can stall the script).\n' >&2; fi
+  _pw_timeout30() { if [[ "$_pw_have_timeout" == 1 ]]; then timeout -k 5 30 "$@"; else "$@"; fi; }
+  _pw_canon() { local _c=""; if [[ -n "${1:-}" ]] && command -v readlink >/dev/null 2>&1; then _c="$(readlink -f -- "$1" 2>/dev/null || true)"; fi; printf '%s' "${_c:-$1}"; }
+  _pw_same_file() { # <a> <b>: exit 0 if the same file, by canonical path or inode
+    local _a="${1:-}" _b="${2:-}" _ca _cb _ia _ib
+    [[ -z "$_a" || -z "$_b" ]] && return 1
+    [[ "$_a" == "$_b" ]] && return 0
+    _ca="$(_pw_canon "$_a")"; _cb="$(_pw_canon "$_b")"
+    [[ "$_ca" == "$_cb" ]] && return 0
+    if command -v stat >/dev/null 2>&1; then
+      _ia="$(stat -c '%d:%i' -- "$_a" 2>/dev/null || true)"
+      if [[ -z "$_ia" ]]; then _ia="$(stat -f '%d:%i' -- "$_a" 2>/dev/null || true)"; fi
+      _ib="$(stat -c '%d:%i' -- "$_b" 2>/dev/null || true)"
+      if [[ -z "$_ib" ]]; then _ib="$(stat -f '%d:%i' -- "$_b" 2>/dev/null || true)"; fi
+      [[ -n "$_ia" && "$_ia" == "$_ib" ]] && return 0
+    fi
+    return 1
+  }
+  _pw_first_line() { [[ -s "${1:-}" ]] && head -n 1 -- "$1" || true; }
+  # H1 (micro red-team): a failed cd must never be misread as a tool
+  # failure. _pw_cd_ok <dir> exits 0 iff the dir can be entered.
+  # Probe sites use rc 98 as the "cd failed — inconclusive" sentinel.
+  _pw_cd_ok() { (cd -- "${1:-}" 2>/dev/null); }
+  # Capture files for probe stdout/stderr (M-C/L-C): one scratch dir
+  # under /tmp (TMPDIR forced — L-H: a poisoned TMPDIR must not move
+  # these). If mktemp fails, fall back to /tmp itself with $$-suffixed
+  # names (redirection creates the files; no mkdir needed).
+  _pw_capdir="$(TMPDIR=/tmp mktemp -d 2>/dev/null || true)"
+  _pw_capdir_own=1
+  if [[ -z "$_pw_capdir" ]]; then _pw_capdir="/tmp"; _pw_capdir_own=0; printf 'WARNING: could not create a temp capture dir — probe output files use predictable /tmp/pw-*-$$.out names instead (a degraded /tmp).\n' >&2; fi
+  _pw_npm_out="$_pw_capdir/pw-npm-prefix-$$.out"; _pw_npm_err="$_pw_capdir/pw-npm-prefix-$$.err"
+  _pw_mise_cli_out="$_pw_capdir/pw-mise-cli-$$.out"; _pw_mise_cli_err="$_pw_capdir/pw-mise-cli-$$.err"
+  _pw_mise_node_out="$_pw_capdir/pw-mise-node-$$.out"; _pw_mise_node_err="$_pw_capdir/pw-mise-node-$$.err"
+  _pw_node_out="$_pw_capdir/pw-node-ver-$$.out"; _pw_node_err="$_pw_capdir/pw-node-ver-$$.err"
+  _pw_cli_out="$_pw_capdir/pw-cli-ver-$$.out"; _pw_cli_err="$_pw_capdir/pw-cli-ver-$$.err"
+  _pw_probe_err="$_pw_capdir/pw-probe-$$.err"
   hash -r
-  if ! command -v playwright-cli >/dev/null 2>&1 && command -v mise >/dev/null 2>&1; then
-    # mise reshim takes no tool argument — it rebuilds shims for ALL
-    # mise tools. Documented behaviour; the PATH restore below bounds
-    # its effect on later steps.
-    mise reshim >/dev/null 2>&1 || true; hash -r
+  _pw_npm_prefix=""
+  _pw_npm_prefix_bad=""
+  _pw_mise_bin=""
+  _pw_mise_cli=""
+  _pw_mise_cli_bad=""
+  # H2 guard: $root must be a usable dir — `cd ""` is a silent no-op in
+  # bash, so an empty $root would pin the resolvers below to the
+  # invoker's cwd instead of failing (and an unset $root would abort
+  # under set -u). With a bad $root the resolvers are skipped outright
+  # and the M4 diagnostic below fires naming $root; the M1/H3 checks
+  # downstream still fail safe on whatever is on PATH.
+  _pw_root_ok=1
+  if [[ -z "${root:-}" || ! -d "$root" ]]; then
+    printf 'ERROR: $root is not a usable directory ("%s") — skipping the cwd-pinned resolvers below; the M4 diagnostic names the failed sources.\n' "${root-<unset>}" >&2
+    _pw_root_ok=0
   fi
-  if ! command -v playwright-cli >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    _pw_npm_prefix="$(npm config get prefix 2>/dev/null || true)"
-    if [[ -n "$_pw_npm_prefix" && -x "$_pw_npm_prefix/bin/playwright-cli" ]]; then
-      PATH="$_pw_npm_prefix/bin:$PATH"; hash -r
+  # Probe dir (H3/L-D/L-H): created ONCE, up front, and reused by the
+  # H1 node check, the M1 maybe-shim probe and the H3 CLI probe — all
+  # three must run from a temp cwd outside the mise config chain, never
+  # the script cwd (where shims work). TMPDIR is forced to /tmp for the
+  # mktemp call: a TMPDIR pointing inside the mise chain (or the repo)
+  # would make the probe test the wrong cwd class. If the dir lands
+  # under $root anyway, fall back to $work (also a temp dir under /tmp).
+  # A kill between mktemp and the removal after the --help probe leaks
+  # one /tmp dir — accepted, /tmp is scratch.
+  _pw_probe_dir="$(TMPDIR=/tmp mktemp -d 2>/dev/null || true)"
+  if [[ -z "$_pw_probe_dir" ]]; then
+    printf 'WARNING: could not create a temp probe dir — probes run from the temp work dir instead (weaker shim check).\n' >&2
+    _pw_probe_dir="$work"
+  else
+    _pw_root_norm=""
+    if [[ "$_pw_root_ok" == 1 && -n "${root:-}" && "$root" != "/" ]]; then _pw_root_norm="${root%/}"; fi
+    if [[ -n "$_pw_root_norm" && ( "$_pw_probe_dir" == "$_pw_root_norm" || "$_pw_probe_dir" == "$_pw_root_norm"/* ) ]]; then
+      printf 'WARNING: temp probe dir %s is under the repo dir %s — falling back to the temp work dir (weaker shim check).\n' "$_pw_probe_dir" "$root" >&2
+      _pw_probe_dir="$work"
     fi
   fi
+  _pw_cd_failed=0
+  if [[ "$_pw_root_ok" == 1 ]] && command -v npm >/dev/null 2>&1; then
+    # H2: resolve from the REPO dir, not the invoker's cwd — `npm config
+    # get prefix` reads .npmrc from the cwd, and `mise which` exits
+    # non-zero unless the tool resolves in the cwd. The subshell cd pins
+    # both to $root; the outer cwd is untouched. (L-I: a failed cd warns
+    # by name instead of vanishing into `|| true`; M-C: bounded to 30 s;
+    # L-C: stderr is captured, not discarded.)
+    # H1: the cd is tested in the PARENT first — a cd failure inside the
+    # probe subshell would set no flag the parent can see, and M4 would
+    # misreport it as "<empty>". _pw_cd_failed=1 names it there.
+    _pw_npm_rc=0
+    if ! _pw_cd_ok "$root"; then
+      printf 'WARNING: could not cd to repo dir "%s" for `npm config get prefix` — resolvers below use an empty prefix.\n' "$root" >&2
+      _pw_npm_rc=98; _pw_cd_failed=1
+    else
+      (cd "$root" && _pw_timeout30 npm config get prefix 2>"$_pw_npm_err") >"$_pw_npm_out" || _pw_npm_rc=$?
+    fi
+    _pw_npm_prefix="$(head -n 1 -- "$_pw_npm_out" 2>/dev/null || true)"
+    if [[ "$_pw_npm_rc" == 124 ]]; then
+      printf 'WARNING: `npm config get prefix` timed out after 30 s (or exited 124) — treating the prefix as empty.\n' >&2
+    elif [[ "$_pw_npm_rc" == 98 ]]; then
+      : # cd failure already warned above; prefix stays empty
+    elif [[ -z "$_pw_npm_prefix" && -s "$_pw_npm_err" ]]; then
+      printf 'WARNING: `npm config get prefix` failed: %s\n' "$(_pw_first_line "$_pw_npm_err")" >&2
+    fi
+    # L3: the prefix must be ABSOLUTE — a relative prefix would
+    # re-resolve against whatever cwd the script is in mid-section
+    # (/tmp during the probe below). A prefix outside $HOME is FINE
+    # (system node lives at /usr on this VM) — only relative is rejected.
+    case "$_pw_npm_prefix" in
+      /*) ;;
+      "") ;;
+      *) printf 'WARNING: npm prefix "%s" is relative — ignoring it (a relative prefix re-resolves against the cwd).\n' "$_pw_npm_prefix" >&2; _pw_npm_prefix_bad="$_pw_npm_prefix"; _pw_npm_prefix="" ;;
+    esac
+    # L-G: normalise trailing slashes — a prefix of "/opt/foo/" would
+    # otherwise build "/opt/foo//bin" and break the M2 comparison.
+    while [[ "$_pw_npm_prefix" == */ && "$_pw_npm_prefix" != "/" ]]; do _pw_npm_prefix="${_pw_npm_prefix%/}"; done
+  fi
+  # Pick the dir holding the REAL playwright-cli: the npm-prefix bin
+  # first, `mise which` as fallback. Prepend it whenever it holds an
+  # executable CLI — whether or not it also holds node. (Round-3 QC:
+  # the old elif fell through to the mise branch when node was missing
+  # from the npm bin and prepended NOTHING, even when a real node was
+  # already on PATH or available via `mise which node` — the CLI was
+  # then unfindable although both real binaries existed. Reproduced
+  # with stub npm/mise: npm bin with CLI but no node + real system
+  # node, and mise CLI bin with no node + real mise node elsewhere,
+  # both left `command -v playwright-cli` failing.)
+  _pw_cli_dir=""
+  if [[ -n "$_pw_npm_prefix" && -x "$_pw_npm_prefix/bin/playwright-cli" ]]; then
+    _pw_cli_dir="$_pw_npm_prefix/bin"
+  elif [[ "$_pw_root_ok" == 1 ]] && command -v mise >/dev/null 2>&1; then
+    _pw_mise_cli_rc=0
+    if ! _pw_cd_ok "$root"; then
+      printf 'WARNING: could not cd to repo dir "%s" for `mise which playwright-cli` — the mise fallback is skipped.\n' "$root" >&2
+      _pw_mise_cli_rc=98; _pw_cd_failed=1
+    else
+      (cd "$root" && _pw_timeout30 mise which playwright-cli 2>"$_pw_mise_cli_err") >"$_pw_mise_cli_out" || _pw_mise_cli_rc=$?
+    fi
+    _pw_mise_cli="$(head -n 1 -- "$_pw_mise_cli_out" 2>/dev/null || true)"
+    if [[ "$_pw_mise_cli_rc" == 124 ]]; then
+      printf 'WARNING: `mise which playwright-cli` timed out after 30 s (or exited 124) — treating it as empty.\n' >&2
+    elif [[ "$_pw_mise_cli_rc" == 98 ]]; then
+      : # cd failure already warned above; result stays empty
+    elif [[ -z "$_pw_mise_cli" && -s "$_pw_mise_cli_err" ]]; then
+      printf 'WARNING: `mise which playwright-cli` failed: %s\n' "$(_pw_first_line "$_pw_mise_cli_err")" >&2
+    fi
+    case "$_pw_mise_cli" in
+      /*) ;;
+      "") ;;
+      *) printf 'WARNING: `mise which playwright-cli` returned a relative path "%s" — ignoring it.\n' "$_pw_mise_cli" >&2; _pw_mise_cli_bad="$_pw_mise_cli"; _pw_mise_cli="" ;;
+    esac
+    if [[ -n "$_pw_mise_cli" && -x "$_pw_mise_cli" ]]; then
+      _pw_mise_bin="$(dirname -- "$_pw_mise_cli")"
+      _pw_cli_dir="$_pw_mise_bin"
+    fi
+  fi
+  # L-G: normalise trailing slashes on the selected dir — a trailing
+  # slash would otherwise break the M2 comparison below.
+  while [[ "$_pw_cli_dir" == */ && "$_pw_cli_dir" != "/" ]]; do _pw_cli_dir="${_pw_cli_dir%/}"; done
+  if [[ -n "$_pw_cli_dir" ]]; then
+    PATH="$_pw_cli_dir:$PATH"; hash -r
+    if [[ -x "$_pw_cli_dir/node" ]]; then
+      printf 'Playwright CLI + node resolved to real binaries: %s (mise shim bypassed — the shim fails from /tmp cwds)\n' "$_pw_cli_dir"
+    else
+      printf 'Playwright CLI resolved to real binary: %s/playwright-cli (mise shim bypassed — the shim fails from /tmp cwds; node resolved separately below if needed)\n' "$_pw_cli_dir"
+    fi
+  else
+    # M4: ONE diagnostic line naming both attempted sources and their
+    # (empty) results, before the existing UNVERIFIED path below.
+    # (L-E: npm ABSENT is a different fact from npm present with no
+    # bin — say which. H1: a failed cd to $root left the tool results
+    # empty — say so, instead of printing "<empty>" as if mise had
+    # run and returned it.)
+    _pw_mise_disp="<mise not installed>"
+    if command -v mise >/dev/null 2>&1; then _pw_mise_disp="<empty>"; fi
+    [[ -n "$_pw_mise_cli" ]] && _pw_mise_disp="$_pw_mise_cli"
+    [[ -n "$_pw_mise_cli_bad" ]] && _pw_mise_disp="<relative path \"$_pw_mise_cli_bad\" — ignored>"
+    if [[ "${_pw_cd_failed:-0}" == 1 ]] && command -v mise >/dev/null 2>&1; then _pw_mise_disp="<not run — cd to repo dir failed>"; fi
+    if [[ "${_pw_cd_failed:-0}" == 1 ]]; then
+      printf 'Playwright CLI resolve: no real binary found — cd to the repo dir failed, so one or both resolvers never ran; see the WARNING above.\n'
+    elif ! command -v npm >/dev/null 2>&1; then
+      printf 'Playwright CLI resolve: no real binary found — npm is not installed, so no npm prefix was checked; `mise which playwright-cli` (from %s) returned "%s" — proceeding without the PATH prepend.\n' "${root-<unset>}" "$_pw_mise_disp"
+    else
+      _pw_npm_disp="${_pw_npm_prefix:-<npm not found or empty prefix>}"
+      [[ -n "$_pw_npm_prefix_bad" ]] && _pw_npm_disp="<relative prefix \"$_pw_npm_prefix_bad\" — ignored>"
+      printf 'Playwright CLI resolve: no real binary found — npm prefix "%s" has no bin/playwright-cli; `mise which playwright-cli` (from %s) returned "%s" — proceeding without the PATH prepend.\n' "$_pw_npm_disp" "${root-<unset>}" "$_pw_mise_disp"
+    fi
+  fi
+  # The CLI is a node script (#!/usr/bin/env node), so a real node must
+  # resolve too. If the CLI dir holds one, done. Otherwise try the real
+  # node via `mise which node` — its bin dir can differ from the CLI's
+  # (separate mise installs). If that fails as well, leave PATH as-is:
+  # a real system node may already be on it, and the --help probe below
+  # (which executes the CLI under this PATH) reports a broken shebang
+  # instead of silently proceeding.
+  if [[ -n "$_pw_cli_dir" && ! -x "$_pw_cli_dir/node" ]] && command -v mise >/dev/null 2>&1; then
+    _pw_mise_node_rc=0
+    if ! _pw_cd_ok "$root"; then
+      printf 'WARNING: could not cd to repo dir "%s" for `mise which node` — the mise node fallback is skipped.\n' "$root" >&2
+      _pw_mise_node_rc=98; _pw_cd_failed=1
+    else
+      (cd "$root" && _pw_timeout30 mise which node 2>"$_pw_mise_node_err") >"$_pw_mise_node_out" || _pw_mise_node_rc=$?
+    fi
+    _pw_mise_node="$(head -n 1 -- "$_pw_mise_node_out" 2>/dev/null || true)"
+    if [[ "$_pw_mise_node_rc" == 124 ]]; then
+      printf 'WARNING: `mise which node` timed out after 30 s (or exited 124) — treating it as empty.\n' >&2
+    elif [[ "$_pw_mise_node_rc" == 98 ]]; then
+      : # cd failure already warned above; result stays empty
+    elif [[ -z "$_pw_mise_node" && -s "$_pw_mise_node_err" ]]; then
+      printf 'WARNING: `mise which node` failed: %s\n' "$(_pw_first_line "$_pw_mise_node_err")" >&2
+    fi
+    case "$_pw_mise_node" in
+      /*) ;;
+      "") ;;
+      *) printf 'WARNING: `mise which node` returned a relative path "%s" — ignoring it.\n' "$_pw_mise_node" >&2; _pw_mise_node="" ;;
+    esac
+    if [[ -n "$_pw_mise_node" && -x "$_pw_mise_node" ]]; then
+      _pw_mise_node_bin="$(dirname -- "$_pw_mise_node")"
+      if [[ "$_pw_mise_node_bin" != "$_pw_cli_dir" ]]; then
+        PATH="$_pw_mise_node_bin:$PATH"; hash -r
+        printf 'Node resolved to real binary: %s/node (mise shim bypassed — the shim fails from /tmp cwds)\n' "$_pw_mise_node_bin"
+      fi
+    fi
+  fi
+  # (M-A: no `mise reshim` here. It only ran when the CLI was still
+  # missing, so its only product was a fresh mise shim — which the M1
+  # check below rejects. A reshim step and a shim rejection cannot both
+  # be right; the M4 diagnostic above is the accurate failure path.)
+  # M2: print what the prepends actually resolved to, and assert the CLI
+  # is the SELECTED one — the node-dir prepend above runs AFTER the
+  # CLI-dir prepend, so a playwright-cli inside the node dir would
+  # shadow the selected binary (the != guard only prevented a duplicate
+  # prepend). If shadowed, re-prepend the CLI dir so the selected binary
+  # wins, and re-check; a still-wrong resolution fails loud.
+  _pw_cli_resolved="$(command -v playwright-cli 2>/dev/null || true)"
+  _pw_node_resolved="$(command -v node 2>/dev/null || true)"
+  printf 'Playwright CLI resolves to: %s\n' "${_pw_cli_resolved:-<not found>}"
+  printf 'Node resolves to: %s\n' "${_pw_node_resolved:-<not found>}"
+  _pw_resolve_ok=1
+  # L-G: compare with _pw_same_file (canonical path or inode), not raw
+  # strings — a node-dir CLI that is a symlink/hardlink to the selected
+  # binary is the SAME file, not a shadow.
+  if [[ -n "$_pw_cli_dir" && -n "$_pw_cli_resolved" ]] && ! _pw_same_file "$_pw_cli_resolved" "$_pw_cli_dir/playwright-cli"; then
+    printf 'WARNING: the node-dir prepend shadowed the selected CLI (%s is not %s/playwright-cli) — re-prepending the CLI dir so the selected binary wins.\n' "$_pw_cli_resolved" "$_pw_cli_dir" >&2
+    PATH="$_pw_cli_dir:$PATH"; hash -r
+    _pw_cli_resolved="$(command -v playwright-cli 2>/dev/null || true)"
+    _pw_node_resolved="$(command -v node 2>/dev/null || true)"
+    printf 'Playwright CLI resolves to: %s\n' "${_pw_cli_resolved:-<not found>}"
+    printf 'Node resolves to: %s\n' "${_pw_node_resolved:-<not found>}"
+    if ! _pw_same_file "$_pw_cli_resolved" "$_pw_cli_dir/playwright-cli"; then
+      fail "Playwright CLI still does not resolve to the selected binary $_pw_cli_dir/playwright-cli (resolves to ${_pw_cli_resolved:-<not found>}) — eyes step not run"
+      _pw_resolve_ok=0
+    fi
+  fi
+  # M1: canonicalise the resolved paths and reject shims. A shim (or a
+  # symlink into a shims dir) passes -x, so executability never proved
+  # the binary was real — that was the hole. If readlink -f is
+  # unavailable (or cannot canonicalise), the temp-cwd execution probe
+  # below is the minimum shim check (H3 — already being added).
+  # (M-E: the rejection is ANCHORED to the real mise shims dir —
+  # ${MISE_DATA_DIR:-~/.local/share/mise}/shims — not to any path
+  # component named "shims" (e.g. /opt/<team>/shims/bin is a real
+  # install, not a mise shim). A canonical path under some OTHER
+  # shims-like dir is only a SUSPECT: it is rejected only if it also
+  # fails the temp-cwd execution probe just below (M-E fallback). M-D:
+  # if readlink -f returns empty for a non-empty resolved path, that is
+  # warned by name — the M1 gate is skipped for it, not silently.)
+  _pw_readlink_ok=0
+  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then _pw_readlink_ok=1; fi
+  _pw_cli_maybe_shim=0; _pw_node_maybe_shim=0
+  if [[ "$_pw_resolve_ok" == 1 && "$_pw_readlink_ok" == 1 ]]; then
+    _pw_cli_real=""; _pw_node_real=""
+    [[ -n "$_pw_cli_resolved" ]] && _pw_cli_real="$(readlink -f -- "$_pw_cli_resolved" 2>/dev/null || true)"
+    [[ -n "$_pw_node_resolved" ]] && _pw_node_real="$(readlink -f -- "$_pw_node_resolved" 2>/dev/null || true)"
+    if [[ -n "$_pw_cli_resolved" && -z "$_pw_cli_real" ]]; then
+      printf 'WARNING: readlink -f could not canonicalise the Playwright CLI path "%s" (loop, permission, or vanished target) — the shim check for it is skipped; the temp-cwd execution probe below is the backstop.\n' "$_pw_cli_resolved" >&2
+    fi
+    if [[ -n "$_pw_node_resolved" && -z "$_pw_node_real" ]]; then
+      printf 'WARNING: readlink -f could not canonicalise the node path "%s" (loop, permission, or vanished target) — the shim check for it is skipped; the temp-cwd execution probe below is the backstop.\n' "$_pw_node_resolved" >&2
+    fi
+    [[ -n "$_pw_cli_real" ]] && printf 'Playwright CLI canonical path: %s\n' "$_pw_cli_real"
+    [[ -n "$_pw_node_real" ]] && printf 'Node canonical path: %s\n' "$_pw_node_real"
+    # M2: the anchor is the CANONICAL mise shims dir. _pw_mise_data is
+    # canonicalised (a symlinked mise data dir must still match), a
+    # leading ~ is expanded, and HOME unset/empty leaves the anchor
+    # undetermined (probe decides) instead of aborting under set -u.
+    # L7: the anchor's effective value is logged once, so a
+    # misconfigured MISE_DATA_DIR is visible.
+    _pw_mise_data="${MISE_DATA_DIR:-}"
+    if [[ -n "$_pw_mise_data" && "$_pw_mise_data" == "~/"* ]]; then _pw_mise_data="${HOME:-}/${_pw_mise_data:2}"; fi
+    if [[ -z "$_pw_mise_data" ]]; then
+      if [[ -n "${HOME:-}" ]]; then _pw_mise_data="$HOME/.local/share/mise"; else _pw_mise_data=""; fi
+    fi
+    if [[ -n "$_pw_mise_data" ]]; then _pw_mise_data="$(_pw_canon "$_pw_mise_data")"; fi
+    while [[ "$_pw_mise_data" == */ && "$_pw_mise_data" != "/" ]]; do _pw_mise_data="${_pw_mise_data%/}"; done
+    _pw_mise_shims=""
+    case "$_pw_mise_data" in /*) _pw_mise_shims="$_pw_mise_data/shims" ;; esac
+    printf 'Mise shims dir (anchor): %s\n' "${_pw_mise_shims:-<undetermined — probe decides>}"
+    _pw_cli_is_shim=0; _pw_node_is_shim=0
+    if [[ -n "$_pw_cli_real" ]]; then
+      if [[ -n "$_pw_mise_shims" && ( "$_pw_cli_real" == "$_pw_mise_shims" || "$_pw_cli_real" == "$_pw_mise_shims"/* ) ]]; then
+        _pw_cli_is_shim=1
+      elif [[ "$_pw_cli_real" == */shims/* || "$_pw_cli_real" == */shims ]]; then
+        _pw_cli_maybe_shim=1
+      fi
+    fi
+    if [[ "$_pw_cli_is_shim" == 1 ]]; then
+      # M2 probe backstop: the location says shim, but a real binary
+      # hand-placed under the shims dir would execute — probe it first.
+      # Only a probe that RUNS and FAILS confirms the rejection; a
+      # successful execution exonerates it. A cd failure is
+      # inconclusive — do not reject on it (H1), the H3 probe below is
+      # the backstop.
+      _pw_anchor_rc=0; _pw_anchor_ok=0
+      if _pw_cd_ok "$_pw_probe_dir"; then
+        (cd "$_pw_probe_dir" && _pw_timeout30 "$_pw_cli_resolved" --version >/dev/null 2>"$_pw_probe_err") || _pw_anchor_rc=$?
+        if [[ "$_pw_anchor_rc" == 0 ]]; then _pw_anchor_ok=1; fi
+      else
+        printf 'WARNING: anchored-shim probe inconclusive (could not cd to probe dir "%s") — not rejecting on location alone.\n' "$_pw_probe_dir" >&2
+        _pw_anchor_rc=98
+      fi
+      if [[ "$_pw_anchor_ok" == 1 ]]; then
+        printf 'Playwright CLI at %s executes from the temp probe dir despite the shims location — treating it as a real binary, not a shim.\n' "$_pw_cli_real"
+        _pw_cli_is_shim=0
+      elif [[ "$_pw_anchor_rc" == 98 ]]; then
+        _pw_cli_is_shim=0
+      fi
+    fi
+    if [[ "$_pw_cli_is_shim" == 1 ]]; then
+      fail "Playwright CLI canonical path $_pw_cli_real is under a shims dir — a shim passing -x is not a real binary; eyes step not run"
+      _pw_resolve_ok=0
+    fi
+    if [[ "$_pw_resolve_ok" == 1 && -n "$_pw_node_real" ]]; then
+      if [[ -n "$_pw_mise_shims" && ( "$_pw_node_real" == "$_pw_mise_shims" || "$_pw_node_real" == "$_pw_mise_shims"/* ) ]]; then
+        _pw_node_is_shim=1
+      elif [[ "$_pw_node_real" == */shims/* || "$_pw_node_real" == */shims ]]; then
+        _pw_node_maybe_shim=1
+      fi
+    fi
+    if [[ "$_pw_resolve_ok" == 1 && "$_pw_node_is_shim" == 1 ]]; then
+      _pw_anchor_rc=0; _pw_anchor_ok=0
+      if _pw_cd_ok "$_pw_probe_dir"; then
+        (cd "$_pw_probe_dir" && _pw_timeout30 "$_pw_node_resolved" --version >/dev/null 2>"$_pw_probe_err") || _pw_anchor_rc=$?
+        if [[ "$_pw_anchor_rc" == 0 ]]; then _pw_anchor_ok=1; fi
+      else
+        printf 'WARNING: anchored-shim probe inconclusive (could not cd to probe dir "%s") — not rejecting on location alone.\n' "$_pw_probe_dir" >&2
+        _pw_anchor_rc=98
+      fi
+      if [[ "$_pw_anchor_ok" == 1 ]]; then
+        printf 'Node at %s executes from the temp probe dir despite the shims location — treating it as a real binary, not a shim.\n' "$_pw_node_real"
+        _pw_node_is_shim=0
+      elif [[ "$_pw_anchor_rc" == 98 ]]; then
+        _pw_node_is_shim=0
+      fi
+    fi
+    if [[ "$_pw_resolve_ok" == 1 && "$_pw_node_is_shim" == 1 ]]; then
+      fail "Node canonical path $_pw_node_real is under a shims dir — a shim passing -x is not a real binary; eyes step not run"
+      _pw_resolve_ok=0
+    fi
+    # M-E fallback: a maybe-shim binary is proven real — or not — by
+    # EXECUTING it from the temp probe dir (a mise shim fails there).
+    # This probe runs now, before H1, so a rejected maybe-shim still
+    # fails with the shim FAIL (and one failure count), not with a
+    # misleading "node not found" from H1.
+    if [[ "$_pw_resolve_ok" == 1 && ( "$_pw_cli_maybe_shim" == 1 || "$_pw_node_maybe_shim" == 1 ) ]]; then
+      if [[ "$_pw_cli_maybe_shim" == 1 ]]; then
+        _pw_probe_rc=0
+        if ! _pw_cd_ok "$_pw_probe_dir"; then
+          printf 'WARNING: maybe-shim probe inconclusive (could not cd to probe dir "%s") — not rejecting; the execution probe below is the backstop.\n' "$_pw_probe_dir" >&2
+          _pw_probe_rc=98
+        else
+          (cd "$_pw_probe_dir" && _pw_timeout30 "$_pw_cli_resolved" --version >/dev/null 2>"$_pw_probe_err") || _pw_probe_rc=$?
+        fi
+        if [[ "$_pw_probe_rc" == 98 ]]; then
+          : # inconclusive — do not reject on a probe that never ran
+        elif [[ "$_pw_probe_rc" == 124 ]]; then
+          printf 'WARNING: Playwright CLI --version from the temp probe dir timed out after 30 s (or exited 124) — a timeout is not evidence of a shim; not rejecting.\n' >&2
+        elif [[ "$_pw_probe_rc" != 0 ]]; then
+          # H2: only assert "shim" when the evidence supports it — the
+          # failure text names a shim. Any other exec failure is a
+          # broken binary, not a shim verdict; the H3 probe below
+          # reports it with the right reason.
+          if [[ -s "$_pw_probe_err" ]] && grep -qi 'shim' "$_pw_probe_err"; then
+            printf 'WARNING: Playwright CLI --version from the temp probe dir failed: %s\n' "$(_pw_first_line "$_pw_probe_err")" >&2
+            fail "Playwright CLI canonical path $_pw_cli_real is under a shims dir — a shim passing -x is not a real binary; eyes step not run"
+            _pw_resolve_ok=0
+          else
+            printf 'WARNING: Playwright CLI --version from the temp probe dir failed (exit %s)%s — not a shim verdict; the execution probe below reports it.\n' "$_pw_probe_rc" "$([[ -s "$_pw_probe_err" ]] && printf ': %s' "$(_pw_first_line "$_pw_probe_err")")" >&2
+          fi
+        fi
+      fi
+      if [[ "$_pw_resolve_ok" == 1 && "$_pw_node_maybe_shim" == 1 ]]; then
+        _pw_probe_rc=0
+        if ! _pw_cd_ok "$_pw_probe_dir"; then
+          printf 'WARNING: maybe-shim probe inconclusive (could not cd to probe dir "%s") — not rejecting; the execution probe below is the backstop.\n' "$_pw_probe_dir" >&2
+          _pw_probe_rc=98
+        else
+          (cd "$_pw_probe_dir" && _pw_timeout30 "$_pw_node_resolved" --version >/dev/null 2>"$_pw_probe_err") || _pw_probe_rc=$?
+        fi
+        if [[ "$_pw_probe_rc" == 98 ]]; then
+          : # inconclusive — do not reject on a probe that never ran
+        elif [[ "$_pw_probe_rc" == 124 ]]; then
+          printf 'WARNING: Node --version from the temp probe dir timed out after 30 s (or exited 124) — a timeout is not evidence of a shim; not rejecting.\n' >&2
+        elif [[ "$_pw_probe_rc" != 0 ]]; then
+          if [[ -s "$_pw_probe_err" ]] && grep -qi 'shim' "$_pw_probe_err"; then
+            printf 'WARNING: Node --version from the temp probe dir failed: %s\n' "$(_pw_first_line "$_pw_probe_err")" >&2
+            fail "Node canonical path $_pw_node_real is under a shims dir — a shim passing -x is not a real binary; eyes step not run"
+            _pw_resolve_ok=0
+          else
+            printf 'WARNING: Node --version from the temp probe dir failed (exit %s)%s — not a shim verdict; the execution probe below reports it.\n' "$_pw_probe_rc" "$([[ -s "$_pw_probe_err" ]] && printf ': %s' "$(_pw_first_line "$_pw_probe_err")")" >&2
+          fi
+        fi
+      fi
+    fi
+  elif [[ "$_pw_resolve_ok" == 1 ]]; then
+    printf 'WARNING: readlink -f unavailable — the temp-cwd execution probe below is the only shim check (M1 fallback).\n' >&2
+  fi
+  # H1: after BOTH prepends, the node that will run the CLI must be
+  # Node 22+ — the kit's hard gate (same as §9). Fail LOUD: a too-old
+  # (or missing/unparseable) post-prepend node fails the run and the
+  # eyes step is not run on it. (M5: the resolved node + CLI versions
+  # are logged here and at the probe.)
+  if [[ "$_pw_resolve_ok" == 1 ]]; then
+    # L-D: run from the probe temp dir, not the script cwd — a shim
+    # node reports v22+ from the repo dir and fails from /tmp. M-C:
+    # bounded to 30 s; L-C: stderr captured, first line printed.
+    # H1: a failed cd is INCONCLUSIVE, never "node not found" — the
+    # probe never ran, so nothing about node is known.
+    _pw_node_ver=""; _pw_node_rc=0
+    if ! _pw_cd_ok "$_pw_probe_dir"; then
+      printf 'WARNING: node --version probe inconclusive (could not cd to probe dir "%s") — cannot confirm Node 22+.\n' "$_pw_probe_dir" >&2
+      _pw_node_rc=98
+    else
+      (cd "$_pw_probe_dir" && _pw_timeout30 node --version 2>"$_pw_node_err") >"$_pw_node_out" || _pw_node_rc=$?
+    fi
+    _pw_node_ver="$(head -n 1 -- "$_pw_node_out" 2>/dev/null || true)"
+    if [[ "$_pw_node_rc" == 124 ]]; then
+      printf 'WARNING: node --version timed out after 30 s (or exited 124) from the temp probe dir — cannot confirm Node 22+.\n' >&2
+    elif [[ "$_pw_node_rc" == 98 ]]; then
+      : # cd failure already warned above; version stays empty
+    elif [[ "$_pw_node_rc" != 0 && -s "$_pw_node_err" ]]; then
+      printf 'WARNING: node --version failed (exit %s): %s\n' "$_pw_node_rc" "$(_pw_first_line "$_pw_node_err")" >&2
+    fi
+    printf 'Node after PATH prepend: %s (required >= 22)\n' "${_pw_node_ver:-<not found>}"
+    _pw_node_major="${_pw_node_ver#v}"; _pw_node_major="${_pw_node_major%%.*}"
+    if [[ "$_pw_node_rc" == 98 ]]; then
+      fail "node --version probe was inconclusive (could not cd to the temp probe dir) — cannot confirm Node 22+; eyes step not run"
+      _pw_resolve_ok=0
+    elif [[ -z "$_pw_node_ver" ]]; then
+      fail "node not found on PATH after the Playwright PATH prepend — the CLI's #!/usr/bin/env node shebang cannot run; eyes step not run"
+      _pw_resolve_ok=0
+    elif [[ ! "$_pw_node_major" =~ ^[0-9]+$ ]]; then
+      fail "node --version gave an unparseable result ('$_pw_node_ver') after the Playwright PATH prepend — cannot confirm Node 22+; eyes step not run"
+      _pw_resolve_ok=0
+    elif [[ "10#$_pw_node_major" -lt 22 ]]; then
+      fail "Node $_pw_node_ver found after the Playwright PATH prepend; the kit requires Node 22+ (frontend-kit SKILL.md step 0.3; gate.mjs consistency.mjs needs the built-in WebSocket). Eyes step not run on it."
+      _pw_resolve_ok=0
+    fi
+  fi
+  # H3: capture the CLI version from a TEMP dir under /tmp (the probe
+  # itself — `command -v` proves findable, not runnable, and the
+  # invoker's cwd is inside the mise config chain, where shims work).
+  # The dir is created once, reused for the --help probe below, and
+  # removed there. If mktemp fails, $work (also a temp dir under /tmp)
+  # is the fallback probe cwd. The captured output also records the CLI
+  # version (H1/M5): a version other than the pin is a LOUD warning,
+  # not a failure — drift, not a proven breakage (the CLI downloads
+  # its own browser revision).
+  # L-B: single pin source — read the pin from install.sh's
+  # PLAYWRIGHT_CLI_VERSION assignment (same source install.sh uses),
+  # falling back to the hardcoded literal if install.sh cannot be read
+  # (e.g. the QC harness extracts this block standalone). The pin VALUE
+  # is unchanged (0.1.24); only the source is single.
+  # M1: the fallback is a warn() (stderr + counted), not a quiet
+  # stdout line — a stale fallback must be visible. The matcher
+  # accepts `export`, spaces around `=`, and a -beta / 4th-component
+  # suffix (the leading dotted-triple is the pin; a suffix warns).
+  # The file must also contain a second kit marker, so a stale or
+  # foreign install.sh cannot silently supply the pin.
+  _pw_cli_pin="0.1.24"
+  _pw_cli_pin_src="hardcoded fallback"
+  _pw_pin_file="${root:-}/install.sh"
+  _pw_pin_line=""
+  if [[ -n "${_pw_pin_file}" && -f "$_pw_pin_file" ]] && grep -q 'frontend-agent-kit' "$_pw_pin_file" 2>/dev/null; then
+    _pw_pin_line="$(grep -m1 -E '^[[:space:]]*(export[[:space:]]+)?PLAYWRIGHT_CLI_VERSION[[:space:]]*=[[:space:]]*"[^"]*"' "$_pw_pin_file" 2>/dev/null || true)"
+  fi
+  _pw_pin_re='PLAYWRIGHT_CLI_VERSION[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)([^"]*)"'
+  if [[ "$_pw_pin_line" =~ $_pw_pin_re ]]; then
+    _pw_cli_pin="${BASH_REMATCH[1]}"; _pw_cli_pin_src="$_pw_pin_file"
+    if [[ -n "${BASH_REMATCH[2]}" ]]; then
+      warn "Playwright CLI pin in $_pw_pin_file has a suffix '${BASH_REMATCH[2]}' after the version — using the leading dotted-triple $_pw_cli_pin"
+    fi
+  else
+    warn "Playwright CLI pin fell back to the hardcoded $_pw_cli_pin ($_pw_pin_file could not be read, lacked the kit marker, or had no PLAYWRIGHT_CLI_VERSION assignment) — re-pin install.sh to change it"
+  fi
+  printf 'Playwright CLI pin: %s (from %s)\n' "$_pw_cli_pin" "$_pw_cli_pin_src"
+  _pw_cli_ver=""
+  if [[ "$_pw_resolve_ok" == 1 ]] && command -v playwright-cli >/dev/null 2>&1; then
+    # _pw_probe_dir was created up front (before M1) and reused here;
+    # re-create it only if something cleared it.
+    if [[ -z "${_pw_probe_dir:-}" ]]; then
+      _pw_probe_dir="$(TMPDIR=/tmp mktemp -d 2>/dev/null || true)"
+      [[ -z "$_pw_probe_dir" ]] && _pw_probe_dir="$work"
+    fi
+    # M-C/L-C: bounded to 30 s; stderr captured, first line printed on
+    # failure (a non-executing CLI's real error used to be discarded).
+    # H1: a failed cd is INCONCLUSIVE, never "does not execute" — the
+    # probe never ran.
+    _pw_cli_rc=0
+    if ! _pw_cd_ok "$_pw_probe_dir"; then
+      printf 'WARNING: `playwright-cli --version` probe inconclusive (could not cd to probe dir "%s").\n' "$_pw_probe_dir" >&2
+      _pw_cli_rc=98
+    else
+      (cd "$_pw_probe_dir" && _pw_timeout30 playwright-cli --version 2>"$_pw_cli_err") >"$_pw_cli_out" || _pw_cli_rc=$?
+    fi
+    _pw_cli_ver="$(head -n 1 -- "$_pw_cli_out" 2>/dev/null || true)"
+    if [[ "$_pw_cli_rc" == 124 ]]; then
+      printf 'WARNING: `playwright-cli --version` timed out after 30 s (or exited 124) from the temp probe dir.\n' >&2
+    elif [[ "$_pw_cli_rc" == 98 ]]; then
+      : # cd failure already warned above; version stays empty
+    elif [[ "$_pw_cli_rc" != 0 && -s "$_pw_cli_err" ]]; then
+      printf 'WARNING: `playwright-cli --version` failed (exit %s): %s\n' "$_pw_cli_rc" "$(_pw_first_line "$_pw_cli_err")" >&2
+    fi
+    if [[ -n "$_pw_cli_ver" ]]; then
+      printf 'Playwright CLI version: %s (pin %s)\n' "$_pw_cli_ver" "$_pw_cli_pin"
+      # Exact match on the first dotted-triple in the output (H1): a
+      # substring match would also accept 0.1.240 for pin 0.1.24, while
+      # "playwright-cli 0.1.24" / "0.1.24-beta" still match.
+      _pw_cli_ver_num=""
+      if [[ "$_pw_cli_ver" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then _pw_cli_ver_num="${BASH_REMATCH[1]}"; fi
+      if [[ "$_pw_cli_ver_num" != "$_pw_cli_pin" ]]; then
+        warn "Playwright CLI version $_pw_cli_ver does NOT match the pinned $_pw_cli_pin — drift, not a proven breakage; continuing (the CLI downloads its own browser revision)"
+      fi
+    elif [[ "$_pw_cli_rc" == 98 ]]; then
+      printf 'WARNING: playwright-cli probe was inconclusive (could not cd to the temp probe dir) — the --help probe below will report the same.\n' >&2
+    else
+      printf 'WARNING: playwright-cli is on PATH but does not execute from a temp dir (`playwright-cli --version` failed there — usually the #!/usr/bin/env node shebang resolving to a mise shim). The --help probe below will fail the same way.\n' >&2
+    fi
+  fi
+  # Probe scratch cleanup: the capture files go with the scratch dir.
+  # (The probe dir itself is NOT removed here — the --help probe below
+  # still needs it; it is removed there.)
+  rm -f -- "$_pw_npm_out" "$_pw_npm_err" "$_pw_mise_cli_out" "$_pw_mise_cli_err" "$_pw_mise_node_out" "$_pw_mise_node_err" "$_pw_node_out" "$_pw_node_err" "$_pw_cli_out" "$_pw_cli_err" "$_pw_probe_err"
+  if [[ "$_pw_capdir_own" == 1 && -n "$_pw_capdir" ]]; then rm -rf -- "$_pw_capdir"; fi
 fi
 if [[ "$eyes_skipped" == 1 ]]; then
   pending_msg "Playwright eyes skipped at install (--skip-eyes) — eyes step not run (no browser expected). Run: npm install -g @playwright/cli@0.1.24, then playwright-cli install-browser chrome-for-testing"
+elif [[ "${_pw_resolve_ok:-1}" == 0 ]]; then
+  : # the resolve block above already failed loudly (shim / wrong binary / pre-22 node) — eyes not run on it
 elif command -v playwright-cli >/dev/null 2>&1; then
-  if playwright-cli --help >/dev/null 2>&1; then ok "playwright-cli --help runs ($(playwright-cli --version 2>/dev/null || echo 'version not reported'))";
-  else fail "playwright-cli --help failed"; fi
+  # H3: --help probe from a temp dir under /tmp (see the resolve block):
+  # the invoker's cwd is inside the mise config chain, where shims work
+  # — the probe must test the cwd class the eyes loop runs from ($work).
+  # _pw_probe_dir was created by the resolve block; fall back to $work
+  # (also a temp dir under /tmp) if it is empty.
+  _pw_probe_cwd="${_pw_probe_dir:-$work}"
+  # M-C/L-C: the --help probe is bounded to 30 s and its stderr is
+  # captured — a failing CLI's real error is printed (first line) with
+  # the failure instead of discarded. A timeout (exit 124) is named as
+  # a timeout, not a generic failure. H1: a failed cd is INCONCLUSIVE,
+  # never "failed" — the probe never ran.
+  _pw_help_err="$work/pw-help-$$.err"
+  _pw_help_rc=0
+  if ! _pw_cd_ok "$_pw_probe_cwd"; then
+    printf 'WARNING: `playwright-cli --help` probe inconclusive (could not cd to probe dir "%s").\n' "$_pw_probe_cwd" >&2
+    _pw_help_rc=98
+  else
+    (cd "$_pw_probe_cwd" && _pw_timeout30 playwright-cli --help >/dev/null 2>"$_pw_help_err") || _pw_help_rc=$?
+  fi
+  if [[ "$_pw_help_rc" == 0 ]]; then ok "playwright-cli --help runs (from temp dir $_pw_probe_cwd; version ${_pw_cli_ver:-version not reported})";
+  else
+    _pw_help_msg="playwright-cli --help failed (from temp dir $_pw_probe_cwd)"
+    if [[ "$_pw_help_rc" == 98 ]]; then _pw_help_msg="playwright-cli --help probe was inconclusive (could not cd to temp dir $_pw_probe_cwd)";
+    elif [[ "$_pw_help_rc" == 124 ]]; then _pw_help_msg="$_pw_help_msg — timed out after 30 s (or exited 124)";
+    elif [[ -s "$_pw_help_err" ]]; then _pw_help_msg="$_pw_help_msg: $(_pw_first_line "$_pw_help_err")"; fi
+    fail "$_pw_help_msg"
+  fi
+  rm -f -- "$_pw_help_err"
+  if [[ -n "${_pw_probe_dir:-}" && "$_pw_probe_dir" != "$work" ]]; then rm -rf -- "$_pw_probe_dir"; fi
   # Serve the fixture over http (module scripts and fetch do not run on file://).
   # The CLI writes .playwright-cli/ into the cwd, so run it from inside the
   # temp dir to keep the repo clean.
@@ -791,8 +1397,18 @@ else
     unverified "playwright-cli not on PATH — eyes step not verified. Install the pinned CLI: npm install -g @playwright/cli@0.1.24, then playwright-cli install-browser chrome-for-testing"
   fi
 fi
-# Restore PATH (red-team H7) — see the resolve block above.
-if [[ -n "${_pw_saved_path:-}" ]]; then PATH="$_pw_saved_path"; hash -r; fi
+# Restore PATH (red-team H7) — see the resolve block above. L2:
+# sentinel-guarded, so an empty original PATH restores as empty,
+# not as unset. The EXIT trap set in the resolve block is the
+# backstop for an early exit; this is the normal path.
+if [[ -n "${_pw_saved_path_set:-}" ]]; then PATH="$_pw_saved_path"; hash -r; fi
+# M-B: unset the EXIT trap now that PATH is restored sequentially —
+# the restore above ran BEFORE this unset, so the unset cannot break
+# it. No trap is re-armed: $work is not used past this point (§7–§9
+# use $refs_dir/$state_dir only — do NOT use $work below here), so it
+# is removed eagerly instead of leaving a trap behind.
+trap - EXIT
+if [[ -n "${work:-}" ]]; then rm -rf -- "$work" 2>/dev/null || printf 'WARNING: could not remove temp work dir %s (leaked).\n' "$work" >&2; fi
 
 # --- 7. Pro Max search smoke (v1 behaviour kept) -----------------------------
 if [[ -f "$refs_dir/ui-ux-pro-max/scripts/search.py" ]]; then
@@ -946,7 +1562,7 @@ done
 if command -v node >/dev/null 2>&1; then
   node_ver="$(node --version 2>/dev/null || echo '')"
   node_major="${node_ver#v}"; node_major="${node_major%%.*}"
-  if [[ "$node_major" =~ ^[0-9]+$ ]] && [[ "$node_major" -ge 22 ]]; then
+  if [[ "$node_major" =~ ^[0-9]+$ ]] && [[ "10#$node_major" -ge 22 ]]; then
     ok "Node $node_ver (>= 22 — the kit's single required version)"
   elif [[ "$node_major" =~ ^[0-9]+$ ]]; then
     fail "Node $node_ver found; the kit requires Node 22+ (frontend-kit SKILL.md step 0.3; gate.mjs consistency.mjs needs the built-in WebSocket). Install Node 22+ — a Node $node_major machine installs cleanly but its step-3 gate fails at runtime."
