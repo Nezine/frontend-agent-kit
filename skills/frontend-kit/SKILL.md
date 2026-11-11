@@ -22,7 +22,11 @@ specialists + call rules) lives in `references/expert-pack.md` and
 `experts/<domain>.md`. The GetLayers free-layer reference lives in
 `references/getlayers.md`: an optional step-1 reference direction and
 effect source, used only when a free layer or a free tool fits the
-brief — never mandatory, never a grading input. The 5 variants as concrete token directions live in
+brief — never mandatory, never a grading input. The animated-icons
+free-source reference lives in `references/animated-icons.md`: an
+optional step-1 effect source, used only when one animated icon earns
+its place within the page's dealt-moment budget — never mandatory, never a grading input.
+The 5 variants as concrete token directions live in
 `references/variant-briefs.md`; the variant scoring procedure
 (blind, random order, play first) lives in
 `references/variant-scoring.md`. The human-gate question bank lives in
@@ -130,6 +134,24 @@ prompt for discussion.
    free layer fits the brief") — never mandatory, never a substitute
    for the locked tokens, and never the build's source. Free tier
    only: no account, no purchase, no MCP.
+   **Animated icons (optional).** When one animated icon earns its
+   place within the page's dealt-moment budget (a button, a nav item, a loader, a state
+   change — never a page of bouncing icons), it may serve as an
+   additional effect source — read `references/animated-icons.md`
+   and record the chosen icon (source + icon name + URL) in the run
+   log and in the Design Read. Conditional only ("when one icon earns
+   its place") — never mandatory, never a substitute for the locked
+   tokens, and never the build's source. At most 1–2 animated icons
+   per build, each counting as one unit of the page's 1–2 dealt-moment
+   budget (animated-icons.md §4): the page total is 1–2 dealt moments
+   across ALL sources (scroll patterns + GetLayers effect + animated
+   icons); a page that already has a scroll dealt moment may carry at
+   most one icon, and a page with a GetLayers effect may carry none; a
+   second icon needs a calm section between the two icons' sections
+   and neither may sit in the back third. Default source: useAnimations (MIT, no
+   account); LottieFiles and Lordicon only when the brief needs an
+   icon useAnimations does not have, and Lordicon only when the build
+   can carry its mandatory attribution link. Free tier only: no purchase, no premium plan; useAnimations needs no account, but a free LottieFiles account is needed to download from LottieFiles (animated-icons.md §1.3) and a free Lottieflow account to download from Lottieflow (§2.4).
 2. **Design Read (end of step 1, before tokens).** Summarise the brief in
    `design/DESIGN-READ.md` (template: `templates/design/DESIGN-READ.md`):
    artifact, audience, visual language (a specific family, not "modern /
@@ -149,7 +171,7 @@ prompt for discussion.
    - Patterns 2, 3, 6, 8 → `vendor/gsap/gsap-scrolltrigger/SKILL.md` (scrub / pin / parallax). Pattern 3 is "Hero settle: scale-on-scroll" — the routing is a scrub because its Build-it text says the scale is "scrubbed to scroll over the hero's own height" (`scroll-motion.md:147–149`).
    - Pattern 5 (reveal) → `vendor/gsap/gsap-scrolltrigger/SKILL.md` by default; vanilla `IntersectionObserver` only when no other named pattern uses GSAP, so the page does not load GSAP for one reveal — record the reason on the same line.
    - Pattern 7 (Lenis smooth scroll) → the upstream Lenis docs at https://github.com/darkroomengineering/lenis (no vendored Lenis doc exists in the kit), plus `vendor/gsap/gsap-scrolltrigger/SKILL.md` only if combined with a scrubbed pattern (2, 3, 6, 8).
-   When the brief asks for a 3D or shader hero, name the component and record it on its own line: `3D: <component from the ThreeUI catalog> — implementation skill: skills/threeui/SKILL.md`. threeui covers catalog components only — its trigger forbids general Three.js work, and custom 3D/shader work has no skill at all; say so instead of misrouting it to threeui. When a free GetLayers AI design tool supplies an effect (not a scroll pattern), name the tool on its own line: `Effect source: GetLayers <tool name> — free in-browser tool (references/getlayers.md §3)`. The effect still counts as one of the page's 1–2 dealt moments and still obeys the restraint rules in `references/style-recipes/scroll-motion.md`. A Design Read that names a pattern or a 3D component without its implementation skill or an explicit 'none' is incomplete — the round-brief generator fails loudly on it (see "Round briefs + per-role context budgets" below). Copy the dials into `design/PLAN.md`
+   When the brief asks for a 3D or shader hero, name the component and record it on its own line: `3D: <component from the ThreeUI catalog> — implementation skill: skills/threeui/SKILL.md`. threeui covers catalog components only — its trigger forbids general Three.js work, and custom 3D/shader work has no skill at all; say so instead of misrouting it to threeui. When a free GetLayers AI design tool supplies an effect (not a scroll pattern), name the tool on its own line: `Effect source: GetLayers <tool name> — free in-browser tool (references/getlayers.md §3)`. The effect still counts as one of the page's 1–2 dealt moments and still obeys the restraint rules in `references/style-recipes/scroll-motion.md`. When an animated icon supplies the effect, name the icon on its own line instead, in this format: `Effect source: <source> <icon name> — <licence>, <player/route> (references/animated-icons.md §3)` — one worked example per authorised source: `Effect source: useAnimations arrow-right — MIT, Lottie JSON inlined via lottie-web 5.13.0`; `Effect source: LottieFiles <icon name> — Lottie Simple License, Lottie JSON via dotLottie-wc / DotLottie JS API (free account required to download)`; `Effect source: Lordicon <icon name> — free licence based on CC BY-ND 4.0 (modified), @lordicon/element, self-hosted JSON — attribution link in the footer: <a href="https://lordicon.com/">Animated icons by Lordicon.com</a>`. The icon still counts as one unit of the page's 1–2 dealt-moment budget (animated-icons.md §4) but does not satisfy the gate's dealt-moment requirement (the gate counts only [data-moment] sections mounted by moments.js). A Design Read that names a pattern or a 3D component without its implementation skill or an explicit 'none' is incomplete — the round-brief generator fails loudly on it (see "Round briefs + per-role context budgets" below). Copy the dials into `design/PLAN.md`
    § Design Read. (Adapted from garden-skills `web-design-engineer`
    Step 2b — five dials, categorical here instead of its 1–10 numbers;
    see SOURCES.md for the no-vendoring note.)

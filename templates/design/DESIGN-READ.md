@@ -41,7 +41,21 @@ exactly that. Delete these comments as you fill the file in. -->
   reference direction, or "none". See
   skills/frontend-kit/references/getlayers.md.]
 - Effect source (if any): [e.g. "GetLayers Text Animations — free
-  in-browser tool", or "none".]
+  in-browser tool", or "useAnimations arrow-right — MIT, Lottie JSON
+  inlined via lottie-web 5.13.0", or "LottieFiles <icon name> —
+  Lottie Simple License, Lottie JSON via dotLottie-wc / DotLottie JS
+  API", or "Lordicon <icon name> — free licence based on CC BY-ND
+  4.0 (modified), @lordicon/element, self-hosted JSON", or "none".
+  Format: `Effect source: <source> <icon name> — <licence>,
+  <player/route>`.]
+- Animated icon (if any): [e.g. "useAnimations arrow-right
+  (https://useanimations.com/icons/arrow-right) — hover-replay, one
+  unit of the page's dealt-moment budget", or "none". See
+  skills/frontend-kit/references/animated-icons.md.]
+- Attribution (if any): [exact link + where it is placed, or "none" —
+  e.g. Lordicon: `<a href="https://lordicon.com/">Animated icons by
+  Lordicon.com</a>` in the footer; useAnimations / LottieFiles:
+  "none" (attribution not required, though appreciated/encouraged).]
 
 ## The five dials
 

@@ -319,6 +319,52 @@ Orb Studio, Dither Art, Shader Backgrounds.
   the kit never routes an effect through the MCP. Only 12 of the 13
   tools work via MCP at all (Image Compressor does not).
 
+### Effect sources — animated icons (optional)
+
+Patterns 1–8 and the ThreeUI hero above name the motion. Where an
+animated icon itself — not a scroll pattern — is the effect, the
+free animated-icon sources are an optional effect source. Full
+per-source table, licences, and the embedding rules:
+`references/animated-icons.md`. Default source: useAnimations (MIT,
+300 micro-icons, agent-readable catalog); LottieFiles (≈5,900 free
+icons) and Lordicon (9,700+ free, attribution required) only when
+the brief needs an icon useAnimations does not have.
+
+- **One icon consumes one unit of the dealt-moment budget.** An
+  animated icon counts as one unit of the page's 1–2 dealt-moment
+  budget (restraint rule 1) — it consumes budget but does not satisfy
+  the gate's dealt-moment requirement (the gate counts only
+  `[data-moment]` sections mounted by moments.js) — and obeys every
+  restraint rule in this file: transform/opacity only, once and
+  short, reduced motion respected, mobile calmer.
+  `references/animated-icons.md` §4 states the cap plainly: at most
+  1–2 animated icons per build, loop only loaders, hover/click icons
+  play once per trigger and stop. Naming a source never exempts its
+  icon from the bar.
+- **Embedding (kit shape):** lottie-web 5.13.0 pinned jsDelivr +
+  SVG renderer + inline `animationData`, static SVG rendered in the
+  container first (replaced on `DOMLoaded`, kept on load error),
+  reduced motion wired by hand (`matchMedia` +
+  `goToAndStop(0, true)`, re-checked on change) —
+  `references/animated-icons.md` §3. Never
+  `@lottiefiles/lottie-player` / `<lottie-player>` (deprecated;
+  versions 2.0.5–2.0.7 compromised Oct 2024) and never any `@latest`
+  CDN URL — always pin exact versions. dotLottie-wc is not the
+  single-icon player (~500 kB WASM, canvas rendering loses
+  `currentColor`).
+- **Record it in the Design Read** on its own line, in this format:
+  `Effect source: <source> <icon name> — <licence>, <player/route>`
+  — one worked example per authorised source: `Effect source:
+  useAnimations arrow-right — MIT, Lottie JSON inlined via lottie-web
+  5.13.0`; `Effect source: LottieFiles <icon name> — Lottie Simple
+  License, Lottie JSON via dotLottie-wc / DotLottie JS API (free
+  account required to download)`; `Effect source: Lordicon <icon
+  name> — free licence based on CC BY-ND 4.0 (modified),
+  @lordicon/element, self-hosted JSON — attribution link in the
+  footer: <a href="https://lordicon.com/">Animated icons by
+  Lordicon.com</a>`, per SKILL.md step 1.2. No icon named = no
+  animated icon.
+
 ## Motion tokens (copy-ready)
 
 Add to `tokens.css` at the taste lock (the lock replaces the starter
@@ -374,8 +420,8 @@ easing.
    one exception (Pattern 2) — it does not reflow.
 4. **Reveals are once and short.** `once: true`, ≤24px, ≤420ms.
    Nothing replays on scroll-up; nothing loops except a hero video
-   (pausable, with a visible pause control — Anthropic shows one
-   bottom-right of the hero).
+   or a loader icon (a hero video is pausable, with a visible pause
+   control — Anthropic shows one bottom-right of the hero).
 5. **Scrubbed motion completes fast.** A scroll-linked transform
    finishes inside ~300px of scrolling, then stays done. A transform
    that is still changing a full viewport later is a bug, not a feature.
