@@ -181,6 +181,22 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COPY_LINT = path.join(HERE, 'copy-lint.mjs');
 const CONSISTENCY = path.join(HERE, 'consistency.mjs');
 
+// RR-12 (fix round 2): the DOMPurify helper is loaded with a DYNAMIC
+// import, not a static one — a static import dies at load time
+// (ERR_MODULE_NOT_FOUND, exit 1) if dompurify-call.mjs is deleted or not
+// installed, killing the whole leg-2 run, while leg 1 (gate.sh) degrades.
+// Here a missing helper instead FAILS the 1.2 check loudly (see the 1.2
+// section below) and the rest of the leg still runs. A security check
+// that cannot run is a BLOCK, never a silent pass — but it blocks 1.2,
+// not the whole leg.
+let hasSanitizeCall = null;
+let sanitizeHelperError = null;
+try {
+  ({ hasSanitizeCall } = await import('./dompurify-call.mjs'));
+} catch (e) {
+  sanitizeHelperError = e;
+}
+
 // Kit checker widths (VERIFIED — taste-skill 2.5.1 consistency.mjs L5/L73/L4506,
 // SKILL.md L261) and rhythm widths (the CODE default — see README.md).
 const DEFAULT_WIDTHS = '1440,1024,820,768,390';
@@ -281,13 +297,24 @@ function secCheck(id, passLabel, failLabel, hits) {
   }
 }
 // 1.2 — HTML sinks without DOMPurify sanitization (same rule as gate.sh §6:
-// a file using DOMPurify.sanitize passes with a note; the per-occurrence
-// taint check is checklist territory).
+// a page that CALLS DOMPurify.sanitize passes with a note; the per-occurrence
+// taint check is checklist territory). RT-02 fix (2026-11-11): the old test
+// was a substring match (/DOMPurify\.sanitize/), so a comment mentioning
+// the sanitizer passed any sink. hasSanitizeCall (dompurify-call.mjs)
+// strips comments/strings/regex literals first and requires an ANCHORED
+// genuine call site (RR-01/RR-02/RR-10, fix round 2); see that file for
+// the stated limits. RR-12: the helper is loaded by dynamic import (top
+// of this file), so a deleted helper FAILS 1.2 loudly here instead of
+// crashing the leg at load time.
 const secSinkHits = secGrepLines(/dangerouslySetInnerHTML|innerHTML\s*=|outerHTML\s*=|document\.write\s*\(/);
-if (secSinkHits.length && !/DOMPurify\.sanitize/.test(secPageText)) {
+if (secSinkHits.length && sanitizeHelperError) {
+  // RR-12: helper missing — fail 1.2 loudly with the reason, do not
+  // crash the leg and do not pass the sink (fail closed).
+  secCheck('1.2', 'no unsanitized HTML sink', `DOMPurify call-site check could not run — scripts/gate/dompurify-call.mjs missing/unreadable (${sanitizeHelperError.message}); fail closed`, secSinkHits);
+} else if (secSinkHits.length && !hasSanitizeCall(secPageText)) {
   secCheck('1.2', 'no unsanitized HTML sink', 'HTML sink (innerHTML/outerHTML/document.write/dangerouslySetInnerHTML) without DOMPurify sanitization', secSinkHits);
 } else if (secSinkHits.length) {
-  console.log('SECURITY 1.2: PASS — page uses an HTML sink but also DOMPurify.sanitize (per-occurrence taint check is checklist territory)');
+  console.log('SECURITY 1.2: PASS — page uses an HTML sink but also calls DOMPurify.sanitize (per-occurrence taint check is checklist territory)');
 } else {
   console.log('SECURITY 1.2: PASS — no unsanitized HTML sink');
 }
