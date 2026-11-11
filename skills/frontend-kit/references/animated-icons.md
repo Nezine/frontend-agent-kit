@@ -539,9 +539,9 @@ the gate's moment-none WARN. **At most 1–2 animated icons per
 build — a button, a nav item, a loader, a state
 change — never a page of bouncing icons.** The page total is 1–2 dealt
 moments across ALL sources (scroll patterns + GetLayers effect +
-animated icons); a page that already has a scroll dealt moment may
+animated icons + animated Grainient gradient); a page that already has a scroll dealt moment may
 carry at most one icon, and a page with a GetLayers effect may carry
-none; a second icon needs a calm section between the two icons'
+none — neither an icon nor an animated Grainient gradient (a still gradient background is a token, not a moment, and is not counted here — but one background treatment per page: it does not stack with a GetLayers background effect); a second icon needs a calm section between the two icons'
 sections and neither may sit in the back third. An animated icon must earn
 its place like any other effect; each counts as one unit of the page's
 1–2 dealt-moment budget under the scroll-motion restraint rules

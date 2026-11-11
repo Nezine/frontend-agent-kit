@@ -45,13 +45,35 @@ exactly that. Delete these comments as you fill the file in. -->
   inlined via lottie-web 5.13.0", or "LottieFiles <icon name> —
   Lottie Simple License, Lottie JSON via dotLottie-wc / DotLottie JS
   API", or "Lordicon <icon name> — free licence based on CC BY-ND
-  4.0 (modified), @lordicon/element, self-hosted JSON", or "none".
-  Format: `Effect source: <source> <icon name> — <licence>,
-  <player/route>`.]
+  4.0 (modified), @lordicon/element, self-hosted JSON", or "Grainient
+  <gradient description> (animated) — recreated as CSS tokens, no file
+  copied", or "none".
+  Formats per source: GetLayers — `Effect source: GetLayers <tool
+  name> — free in-browser tool`; animated icon — `Effect source:
+  <source> <icon name> — <licence>, <player/route>`; animated Grainient
+  gradient — `Effect source: Grainient <gradient description> (animated)
+  — recreated as CSS tokens, no file copied`.]
 - Animated icon (if any): [e.g. "useAnimations arrow-right
   (https://useanimations.com/icons/arrow-right) — hover-replay, one
   unit of the page's dealt-moment budget", or "none". See
   skills/frontend-kit/references/animated-icons.md.]
+- Gradient source (if any): [e.g. "Grainient — dark violet mesh, heavy
+  grain — recreated as CSS tokens, hero background only", or "none".
+  Still gradient only — an ANIMATED gradient goes on the Effect source
+  line instead (see above). See
+  skills/frontend-kit/references/design-galleries.md §1.]
+- Display typeface (if any): [e.g. "Freefaces Getai Grotesk
+  (Display) — licence per its font page, read before locking", or
+  "none". See
+  skills/frontend-kit/references/design-galleries.md §2.]
+- Hero reference (if any): [e.g. "Supahero — Lando Norris
+  (https://supahero.io/hero/lando-norris) — structure only:
+  full-bleed visual hero, headline over imagery, single CTA; differs
+  from source: centred headline over still product shot (no F1 motion),
+  two-column feature row below; screenshot:
+  design/references/supahero-lando-norris.png", or
+  "none". See
+  skills/frontend-kit/references/design-galleries.md §3.]
 - Attribution (if any): [exact link + where it is placed, or "none" —
   e.g. Lordicon: `<a href="https://lordicon.com/">Animated icons by
   Lordicon.com</a>` in the footer; useAnimations / LottieFiles:

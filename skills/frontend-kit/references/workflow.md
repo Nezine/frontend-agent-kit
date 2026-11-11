@@ -66,7 +66,38 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   (name + URL) in the run log and in the Design Read. Conditional only
   ("when a free layer fits the brief") — never mandatory, never a
   substitute for the locked tokens, never the build's source; free tier
-  only, no account, no purchase, no MCP.
+  only, no account, no purchase, no MCP. **Design galleries
+  (optional).** When a Grainient gradient's depth / atmosphere, a
+  Freefaces display face, or a Supahero hero structure fits the brief,
+  it may serve as an additional reference direction alongside the
+  screenshot references — see `references/design-galleries.md`; record
+  the chosen source (name + URL + licence where applicable) in the run
+  log and in the Design Read. Conditional only — never mandatory, never
+  a substitute for the locked tokens, never the build's source;
+  Grainient is reference-only (recreate as CSS tokens, never copy a
+  file); a still gradient is a background token (hero only, not a dealt
+  moment), and an animated gradient is the motion moment (one budget
+  unit) — neither satisfies the dealt-moment requirement (the checker
+  emits moment-none as WARN, not a gate FAIL — design-galleries.md §4); Freefaces is per-font licensed (read the
+  Licence line on the font's page before locking); Supahero is
+  structure-only (never lift screenshots, copy, or assets into the
+  shipped build — the reference screenshot in design/references/
+  excepted, §3.5).
+- **Animated icons (optional).** When one animated icon earns its
+  place within the page's dealt-moment budget (a button, a nav item, a
+  loader, a state change — never a page of bouncing icons), it may serve
+  as an additional effect source — see `references/animated-icons.md`;
+  record the chosen icon (source + icon name + URL) in the run log and
+  in the Design Read. Conditional only — never mandatory, never a
+  substitute for the locked tokens, and never the build's source. At
+  most 1–2 animated icons per build, each counting as one unit of the
+  page's 1–2 dealt-moment budget (animated-icons.md §4); a page with a
+  GetLayers effect may carry neither an icon nor an animated Grainient
+  gradient.
+  Default source: useAnimations (MIT, no account); LottieFiles and
+  Lordicon only when the brief needs an icon useAnimations does not
+  have, and Lordicon only when the build can carry its mandatory
+  attribution link. Free tier only: no purchase, no premium plan.
 - **Design Read (step 1.2, before tokens).** Summarise the brief in
   `design/DESIGN-READ.md`: artifact, audience, visual language (a
   specific family, not "modern / clean"), mode (greenfield / extension /
@@ -82,7 +113,27 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   (name + URL); when a free GetLayers AI design tool supplies an
   effect, name the tool here on its own line (`Effect source:
   GetLayers <tool name> — free in-browser tool`,
-  `references/getlayers.md` §3). Copy
+  `references/getlayers.md` §3). When a Grainient gradient is ANIMATED
+  and supplies the motion moment, name it here on its own line
+  (`Effect source: Grainient <gradient description> (animated) —
+  recreated as CSS tokens, no file copied`,
+  `references/design-galleries.md` §1 — one budget unit); a STILL
+  gradient goes on the Gradient source line instead (`Gradient source:
+  Grainient — dark violet mesh, heavy grain — recreated as CSS tokens,
+  hero background only`), background token, not an effect; when a
+  Freefaces display face is locked, name it
+  here on its own line (`Display typeface: Freefaces <name>
+  (<classification>) — <licence>, read before locking`,
+  `references/design-galleries.md` §2); when a Supahero hero structure
+  is borrowed, name it here on its own line (`Hero reference: Supahero
+  — <site name> (<URL>) — structure only: <one-line structure note>;
+  differs from source: <what changed>; screenshot:
+  design/references/supahero-<site>.png`,
+  `references/design-galleries.md` §3); when an animated icon supplies
+  the effect, name the icon here on its own line (`Effect source:
+  <source> <icon name> — <licence>, <player/route>`,
+  `references/animated-icons.md` §3 — one worked example per authorised
+  source in SKILL.md step 1.2). Copy
   the dials into `design/PLAN.md` § Design Read.
 - **High-end bar (human-feel target, recorded 2026-11-11).** On top
   of the gates above, the loop aims at the human's feel target: **8/10

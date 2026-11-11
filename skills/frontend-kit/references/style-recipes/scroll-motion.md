@@ -314,6 +314,10 @@ Orb Studio, Dither Art, Shader Backgrounds.
   and obeys every restraint rule in this file: transform/opacity
   only, once and short, reduced motion respected, mobile calmer.
   Naming a tool never exempts its effect from the bar.
+- **Mutual exclusions.** A page with a GetLayers effect carries neither
+  an animated icon nor an animated Grainient gradient — and one
+  background treatment per page: a GetLayers background effect and a
+  Grainient gradient background do not stack.
 - **Image Compressor is a utility, not an effect source.** It
   compresses images and has no saved looks; it supplies no visual
   effect.
@@ -347,6 +351,9 @@ the brief needs an icon useAnimations does not have.
   1–2 animated icons per build, loop only loaders, hover/click icons
   play once per trigger and stop. Naming a source never exempts its
   icon from the bar.
+- **Mutual exclusions.** A page with a GetLayers effect carries no icon;
+  a page with an animated icon carries no GetLayers effect and no
+  animated gradient.
 - **Embedding (kit shape):** lottie-web 5.13.0 pinned jsDelivr +
   SVG renderer + inline `animationData`, static SVG rendered in the
   container first (replaced on `DOMLoaded`, kept on load error),
@@ -370,6 +377,49 @@ the brief needs an icon useAnimations does not have.
   footer: <a href="https://lordicon.com/">Animated icons by
   Lordicon.com</a>`, per SKILL.md step 1.2. No icon named = no
   animated icon.
+
+### Effect sources — Grainient gradients (optional)
+
+Patterns 1–8 and the ThreeUI hero above name the motion. Where a
+gradient background itself — not a scroll pattern — is the effect, a
+Grainient gradient is an optional effect source. Full per-source
+detail, licence, and the free/paid boundary:
+`references/design-galleries.md` §1. Reference-only: the agent picks
+one gradient and recreates its feel as CSS tokens — it never copies or
+downloads a Grainient file into the build.
+
+- **A still gradient is a background token, not a moment; an animated
+  gradient is the motion moment.** A still Grainient background consumes
+  no budget and is placement-restrained to the hero (never on every
+  section) — it is ambient depth, not a located moment, so restraint
+  rule 1's section-separation does not apply to it. An animated
+  gradient counts as one of the page's 1–2 dealt moments (restraint
+  rule 1) and obeys rules 1–2 like a scroll moment — it replaces, not
+  adds to, a scroll-motion moment. A page with a GetLayers effect
+  carries no animated Grainient gradient, and one background treatment
+  per page: a Grainient gradient background and a GetLayers background
+  effect do not stack. Naming a gradient never exempts its effect from
+  the bar.
+- **Gate caveat: neither satisfies moment-none.** A gradient — still or
+  animated — is not a `[data-moment]` / `[data-scroll-moment]` section;
+  the gate counts only sections mounted by moments.js. The checker
+  emits moment-none as WARN (`scripts/gate/consistency.mjs:1199-1201`)
+  and no gate code promotes it to FAIL, so a page whose only effects
+  are gradients and/or animated icons passes leg 2 with the WARN
+  outstanding — requiring a mounted moments.js moment is a house rule,
+  not a gate FAIL. Clear it with a mounted moments.js moment in its own
+  section, which is itself one of the page's 2 budget units
+  (`references/design-galleries.md` §4).
+- **Record it in the Design Read** — a still gradient on the Gradient
+  source line (`Gradient source: Grainient — <gradient description> —
+  recreated as CSS tokens, hero background only`), an animated gradient
+  on the Effect source line (`Effect source: Grainient <gradient
+  description> (animated) — recreated as CSS tokens, no file copied`),
+  per SKILL.md step 1.2. No gradient named = no gradient background.
+- **No price, no purchase.** Grainient prices were not readable on
+  primary and secondaries disagree — do not quote a price; the loop's
+  reference-only use needs no purchase and no download
+  (`references/design-galleries.md` §1.3).
 
 ## Motion tokens (copy-ready)
 
@@ -418,7 +468,13 @@ easing.
    both) + at most one pinned section (Pattern 6) OR reveals
    (Pattern 5) elsewhere. Never two moments in one section or in
    neighbouring sections; a calm section between them; the back third
-   of the page calm before the close.
+   of the page calm before the close. The budget counts motion /
+   attention effects (scroll patterns, GetLayers effects, animated
+   icons, animated gradients, moments.js moments). A still gradient
+   background is a background token, not a moment: it consumes no
+   budget and this rule's section-separation does not apply to it —
+   but it is placement-restrained to the hero
+   (`references/design-galleries.md` §4).
 2. **One moving element per viewport.** If two things visibly move at
    the same scroll position, remove one.
 3. **Transform and opacity only.** No animated width, height, margin,
