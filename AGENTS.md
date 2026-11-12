@@ -14,7 +14,7 @@ Contents: orchestrator skill `frontend-kit`, Impeccable 4.8.2 (engine 0.1.21),
 `taste-reference` (taste-skill 2.5.1 — thin wrapper; full pipeline in the
 installed taste tree), `frontend-design`
 (Anthropic's skill, vendored verbatim — see `skills/frontend-design/SOURCE.md`).
-15 skills total (14 + the new judge skill `frontend-judge`). Pins + licences: `SOURCES.md`.
+16 skills total (15 + the new mobile skill `mobile-kit`). Pins + licences: `SOURCES.md`.
 
 **Built for daily use.** The flow first: drop the repo link → the agent
 installs the kit for itself → vague brief → build → your feedback. Acceptance test:
@@ -239,7 +239,7 @@ cd frontend-agent-kit
   host needs `./install.sh` first, or vanilla motion only. Why GSAP was
   excluded from the plugin route is unverified — whether a plugin manifest
   can reference `vendor/` paths has not been established; do not claim the
-  add is possible until it is verified. For the full 15 skills + reference
+  add is possible until it is verified. For the full 16 skills + reference
   data + the OpenCode `/impeccable` and `/frontend-kit` commands, run
   `./install.sh`.
 - **Figma is excluded from unattended install.** It needs human OAuth. See §4.
