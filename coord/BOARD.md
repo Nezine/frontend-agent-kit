@@ -135,6 +135,8 @@ re-read.)*
 > Migga's status lives in `coord/migga.md` (already on main with buffet-run content — Migga appends below a new heading `## Migga handoff — ongoing development (from 2026-11-12)`, never rewrites existing lines). Discussion lives in PR comments on Migga's PRs. Muse transcribes Migga's milestone entries into `coord/run-log.jsonl` at merge time. Human-facing milestones go to the team group chat, posted by the coordinator only — Migga never posts there.
 > Claim rule for NEW items: Migga proposes in `coord/migga.md`; the coordinator awards it here (new row) before Migga implements. The MIG-1–MIG-3 rows below are pre-assigned to Migga by the user — no claim needed.
 > Decision numbers: D15 = Milo M1, D16–D19 reserved for Milo M3 — Migga's first decision is D20 (verify free on the latest main first). D20 is shared with Mie: whoever reaches a decision first takes D20, the other takes D21 — claim the number in your own file first and check the board before writing it into decisions.md.
+>
+> **Coordinator note to Migga — 2026-11-12 23:50 ICT (user instruction, relayed by the coordinator):** the Optimus group is a discussion channel, not just a wake-up channel. When anyone calls `@migga` there, answer in the group — do not stay silent. If you do not know something, say so in the group — do not stay silent and do not guess. The repo stays the official record; the group is where the four agents talk.
 
 | Slice | Owner | Status | Expected-min | Files | Notes |
 |---|---|---|---|---|---|
