@@ -4808,6 +4808,52 @@ jr_fill_scores "$r3p/design/judge/round-1-regrade.md" 5 5 5 5
 r3_reject "feedback regrade of a round whose gate legs rotated away" "$work/r8-t103.log" "never anchors a regrade" "$r3p/design/run-log.jsonl" \
   node "$run_log_mjs" --project "$r3p" feedback --from "user: darker ink" --change "--color-ink: #000" --round 1 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-1-regrade.md
 
+# --- Live-proof case (104): a genuine judge report must not trip
+# gate leg 1 §1.1, and a secret planted in judge prose must still
+# fail it. Found by the M1 live proof on Brief 1 (2026-11-12):
+# judge-report.mjs stamps sha256 content hashes into the header of
+# design/judge/round-*.md, and gitleaks' generic-api-key rule flagged
+# the tokens-sha256 line — §1.1 failed on every project once its first
+# judge report existed, so no second round could ever be gated (the
+# M1 test environment had no gitleaks, which is how the miss survived
+# to the proof). Fix: the gate's .gitleaks.toml allowlist now covers
+# the canonical round-*.md names (path-only, the run-log treatment);
+# gate.sh's 1.1 text pass still greps those files, so the planted
+# half below must fail via the built-in grep, scanner or not.
+g11p="$work/gate11-proj"; r3_mkproj "$g11p"
+r3_prep "$g11p" 1 absolute
+jr_fill_scores "$g11p/design/judge/round-1.md" 4 4 4 4
+if ! node "$run_log_mjs" --project "$g11p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/gate11-setup.log" 2>&1; then
+  fail "judge-artifact (D15): live-proof case (104) setup record failed — see $work/gate11-setup.log"
+  cat "$work/gate11-setup.log" >&2 || true
+else
+  g11_gate_sh="$root/skills/frontend-kit/scripts/gate/gate.sh"
+  g11_rc=0
+  bash "$g11_gate_sh" --target "$g11p" --security-only >"$work/gate11-clean.log" 2>&1 || g11_rc=$?
+  g11_clean_ok=1
+  if grep -q "gitleaks found leaks" "$work/gate11-clean.log"; then g11_clean_ok=0; fi
+  if grep -Eq "design/judge/round-1\.md:[0-9]+:" "$work/gate11-clean.log"; then g11_clean_ok=0; fi
+  if command -v gitleaks >/dev/null 2>&1; then
+    if ! grep -q "SECURITY 1.1: PASS — secret scan clean (gitleaks" "$work/gate11-clean.log"; then g11_clean_ok=0; fi
+  else
+    unverified "judge-artifact (D15) case (104): gitleaks not installed — the gitleaks half of the §1.1 assertion is not proven here; the built-in grep half is asserted below (the fail-closed no-scanner line is accepted for the clean project)"
+    if ! grep -Eq "SECURITY 1.1: PASS|no secret scanner installed" "$work/gate11-clean.log"; then g11_clean_ok=0; fi
+  fi
+  g11b="$work/gate11-proj-bad"; cp -r "$g11p" "$g11b"
+  printf '\nJudge note: pasted from a ticket, api_key = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWX" was visible in the client console.\n' >> "$g11b/design/judge/round-1.md"
+  g11b_rc=0
+  bash "$g11_gate_sh" --target "$g11b" --security-only >"$work/gate11-bad.log" 2>&1 || g11b_rc=$?
+  if [[ "$g11_clean_ok" != 1 ]]; then
+    fail "judge-artifact (D15): gate leg 1 §1.1 still trips on a genuine judge report (live-proof defect — the stamped tokens-sha256 header must not fail the secret scan) — see $work/gate11-clean.log"
+    cat "$work/gate11-clean.log" >&2 || true
+  elif [[ "$g11b_rc" == 0 ]] || ! grep -q "security 1.1: secret scan: high-confidence secret pattern found (built-in grep)" "$work/gate11-bad.log" || ! grep -Eq "design/judge/round-1\.md:[0-9]+:" "$work/gate11-bad.log"; then
+    fail "judge-artifact (D15): a secret planted in a judge report's prose did NOT fail gate §1.1 via the built-in grep — the gitleaks allowlist must not blind the grep backstop — see $work/gate11-bad.log"
+    cat "$work/gate11-bad.log" >&2 || true
+  else
+    ok "a genuine judge report passes gate leg 1 §1.1 and a secret planted in judge prose still fails it via the built-in grep (live-proof case)"
+  fi
+fi
+
 
 # --- 6. Playwright eyes ------------------------------------------------------
 # Skip-awareness (W-FIX-SKIP 2026-11-10): install.sh records --skip-eyes

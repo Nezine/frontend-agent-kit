@@ -643,13 +643,21 @@ sec_grep() {
 # FAILS, naming the missing tool (fail closed; a pattern scan is not a
 # secret scanner). A grep hit FAILS outright, scanner or not.
 # Gitleaks runs with the kit config scripts/gate/.gitleaks.toml (extends
-# gitleaks' defaults; allowlists ONLY design/run-log.jsonl and the
+# gitleaks' defaults; allowlists ONLY design/run-log.jsonl, the
 # Impeccable seed files (.impeccable/questions/seeds/*.json +
-# questions/seed-salt) — see the config's own comment for the verified OR
+# questions/seed-salt) and the D15 judge reports
+# (design/judge/round-*.md — their stamped sha256 headers trip
+# generic-api-key exactly as tokensHash does; added 2026-11-12 after
+# the M1 live proof) — see the config's own comment for the verified OR
 # semantics and the residual holes). The built-in grep below ALSO scans
 # design/run-log.jsonl AND the seed files, so a real secret in either
 # still FAILS even though gitleaks skips the file; tokensHash itself
-# matches neither grep pattern. GAP-10 correction (D10, council-2): for a
+# matches neither grep pattern. The judge reports need no dedicated
+# grep block: the RR2-07 text pass further down already runs the same
+# three patterns over every project text file, design/judge/*.md
+# included, and the stamped header lines match none of them (verified
+# against the real Brief 1 artifact) — a known-shaped secret in judge
+# prose still FAILS 1.1 there. GAP-10 correction (D10, council-2): for a
 # ghp_ + 20-char token the backstop grep is the ONLY layer — gitleaks'
 # github-pat rule needs 36 chars, so gitleaks would not have caught it
 # even without the allowlist; the backstop must never be dropped as

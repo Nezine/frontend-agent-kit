@@ -142,6 +142,45 @@
 # the seed record to bite. Known-shaped secrets still FAIL via the
 # backstop grep.
 #
+# D15 judge reports (2026-11-12, found by the M1 live proof on Brief 1):
+# judge-report.mjs `prepare` stamps the graded page's, the locked
+# tokens' and the screenshots' sha256 into the header of every judge
+# artifact at design/judge/round-<n>*.md (page-sha256 / tokens-sha256 /
+# screenshots / shots-a / shots-b lines), and gitleaks' generic-api-key
+# rule flags the `tokens-sha256:` line — a false positive of exactly the
+# run-log class (a hash of project files, not a credential). Verified
+# 2026-11-12 against gitleaks 8.30.1 with this config: the Brief 1
+# proof project reports one finding, design/judge/round-1.md:14
+# generic-api-key, and gate leg 1 §1.1 FAILs on any project once its
+# first judge report exists — no second round could ever be gated, so
+# D15 as shipped broke the kit's own multi-round loop in every
+# environment where the scanner runs (the M1 test environment had no
+# gitleaks, which is how the miss survived to the proof).
+#
+# Scope — path-only, the same narrowness as the run log, restricted to
+# the canonical file names prepare writes: design/judge/round-*.md
+# covers all seven kinds (round-<n>.md, -cheap, -pairwise-<i>,
+# -jury-<i>, -regrade, -expert-motion, -expert-ux). It is NOT the whole
+# design/judge/ directory: a custom `prepare --out` name outside
+# round-*.md is NOT allowlisted and its stamped headers will still trip
+# the scanner — the canonical names are the supported shape. And per
+# the OR semantics above, no content regex is added: a 64-hex regex
+# here would exempt every 64-hex secret in every file.
+#
+# Backstop: gate.sh's built-in 1.1 grep needs no change for these
+# files — the RR2-07 text pass already runs the same three patterns
+# over ALL project text files, design/judge/*.md included, so a
+# known-shaped secret in a judge report (an sk- key or an
+# api_key/secret/password assignment pasted into the evidence prose)
+# still FAILS 1.1 via the grep, scanner or not. The stamped header
+# lines themselves match none of the three patterns — verified against
+# the real Brief 1 artifact with the patterns taken verbatim from
+# gate.sh (no api_key/secret/password/access_token keyword on a header
+# line; the same reason tokensHash stays clean). Residual hole, same
+# class as the run-log hole (ii) above: a high-entropy string in a
+# judge report's prose, in a shape no pattern recognises, would be
+# missed by both layers once gitleaks skips the file.
+#
 # [extend] useDefault = true keeps gitleaks' full default rule set and
 # merges this allowlist on top. A --config WITHOUT [extend] would REPLACE
 # the defaults and silently disable every rule (verified: a config with
@@ -154,5 +193,5 @@
 useDefault = true
 
 [allowlist]
-description = "run-log tokensHash + Impeccable seed files only: gitleaks skips design/run-log.jsonl (tokensHash sha256 trips generic-api-key) and .impeccable/questions/seeds/*.json + questions/seed-salt (the 32-hex seed key trips generic-api-key); a real secret in any of these files still fails via gate.sh's built-in 1.1 grep over the same files"
-paths = ['''(^|/)design/run-log\.jsonl$''', '''(^|/)\.impeccable/questions/seeds/[^/]+\.json$''', '''(^|/)\.impeccable/questions/seed-salt$''']
+description = "run-log tokensHash + Impeccable seed files + D15 judge reports only: gitleaks skips design/run-log.jsonl (tokensHash sha256 trips generic-api-key), .impeccable/questions/seeds/*.json + questions/seed-salt (the 32-hex seed key trips generic-api-key) and design/judge/round-*.md (the stamped page/tokens/screenshot sha256 headers trip generic-api-key); a real secret in any of these files still fails via gate.sh's built-in 1.1 grep over the same files"
+paths = ['''(^|/)design/run-log\.jsonl$''', '''(^|/)\.impeccable/questions/seeds/[^/]+\.json$''', '''(^|/)\.impeccable/questions/seed-salt$''', '''(^|/)design/judge/round-[^/]+\.md$''']
