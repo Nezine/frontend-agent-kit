@@ -126,7 +126,7 @@ re-read.)*
 |---|---|---|---|---|---|
 | MIE-1 — Real-MacBook clone-and-go (Ngọc Anh's MacBook) | Mie | submitted | 240 | `install.sh`, `verify.sh`, `skills/frontend-kit/**` (probe only, no code changes unless a gap is found) | Highest priority. THE remaining real-world check before the 14/11 buffet run. Fresh clone of main on the MacBook → ./install.sh → ./verify.sh → full Brief-1 loop probe. Record chip (Apple Silicon vs Intel), macOS version, node version, install verify result, gate results, screenshots, grader. A gap found is recorded as GAP-13+ with evidence; implemented only after Muse awards it. |
 | MIE-2 — Untested macOS bits | Mie | submitted | 480 | `install.sh`, `verify.sh`, `skills/frontend-kit/scripts/gate/**` | Verify (council-decide each if a fix is needed): curl-fallback darwin arms end-to-end, macOS Chrome warn path, OS-dispatch else-branch, `cmd skills list --debug` run. Intel macOS axes: only if the MacBook is Intel — if Apple Silicon, record N/A with reason, never claim Intel coverage. QC + red team + proof (live runs) for any fix. |
-| MIE-3 — Buffet prep: MacBook TOOLS inventory | Mie | submitted | 60 | `coord/mie.md` (inventory section), `BUFFET-MODE.md` §2 | Per-machine TOOLS inventory for the MacBook (BUFFET-MODE.md §2): run every command, report exact versions. Feeds the 14/11 buffet run (sequencing: inventory + census FIRST, then the workflow decision). |
+| MIE-3 — Buffet prep: MacBook TOOLS inventory | Mie | submitted | 60 | `coord/mie.md` (inventory section), `BUFFET-MODE.md` §2 | Per-machine TOOLS inventory for the MacBook (BUFFET-MODE.md §2): run every command, report exact versions. Feeds the 14/11 buffet run (sequencing: inventory + census FIRST, then the workflow decision). Fleet kickoff also needs the MODELS block (FLEET-MODE.md §2): which agents/models the machine can drive, strengths + limits. |
 
 ## Migga handoff — ongoing development (from 2026-11-12)
 
@@ -138,6 +138,29 @@ re-read.)*
 
 | Slice | Owner | Status | Expected-min | Files | Notes |
 |---|---|---|---|---|---|
-| MIG-1 — Clone-and-go on Hoàng Anh's own machine + TOOLS inventory | Migga | submitted | 240 | `install.sh`, `verify.sh`, `skills/frontend-kit/**` (probe only) | Highest priority. Buffet prep before Sat 14/11. Detect OS first (Linux / macOS / Windows-WSL — kit supports Linux + macOS; if Windows, use WSL2 Ubuntu if available, else mark BLOCKED with exactly what's missing). Fresh clone → install → verify → Brief-1 loop probe. Record OS, chip, versions, results. TOOLS inventory (§2) for the machine. |
+| MIG-1 — Clone-and-go on Hoàng Anh's own machine + TOOLS inventory | Migga | submitted | 240 | `install.sh`, `verify.sh`, `skills/frontend-kit/**` (probe only) | Highest priority. Buffet prep before Sat 14/11. Detect OS first (Linux / macOS / Windows-WSL — kit supports Linux + macOS; if Windows, use WSL2 Ubuntu if available, else mark BLOCKED with exactly what's missing). Fresh clone → install → verify → Brief-1 loop probe. Record OS, chip, versions, results. TOOLS inventory (§2) for the machine. Fleet kickoff also needs the MODELS block (FLEET-MODE.md §2): which agents/models the machine can drive, strengths + limits. |
 | MIG-2 — Install/verify polish wave (O1, O2, O3, O5, §2e anchor, L2) | Migga | submitted | 480 | `install.sh`, `verify.sh`, `skills/frontend-kit/SKILL.md` (O3 line only) | Council-decide each, implement, QC + red team, prove with fresh install + verify.sh. O1 gitleaks --no-same-owner container fix candidate; O2 hook/MCP PENDINGs; O3 --page must resolve inside design/ (one skill-text line); O5 stale "no system Chrome" WARN even with CHROME_PATH set; §2e anchor weakness (substring grep matches comments); L2 §2f anchor strengthening. |
 | MIG-3 — Gate residuals (F6, L1 option (b), plugin-route spot-check) | Migga | submitted | 480 | `skills/frontend-kit/scripts/gate/**`, `verify.sh` | Council-decide each, implement, QC + red team, prove with gate runs. F6 mtime-touch forgery residual; L1 option (b) drop the clone exclusion from the sec_11 find — needs a false-positive check over the kit's own files first; plugin-route runtime spot-check (still owed from D13). |
+
+## Fleet run — build day (muse-fleet)
+
+> Runbook: `FLEET-MODE.md` governs build day (roles A–D, kickoff inventory
+> with TOOLS + MODELS blocks, vertical slices, the 5-hour clock, rehearsal,
+> demo-day checklist). `BUFFET-MODE.md` governs the frontend loop inside
+> slices and the coordination machinery (claims, leases, merge protocol,
+> deputy succession, cross-check). Build day uses the TIMED protocol
+> (15-minute polls, 30-minute merge passes, 60-minute leases) — the
+> milestone-driven handoff rules do NOT apply on build day.
+> A = Muse, fixed. B (Frontend), C (Backend/AI), D (QC/Red-team/Evidence)
+> are assigned by the coordinator at run start from the kickoff inventory
+> (model + capability fit) and published here before any slice is
+> dispatched. Coordination home is this repo; the product lives in its own
+> repo, created at run start, mainline `main`, coordinator-only merger.
+> Claim rule for NEW items: any agent proposes in its own file; the
+> coordinator awards it here (new row) before implementation.
+
+| Slice | Owner | Status | Expected-min | Files | Notes |
+|---|---|---|---|---|---|
+| FLEET-1 — Fleet runbook `FLEET-MODE.md` | Muse | completed | n/a (completed) | `FLEET-MODE.md` | Roles A–D, kickoff inventory (TOOLS + MODELS), vertical slices / walking skeleton, 5-hour clock (agents stop building 15:00, hard stop 15:30; submission 16:00; pitches 16:15), rehearsal, demo-day checklist. Fleet name muse-fleet noted; the repo rename is a separate pass. |
+| FLEET-2 — Fleet rehearsal: 4-agent joint build+test | Unassigned (coordinator runs it) | submitted | 240 | — | All four agents, one small vertical slice end-to-end + phone smoke test, using FLEET-MODE.md, on a small practice brief chosen by the coordinator (not the real idea). PASS = the workflow works on all four machines with no blocking defect; defects become GAP items with council decisions. |
+| FLEET-3 — Run start: product repo + access + CONTRACT.md | Muse (coordinator) | submitted | 60 | — | Create the product repo at run start, record its URL on the board, branch protection on `main` with the coordinator on the bypass/allow-list, push access for all four agents (fork + PR fallback per agent if denied), CONTRACT.md written in the first 20 minutes. |
