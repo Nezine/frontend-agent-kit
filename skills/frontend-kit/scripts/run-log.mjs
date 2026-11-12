@@ -70,7 +70,12 @@
 //     history (same two-half rule as a grader basis). report is the
 //     cross-check report file (coord/crosscheck/<slice-id>-<n>.md in
 //     buffet mode). A blocked verdict is recorded, not rejected — the
-//     land is what a blocked verdict stops.
+//     land is what a blocked verdict stops. (D15: the report path is
+//     validated like other artifacts — project-relative, resolving
+//     inside design/, a real non-symlink non-empty file; existence and
+//     containment only, no content grammar in this wave. Before D15
+//     the path was never stat'ed, so a verdict could cite a report
+//     that does not exist.)
 //   land: { kind, slice, round, gate, gateLeg1, gateLeg2, gateLeg1Sha,
 //     gateLeg2Sha, page, crosscheckReport, notes, at }.
 //     Recorded only when --gate pass AND the LATEST crosscheck verdict
@@ -84,7 +89,14 @@
 //     gateFindings, variant, tokensHash, fixClass,
 //     outcome, page, trigger, pairwise, pairwiseAgrees, jury, juryMode,
 //     juryVotes, notRegraded, expertMotion, expertMotionEvidence,
-//     expertUx, expertUxEvidence, notes, at }. variant is the PICKED variant.
+//     expertUx, expertUxEvidence, judgeReport, judgeReportSha, pageSha,
+//     pairwiseReports, pairwiseReportShas,
+//     juryReportShas, expertMotionReport, expertMotionReportSha,
+//     expertUxReport, expertUxReportSha, notes, at }. (D15 fields are
+//     documented at the JUDGE ARTIFACTS block below; pairwiseReportSha /
+//     juryReportShas / expertMotionReportSha / expertUxReportSha are
+//     `;`-joined sha256 strings under *Sha keys, pairwiseReports is the
+//     `;`-joined report paths.) variant is the PICKED variant.
 //     tokensHash is --tokens-hash, or the sha256 of
 //     <project>/design/tokens.css when present, else null. fixClass is a
 //     free-form fix class (e.g. "tokens:colour"); outcome is one of
@@ -124,7 +136,9 @@
 //     keeps the final 4-axis scores; expert scores never change a score,
 //     never trigger the stop rule, and are never a grade.
 //   feedback: { kind, round, from, tokenChange, scoreAfter, grader,
-//     independenceBasis, evidence, fixClass, at }.
+//     independenceBasis, evidence, fixClass, judgeReport, judgeReportSha,
+//     pageSha, at }. judgeReport / judgeReportSha / pageSha are the D15
+//     regrade-artifact fields (null when no --score-after was recorded).
 // The round-brief generator (skills/frontend-kit/scripts/round-brief.mjs)
 // reads ONLY this log + the locked files; no round ever reads the full
 // log as context. `brief` below delegates to it.
@@ -133,7 +147,10 @@
 //   node run-log.mjs --project <dir> record --round N --grader <label>
 //     --basis "<why this judge counts as independent>"
 //     --scores <type,layout,colour,space | none>
-//     --evidence "<one line of observable evidence per score, ;-separated>"
+//     --judge-report <design/judge/round-N.md>   # REQUIRED for a graded
+//       round (D15, below); the record's evidence is DERIVED from the
+//       artifact's evidence cells — record no longer accepts --evidence
+//       on a graded round
 //     --gate <pass|fail> [--variant <name>] [--notes "..."]
 //     [--gate-leg1 <path> --gate-leg2 <path>]  # REQUIRED with --gate pass (D13, below)
 //     [--tokens-hash <sha256 hex>] [--fix-class "<class>"]
@@ -214,12 +231,13 @@
 //     --change "<token diff>" --round N [--score-after <t,l,c,s>
 //     --grader <judge-subagent|muse-manager|other-model>
 //     --basis "<why this judge counts as independent, 10+ chars>"
-//     --evidence "<one line naming an observable element, 10+ chars>"]
-//   --score-after REQUIRES --grader + --basis + --evidence (exit 2,
-//   nothing written, otherwise): a post-feedback score IS a grade, and
-//   only an independent judge may grade. --basis must not merely restate
-//   the grader name; --evidence must name an observable element, not a
-//   generic impression such as "looks good".
+//     --judge-report <design/judge/round-N-regrade.md>]
+//   --score-after REQUIRES --grader + --basis + a regrade judge artifact
+//   (D15; exit 2, nothing written, otherwise): a post-feedback score IS
+//   a grade, and only an independent judge may grade. --basis must not
+//   merely restate the grader name; the recorded evidence is DERIVED
+//   from the artifact's evidence cells — feedback no longer accepts
+//   --evidence with --score-after.
 //   node run-log.mjs --project <dir> lock --tokens <tokens.css path>
 //     --refs "<chosen DESIGN.md + reference screenshots>"
 //     [--version N] [--approved-by "<approval basis>"]
@@ -269,12 +287,163 @@
 //   node run-log.mjs --project <dir> show
 //   node run-log.mjs --project <dir> best
 //
+// JUDGE ARTIFACTS (D15, GAP-13 — REQUIRED for every score, on `record`
+//   AND `feedback`): a grade is a CLAIM about a judge run, and a claim
+//   with no artifact behind it is a self-assertion — the exact escape
+//   three Claude probes used (fabricated scores, an invented grader, a
+//   self-grade recorded as a judge grade), because the grader checks
+//   above verified only the SPELLING of independence (a label + two
+//   stock basis phrases), never its existence. A graded record now
+//   refuses unless `--judge-report <path>` cites the judge's own report
+//   file (default shape `design/judge/round-<n>.md`, written by the
+//   judge into the skeleton `judge-report.mjs prepare` stamps before
+//   the spawn — see that file's header for the producer split and the
+//   format grammar, which run-log.mjs imports from it: one parser, two
+//   readers). validateJudgeArtifact (below) checks, ALL failing closed
+//   (exit 2, nothing written): the file is project-relative, resolves
+//   inside <project>/design/, is a non-symlink non-empty regular file,
+//   and is a distinct file (device+inode) from the page, tokens.css,
+//   both gate legs, and every other judge artifact cited in the same
+//   command; line 1 is the magic line (after stripInvisible); no line
+//   is a judge refusal/void line or a leftover PENDING skeleton line;
+//   the header grammar is strict (fixed keys, fixed order); the header
+//   round / kind / grader / basis EQUAL the record flags (and the basis
+//   passes the same two-half independence check on the artifact's own
+//   text); the gate / cross-check bits are green / clear; the header's
+//   page-sha256 and tokens-sha256 EQUAL the hashes of the files on disk
+//   now (so an artifact copied from an earlier round or build, or a
+//   page edited after judging, is refused); every screenshot hash in
+//   the header EQUALS the current file's hash; the parsed score table
+//   EQUALS --scores axis-by-axis; and the artifact is fresh in the
+//   chain tokens <= page <= artifact. The recorded evidence is DERIVED
+//   from the artifact's evidence cells (joined with '; ' into the same
+//   `evidence` field round-brief.mjs reads — the transcription is
+//   verified, not trusted). SINGLE-USE: a judge artifact's sha256 may
+//   back exactly ONE grade event in a log; citing the same bytes again
+//   (a second round, a feedback regrade, a jury vote) is refused.
+//   Scope, all refused: scores with --gate fail (a judge is spawned
+//   only on a green gate); an allowed grader with --scores none (use
+//   --grader none); a no-grade record citing any judge artifact;
+//   --pairwise without BOTH --pairwise-reports (each a kind-pairwise
+//   artifact; the recorded verdict must EQUAL the verdict derived from
+//   the two artifacts' keep lines and the A/B shot-hash mapping, and
+//   the two artifacts' shot sets must be exact swaps of each other);
+//   --jury / --jury-votes without --judge-reports (three kind-jury
+//   artifacts whose parsed scores, as a set, equal --jury-votes; the
+//   family rule applies: disjoint-3 = three distinct header families,
+//   single-family = one shared family; --jury-mode single forbids
+//   --jury / --jury-votes entirely — the single grade is --scores);
+//   --expert-motion / --expert-ux without their kind-expert-motion /
+//   kind-expert-ux artifacts (parsed score + evidence must equal the
+//   flags), on graded AND no-grade records alike. `land` additionally
+//   refuses when the log holds NO round record for the land's round
+//   (graded or explicit no-grade) — a land after zero grading is the
+//   loop closing unseen. `best` excludes gate-fail rounds and graded
+//   rounds lacking a judge artifact.
+//   RED-TEAM ROUND 2 (2026-11-12): the READ paths now distrust hand-
+//   appended lines in shapes the writer never produces. feedback's
+//   regrade page anchor is chosen ONLY from round lines that are
+//   genuinely graded AND whose citation verifies on disk right now
+//   (isVerifiedGradedRound) — a hand-appended scoreless line carrying
+//   a pageSha (NA4, SEVERE: the writer couples pageSha to a grade, so
+//   a no-grade line always stores it null) never anchors; with no
+//   verified graded record the pre-D15 --page fallback applies, and
+//   with no round record at all the pre-existing behaviour stands
+//   (NA20). land's precondition counts only verified graded records
+//   and genuine no-grade records (isGenuineNoGradeRound: the writer's
+//   full no-grade field set — a hand-written minimal line in the
+//   no-grade colours, NA19, never counts). `best` crowns only rounds
+//   whose gate is exactly "pass" (NA3), whose grader is an allowed
+//   label, whose citation verifies AND parses as the line's own
+//   report (header round + score table, C3), and — for jury rounds —
+//   whose three juror artifacts verify at their conventional paths
+//   against juryReportShas (NA1/NA2).
+//   RED-TEAM ROUND 3 (2026-11-12): the round-2 hardening was applied
+//   unevenly across call sites, and round 3 proved the drift — the
+//   fix is architectural, not another patch per call site. ONE
+//   shared verifier now serves every read path: verifyGradedLine
+//   performs the FULL record-grade verification on read (citation
+//   exists, is not a symlink, resolves inside design/, hashes to
+//   judgeReportSha, parses; header round / kind / grader /
+//   page-sha256 / basis cross-checked against the line — closing B1
+//   the pageSha-swapped anchor copy, B5 the grader misattribution,
+//   B6 the stale-page pageSha edit, B7 the symlink asymmetry), and
+//   verifyJuryLine verifies a jury line AS A JURY (juror artifacts
+//   at their conventional paths, parsed votes == the line's
+//   juryVotes as a set, parsed median == the line's jury, the family
+//   rule from the headers — closing B2, the trusted recorded
+//   median). isVerifiedGradedRound = the writer's graded shape +
+//   verifyGradedLine (+ verifyJuryLine for jury lines), and it is
+//   the ONLY graded test feedback's anchor, land's precondition and
+//   `best` consult. land's no-grade half gained its missing on-disk
+//   half too (B3): a genuine no-grade line's cited gate legs must
+//   verify against the stored shas with the verdict matching the
+//   line's gate value — a full-shape line citing legs that never
+//   existed no longer counts; a line citing no legs never counts.
+//   RED-TEAM ROUND 4 (2026-11-12): round 3 unified the verifier
+//   inside THIS file but left gate/runlog-check.mjs holding private
+//   re-implementations of it, and round 4 proved the copies had
+//   drifted (F1–F7 — all read-path drift, no SEVERE): the checker's
+//   parse half never applied the independence-basis check or the
+//   body-Round-line agreement (F1), neither copy verified juror
+//   device+inode distinctness (F2) or juror bases (F3), the checker
+//   verified a jury only when jury/juryVotes were present (F4),
+//   the line's own independenceBasis / tokensHash transcription
+//   fields were compared by nobody (F5), citation containment
+//   differed (project root in the checker, design/ here — F6), and
+//   expert citations were verified by no read path at all (F7).
+//   The fix is a relocation, not another patch: the verifiers and
+//   the independence-basis check now live in judge-report.mjs (the
+//   import-safe sibling, next to the parser), this file imports
+//   them (thin fail-closed wrappers where its call sites sit), and
+//   runlog-check.mjs calls the SAME functions and deletes its
+//   copies. The shared verifier also gained the missing halves:
+//   juror distinctness against the record-time set, juror basis
+//   checks, the F5 transcription equalities, expert-citation
+//   verification, and ONE jury-line definition (any of jury /
+//   juryVotes / juryReportShas present and non-null). Record-time
+//   validation (validateJudgeArtifact and everything it checks) is
+//   unchanged; only the read paths moved.
+//   RED-TEAM ROUND 5 (2026-11-12): no new mechanism and no drift —
+//   round 5 proved FIELD GAPS inside the one shared verifier:
+//   stored line fields it never compared. The graded shape did not
+//   require gate exactly "pass" (N1 — only `best` filtered it
+//   locally, so a genuine line flipped to gate "fail" still
+//   anchored feedback and satisfied land); the line's evidence
+//   transcription was unchecked (N2); juror artifacts were not
+//   bound to the round's page on read (N3 — record time binds
+//   them); expert evidence transcriptions were unchecked beside
+//   expert scores (N6); and the pairwise transcription had NO
+//   read verification at all (N5 — paths, hashes, swap proof and
+//   the derived verdict are now re-derived by verifyPairwiseLine
+//   inside verifyGradedLine, and runlog-check gained the
+//   line-local pairwiseReportShas shape rule, N5b). All fixes are
+//   in judge-report.mjs's shared verifier (plus the N5b shape
+//   rule in runlog-check.mjs), so every consumer inherits them.
+//   (N4, a juror artifact naming a different grader than the
+//   line, was observed and is NOT a break: record time does not
+//   compare a juror's grader either — write/read parity.)
+//   Recorded fields: judgeReport /
+//   judgeReportSha, pageSha (validator-computed, never a CLI flag),
+//   pairwiseReports / pairwiseReportShas, juryReportShas,
+//   expertMotionReport / expertMotionReportSha, expertUxReport /
+//   expertUxReportSha — every hash under a *Sha key (runlog-check.mjs
+//   rule 3). Residual, stated openly: deliberate fabrication of a
+//   judge-shaped artifact is still possible (the builder can author
+//   one from scratch; muse-manager independence remains
+//   attestation-based; a judge spawned on curated inputs produces a
+//   genuine artifact for a rigged grade). The mechanism converts the
+//   escape from invisible to deliberate-and-auditable: the artifact is
+//   on disk, hash-bound to the exact build, and a QC re-grade
+//   contradicts it. Signing judge output is out of scope.
+//
 // Exit codes: 0 ok, 1 usage error (including a brief that fails its schema
 //   check — lock, best HTML, gate findings, or evidence lines missing),
 //   2 rejected entry (grader == builder, scores without a named
 //   independent grader, a duplicate lock version, a checker without a
 //   two-half independence basis, a land without a clear cross-check
-//   verdict, or a --gate pass without both gate-leg artifacts).
+//   verdict, a --gate pass without both gate-leg artifacts, or a score
+//   without a valid judge artifact (D15)).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -308,66 +477,26 @@ function reject(msg) {
   process.exit(2);
 }
 
-function basisRestatesGrader(basis, grader) {
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
-  if (norm(basis) === norm(grader)) return true;
-  // Remove every occurrence of the grader label (any separator spelling)
-  // and require >= 10 characters of other substance to remain.
-  const labelPattern = grader.replace(/-/g, '[-_ ]?');
-  const stripped = basis
-    .replace(new RegExp(labelPattern, 'gi'), '')
-    .replace(/[^A-Za-z0-9]+/g, ' ')
-    .trim();
-  return stripped.length < 10;
-}
-
 // Independence basis must establish BOTH halves (see header): (1) fresh /
 // separate context, or a different agent instance; AND (2) no production
 // history of the build. Either half alone is rejected — "fresh context"
 // alone does not change the weights (rubric A1), and "no production
 // history" alone does not help if the judge shares the builder's context.
-const FRESH_SIGNALS = [
-  /fresh context/,
-  /separate context/,
-  /new context/,
-  /fresh sub-?agent/,
-  /no shared context/,
-  /different agent/,
-  /different model/,
-  /separate agent/,
-  /independent agent/,
-  /different instance/,
-  /separate instance/,
-  /trained separately/,
-  /separately trained/,
-];
-const NO_HISTORY_SIGNALS = [
-  /no production history/,
-  /no history of (this|the) build/,
-  /never (shown|seen).*?(draft|build)/,
-  /not involved in.*build/,
-  /no prior involvement/,
-];
-
-function basisEstablishesIndependence(basis) {
-  const b = basis.toLowerCase();
-  const fresh = FRESH_SIGNALS.some((re) => re.test(b));
-  const noHistory = NO_HISTORY_SIGNALS.some((re) => re.test(b));
-  return { fresh, noHistory, ok: fresh && noHistory };
-}
-
+// The CHECK itself (red-team round 4) lives in judge-report.mjs —
+// independenceBasisProblem / checkIndependenceBasis there — shared with
+// the read paths, which apply its non-exiting halves to artifact
+// headers. This wrapper is only the exiting form: it passes this file's
+// reject (print + exit 2, nothing written) as the check's fail, so the
+// record-time messages, exit code and nothing-written invariant are
+// byte-identical to the in-file implementation it replaces. When
+// judge-report.mjs cannot be imported (a partial install), the check
+// cannot run, so the wrapper refuses with the missing-parser message —
+// the same fail-closed stance validateJudgeArtifact takes for graded
+// records, and the stance B4 set for runlog-check: a partial copy
+// refuses rather than recording on an unverifiable basis.
 function checkIndependenceBasis(basis, grader) {
-  if (!basis || basis.trim().length < 10) {
-    reject('--basis must state why this judge counts as independent (10+ characters).');
-  }
-  if (basisRestatesGrader(basis.trim(), grader)) {
-    reject('--basis must not merely restate the grader name: state the independence basis (e.g. "fresh context, no production history").');
-  }
-  const { fresh, noHistory } = basisEstablishesIndependence(basis.trim());
-  if (!fresh || !noHistory) {
-    const missing = [!fresh ? 'fresh/separate context (or a different agent instance)' : null, !noHistory ? 'no production history of the build' : null].filter(Boolean).join(' AND ');
-    reject(`--basis must establish BOTH halves of independence — missing: ${missing}. "Fresh context" alone is NOT enough (rubric A1). Example: "fresh context, no production history".`);
-  }
+  if (!judgeReportMod) reject('the judge-report parser (judge-report.mjs, next to run-log.mjs) is missing — the independence basis cannot be checked, so this cannot be recorded. Re-run ./install.sh.');
+  judgeReportMod.checkIndependenceBasis(basis, grader, reject);
 }
 
 function evidenceNamesObservable(evidence) {
@@ -383,9 +512,9 @@ function evidenceNamesObservable(evidence) {
 function usage(msg) {
   if (msg) console.error(`run-log: ${msg}`);
   console.error(`usage:
-  node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s|none> --evidence "<...>" --gate <pass|fail> [--gate-leg1 <path> --gate-leg2 <path>] [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>] [--trigger <flat-line|round-1-repick|stagnation>] [--pairwise <keep-incumbent|keep-challenger|tie>] [--pairwise-agrees <yes|no>] [--jury "<t,l,c,s median>"] [--jury-mode <disjoint-3|single-family|single>] [--jury-votes "<v1;v2;v3>"] [--not-regraded "<#section,#section>"] [--expert-motion <1-5>] [--expert-motion-evidence "<observable>"] [--expert-ux <1-5>] [--expert-ux-evidence "<observable>"]
-  node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--gate-leg1 <path> --gate-leg2 <path>] [--variant <name>] [--notes "..."] [--expert-motion <1-5>] [--expert-motion-evidence "<observable>"] [--expert-ux <1-5>] [--expert-ux-evidence "<observable>"]  (no-grade round: grade is "gate green, vision not available" when --gate pass, "gate red, no grade" when --gate fail; expert scores allowed)
-  node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --evidence "<observable element>"] [--fix-class "<class>"]
+  node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s> --judge-report <design/judge/round-N.md> --gate pass [--gate-leg1 <path> --gate-leg2 <path>] [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>] [--trigger <flat-line|round-1-repick|stagnation>] [--pairwise <keep-incumbent|keep-challenger|tie> --pairwise-reports <p1,p2>] [--pairwise-agrees <yes|no>] [--jury "<t,l,c,s median>" --jury-mode <disjoint-3|single-family> --jury-votes "<v1;v2;v3>" --judge-reports <j1,j2,j3>] [--not-regraded "<#section,#section>"] [--expert-motion <1-5> --expert-motion-evidence "<observable>" --expert-motion-report <path>] [--expert-ux <1-5> --expert-ux-evidence "<observable>" --expert-ux-report <path>]  (D15: a graded round requires --judge-report; the evidence is derived from the artifact, --evidence is not accepted)
+  node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--gate-leg1 <path> --gate-leg2 <path>] [--variant <name>] [--notes "..."] [--expert-motion <1-5> --expert-motion-evidence "<observable>" --expert-motion-report <path>] [--expert-ux <1-5> --expert-ux-evidence "<observable>" --expert-ux-report <path>]  (no-grade round: grade is "gate green, vision not available" when --gate pass, "gate red, no grade" when --gate fail; expert scores allowed, each with its expert artifact; no judge artifact may be cited)
+  node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --judge-report <design/judge/round-N-regrade.md> [--page <built.html>]] [--fix-class "<class>"]
   node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"]
   node run-log.mjs --project <dir> replan --action <re-plan|re-pick> --purpose "<revised purpose from PLAN.md>" [--notes "..."]
   node run-log.mjs --project <dir> crosscheck --slice <id> [--round N] --severe N --warning N [--waived N] --report <path> --checker <security-expert|crosscheck-subagent|crosscheck-team> --basis "<why independent>"
@@ -849,6 +978,255 @@ function validateGateArtifacts(project, args) {
   };
 }
 
+// D15 (GAP-13): judge artifacts — the judge-side mirror of the D13 gate
+// artifacts above. The grammar parser lives in judge-report.mjs (the
+// producer) and is imported here so the format has ONE definition with
+// two readers; if the module is missing (a partial install), graded
+// records fail closed below rather than falling back to self-assertion.
+let judgeReportMod = null;
+try { judgeReportMod = await import('./judge-report.mjs'); } catch { judgeReportMod = null; }
+
+// Every judge-artifact sha already cited by a grade event in this log:
+// judgeReportSha (round + feedback records), the `;`-joined
+// pairwiseReportShas / juryReportShas, and the expert report shas.
+// Single-use is per BYTE content (the sha), not per path — copying a
+// report to a second path does not make it a second judge call.
+function collectUsedJudgeShas(rows) {
+  const used = new Set();
+  for (const r of rows) {
+    if (r.judgeReportSha) used.add(r.judgeReportSha);
+    for (const field of ['pairwiseReportShas', 'juryReportShas']) {
+      if (r[field]) for (const sha of String(r[field]).split(';')) if (sha) used.add(sha);
+    }
+    if (r.expertMotionReportSha) used.add(r.expertMotionReportSha);
+    if (r.expertUxReportSha) used.add(r.expertUxReportSha);
+  }
+  return used;
+}
+
+// The gate-leg paths CITED on this command (--gate-leg1 / --gate-leg2),
+// when given. A judge artifact must be a different file from the legs
+// the record actually cites, not only from the two canonical leg files
+// (red-team round N4b: a non-canonical cited leg hardlinked to the
+// judge artifact slipped past a canonical-only distinctness set).
+function citedLegsOf(a) {
+  const out = [];
+  for (const flag of ['gate-leg1', 'gate-leg2']) {
+    if (a[flag] !== undefined) out.push({ flag, given: a[flag] });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------
+// READ-PATH VERIFICATION (red-team round 3; round 4: SHARED, not
+// mirrored): the verifiers themselves — verifyGradedLine,
+// verifyJuryLine, verifyExpertCitations, isVerifiedGradedRound,
+// isGenuineNoGradeRound — live in judge-report.mjs, next to the
+// parser, and are imported from there (judgeReportMod, above).
+// judge-report.mjs is import-safe; this file is not (its CLI runs
+// at top level), which is why the shared home is there and not
+// here. gate/runlog-check.mjs imports the SAME functions — round 4
+// proved that the checker's private re-implementations of the
+// round-3 verifier had drifted from it (F1–F7: the checker accepted
+// a self-confessed basis and a body/header grader mismatch, and no
+// copy verified juror distinctness, juror bases, expert citations,
+// or the line's independenceBasis / tokensHash transcription
+// fields), so there is now exactly one implementation and every
+// read consumer routes through it. The two wrappers below keep
+// this file's call sites (best, land's precondition, feedback's
+// anchor) unchanged and fail closed when judge-report.mjs cannot
+// be loaded (a partial install): no line verifies, so best crowns
+// nothing, land's precondition counts nothing, and feedback's
+// anchor search finds no verified graded record — the consumers'
+// existing no-verified-record behaviour, never a weaker check.
+// ---------------------------------------------------------------------
+
+function isVerifiedGradedRound(project, r) {
+  return judgeReportMod ? judgeReportMod.isVerifiedGradedRound(project, r) : false;
+}
+
+function isGenuineNoGradeRound(project, r) {
+  return judgeReportMod ? judgeReportMod.isGenuineNoGradeRound(project, r) : false;
+}
+
+// Validate one cited judge artifact. `expect`:
+//   flag           — the CLI flag name, for messages
+//   kinds          — allowed header kinds
+//   round          — the round the artifact must be bound to
+//   grader / basis — when non-null, the header must EQUAL them (the main
+//                    and regrade artifacts); when null (pairwise / jury /
+//                    expert artifacts — separate invocations with no
+//                    record flag to transcribe), the header basis is
+//                    still independence-checked on its own text
+//   pageRel        — when non-null, the canonical --page the header must
+//                    name; when null, the header's own page is the binding
+//   tokensHash     — when non-null, the record's tokens hash, which the
+//                    header must equal as well as the on-disk hash
+//   notRegraded    — when an array (possibly empty), the header's
+//                    not-regraded set must equal it; null = do not check
+//   usedShas       — the single-use set; this artifact's sha is checked
+//                    against it and added to it
+//   citedLegs      — [{ flag, given }] gate-leg paths cited on this
+//                    command; they join the distinctness set (N4b)
+//   others         — [{ real, stat, rel }] artifacts already validated in
+//                    this command (device+inode distinctness)
+// Returns { rel, sha, header, parsed, stat, real, pageSha, pageStat,
+// shots, shotsA, shotsB }. Rejects (exit 2, nothing written) on any
+// failed check.
+function validateJudgeArtifact(project, given, expect) {
+  const flag = `--${expect.flag}`;
+  if (!judgeReportMod) reject(`${flag}: the judge-report parser (judge-report.mjs, next to run-log.mjs) is missing — a graded record cannot be validated, so it cannot be recorded. Re-run ./install.sh.`);
+  if (!given) reject(`${flag} is required (D15): a score with no judge artifact is a self-assertion, not a record. Run judge-report.mjs prepare, spawn the independent judge to fill the report, then record with ${flag} citing it.`);
+  const projectReal = (() => { try { return fs.realpathSync(project); } catch { return path.resolve(project); } })();
+  const designDir = path.resolve(project, 'design');
+  let designReal;
+  try { designReal = fs.realpathSync(designDir); } catch { designReal = path.join(projectReal, 'design'); }
+  const inside = (realPath, realDir) => realPath === realDir || realPath.startsWith(realDir + path.sep);
+  if (!inside(designReal, projectReal)) reject(`<project>/design/ resolves outside the project (real path ${designReal}) — a design/ directory outside the project cannot hold judge artifacts.`);
+  if (path.isAbsolute(given)) reject(`${flag} must be a path relative to the project, inside design/ — absolute paths are rejected (got "${given}").`);
+  const resolved = path.resolve(project, given);
+  if (resolved !== designDir && !resolved.startsWith(designDir + path.sep)) reject(`${flag} must resolve inside <project>/design/ (got "${given}" — '..' escapes are rejected).`);
+  let lstat;
+  try { lstat = fs.lstatSync(resolved); } catch { reject(`${flag} file does not exist: ${given} (run judge-report.mjs prepare and have the judge fill the report first).`); }
+  if (lstat.isSymbolicLink()) reject(`${flag} file ${given} is a symlink — judge artifacts must be real files inside <project>/design/, not links to files elsewhere.`);
+  let stat;
+  try { stat = fs.statSync(resolved); } catch { reject(`${flag} file does not exist: ${given}.`); }
+  if (!stat.isFile() || stat.size === 0) reject(`${flag} file is empty or not a file: ${given}.`);
+  let real;
+  try { real = fs.realpathSync(resolved); } catch { reject(`${flag} file cannot be resolved: ${given}.`); }
+  if (!inside(real, designReal)) reject(`${flag} file ${given} resolves outside <project>/design/ (real path ${real}) — a link or mount escaping design/ is rejected.`);
+  const rel = path.relative(project, resolved);
+  const bytes = fs.readFileSync(resolved);
+  const sha = crypto.createHash('sha256').update(bytes).digest('hex');
+  // Distinctness: the artifact must be its own file — not the page, not
+  // tokens.css, not a gate leg, not another judge artifact in this
+  // command (device+inode, so a hardlink is caught like D13's F4).
+  const sameFile = (a, b) => a && b && a.dev === b.dev && a.ino === b.ino;
+  const distinctFrom = [];
+  const tokensPath = path.join(designDir, 'tokens.css');
+  for (const [p, label] of [[tokensPath, 'design/tokens.css'], [path.join(designDir, 'gate-leg1.log'), 'the leg-1 gate artifact'], [path.join(designDir, 'gate-leg2.log'), 'the leg-2 gate artifact']]) {
+    try { distinctFrom.push({ real: fs.realpathSync(p), stat: fs.statSync(p), rel: label }); } catch { /* absent: nothing to be distinct from */ }
+  }
+  // Red-team round (N4b): the legs CITED on this command join the set
+  // too — a record may cite non-canonical leg paths (--gate-leg1 /
+  // --gate-leg2 anywhere inside design/), and a judge artifact that IS
+  // one of those cited files (same realpath, or same device+inode — a
+  // hardlink) is one file cited as two artifacts, exactly as with the
+  // canonical pair.
+  for (const cited of expect.citedLegs || []) {
+    const p = path.resolve(project, cited.given);
+    try { distinctFrom.push({ real: fs.realpathSync(p), stat: fs.statSync(p), rel: `the cited --${cited.flag} artifact (${cited.given})` }); } catch { /* absent: nothing to be distinct from */ }
+  }
+  for (const o of expect.others || []) distinctFrom.push(o);
+  for (const o of distinctFrom) {
+    if (real === o.real || sameFile(stat, o.stat)) reject(`${flag} file ${given} is the same file as ${o.rel} — a judge artifact must be its own file, not another artifact or the tokens file.`);
+  }
+  // Single-use: one judge artifact's bytes back exactly one grade event.
+  if (expect.usedShas.has(sha)) reject(`${flag} file ${given} has already been cited by an earlier grade event in this run log (sha256 ${sha.slice(0, 12)}…) — one judge artifact backs exactly one grade; a new grade needs a new judge call and a new report.`);
+  // Grammar: the shared parser (magic line, void/PENDING lines, strict
+  // header, per-kind body grammar).
+  const parsed = judgeReportMod.parseJudgeReport(bytes.toString('utf8'));
+  if (parsed.problems.length) reject(`${flag} file ${given} is not a well-formed judge report: ${parsed.problems.join('; ')}.`);
+  const header = parsed.header;
+  // Cross-field equality: the flags become a verified transcription.
+  if (Number(header.round) !== expect.round) reject(`${flag} file ${given} is a report for round ${header.round}, not round ${expect.round} — an artifact from another round cannot back this record.`);
+  if (!expect.kinds.includes(header.kind)) reject(`${flag} file ${given} is a ${header.kind} report; this citation needs ${expect.kinds.join(' | ')}.`);
+  if (expect.grader !== null && expect.grader !== undefined && header.grader !== expect.grader) reject(`${flag} file ${given} names grader "${header.grader}", not "${expect.grader}" — the recorded grader must be the artifact's grader.`);
+  if (expect.basis !== null && expect.basis !== undefined && header.basis !== expect.basis.trim()) reject(`${flag} file ${given} carries a different independence basis than --basis — the recorded basis must be the artifact's basis, word for word.`);
+  checkIndependenceBasis(header.basis, header.grader);
+  if (parsed.bodyGrader !== undefined && (parsed.bodyGrader !== header.grader || parsed.bodyBasis !== header.basis || parsed.bodyRound !== expect.round)) {
+    reject(`${flag} file ${given}: the body's Round line (round ${parsed.bodyRound}, grader ${parsed.bodyGrader}) does not match its header — the header and the judge's own output must agree.`);
+  }
+  // Page binding: the header's page must be the record's page (when the
+  // record has one), and its sha256 must equal the file on disk NOW —
+  // a page edited after judging no longer matches its report.
+  if (expect.pageRel && header.page !== expect.pageRel) reject(`${flag} file ${given} grades page "${header.page}", not the recorded page "${expect.pageRel}" — the artifact must bind to the page being recorded.`);
+  const pageResolved = path.resolve(project, header.page);
+  let pageStat;
+  try { pageStat = fs.statSync(pageResolved); } catch { reject(`${flag} file ${given} names page "${header.page}", which does not exist on disk.`); }
+  if (sameFile(stat, pageStat)) reject(`${flag} file ${given} is the same file as its page — a judge artifact must be its own file.`);
+  const pageSha = sha256File(pageResolved);
+  if (pageSha !== header['page-sha256']) reject(`${flag} file ${given} binds to page-sha256 ${header['page-sha256'].slice(0, 12)}… but ${header.page} now hashes to ${(pageSha || 'unreadable').slice(0, 12)}… — the page changed after judging (or the artifact belongs to another build). Re-grade the current page.`);
+  // Tokens binding: the header's tokens hash must equal the tokens file
+  // on disk now, and the record's own tokens hash when one is asserted.
+  const tokensShaNow = sha256File(tokensPath);
+  if (!tokensShaNow) reject(`${flag}: design/tokens.css does not exist or cannot be read — the artifact's tokens binding cannot be checked.`);
+  if (tokensShaNow !== header['tokens-sha256']) reject(`${flag} file ${given} binds to tokens-sha256 ${header['tokens-sha256'].slice(0, 12)}… but design/tokens.css now hashes to ${tokensShaNow.slice(0, 12)}… — the tokens changed after judging. Re-grade against the locked tokens.`);
+  if (expect.tokensHash && expect.tokensHash !== header['tokens-sha256']) reject(`${flag} file ${given} binds to tokens-sha256 ${header['tokens-sha256'].slice(0, 12)}… but this record asserts --tokens-hash ${expect.tokensHash.slice(0, 12)}… — the two must agree.`);
+  // Screenshot binding: every listed shot must exist with its listed
+  // hash — the artifact certifies the pixels it names, no others.
+  // QC round (F3): existence is not enough — each shot path gets the
+  // page rules too: no symlink as the final component, and the real
+  // path must resolve inside the project, so a header cannot bind the
+  // artifact to pixels outside the project (or behind a link) even
+  // when the hash matches a file placed there.
+  const checkShots = (list, field) => {
+    for (const shot of list) {
+      const shotResolved = path.resolve(project, shot.path);
+      let shotLstat;
+      try { shotLstat = fs.lstatSync(shotResolved); } catch { reject(`${flag} file ${given}: header ${field} names screenshot "${shot.path}", which does not exist on disk.`); }
+      if (shotLstat.isSymbolicLink()) reject(`${flag} file ${given}: header ${field} names screenshot "${shot.path}", which is a symlink — screenshots must be real files inside the project, not links to files elsewhere.`);
+      let shotReal;
+      try { shotReal = fs.realpathSync(shotResolved); } catch { reject(`${flag} file ${given}: header ${field} names screenshot "${shot.path}", which cannot be resolved.`); }
+      if (!inside(shotReal, projectReal)) reject(`${flag} file ${given}: header ${field} names screenshot "${shot.path}", which resolves outside the project (real path ${shotReal}) — a judge artifact binds only to this project's screenshots.`);
+      const shotSha = sha256File(shotResolved);
+      if (!shotSha) reject(`${flag} file ${given}: header ${field} names screenshot "${shot.path}", which does not exist on disk.`);
+      if (shotSha !== shot.sha256) reject(`${flag} file ${given}: header ${field} binds screenshot "${shot.path}" to sha256 ${shot.sha256.slice(0, 12)}… but the file now hashes to ${shotSha.slice(0, 12)}… — the screenshots changed after judging. Re-grade.`);
+    }
+    return list;
+  };
+  const shots = checkShots(judgeReportMod.parseShotList(header.screenshots) || [], 'screenshots');
+  const shotsA = checkShots(judgeReportMod.parseShotList(header['shots-a']) || [], 'shots-a');
+  const shotsB = checkShots(judgeReportMod.parseShotList(header['shots-b']) || [], 'shots-b');
+  if (header.kind === 'pairwise') {
+    if (!shotsA.length || !shotsB.length) reject(`${flag} file ${given} is a pairwise report with an empty shots-a / shots-b set — a pairwise verdict must bind to both versions' screenshots.`);
+  } else if (!shots.length) {
+    reject(`${flag} file ${given} binds to no screenshots — a judge report must name the screenshot set it graded.`);
+  }
+  // not-regraded binding (cheap grades): the header's set must equal
+  // the record's --not-regraded set.
+  if (expect.notRegraded !== null && expect.notRegraded !== undefined) {
+    const headerSet = header['not-regraded'] === '-' ? [] : header['not-regraded'].split(',').map((s) => s.trim()).filter(Boolean);
+    const want = [...expect.notRegraded].sort();
+    const got = [...headerSet].sort();
+    if (JSON.stringify(want) !== JSON.stringify(got)) reject(`${flag} file ${given} carries not-regraded "${header['not-regraded']}" but the record carries "${expect.notRegraded.join(',') || '(none)'}" — the two must agree.`);
+  }
+  // Freshness: tokens <= page <= artifact (mtime; equal allowed — the
+  // D13 chain; the hash binding above is the load-bearing check, this
+  // is the tripwire — F6 inheritance, stated in the header).
+  let tokensStat;
+  try { tokensStat = fs.statSync(tokensPath); } catch { tokensStat = null; }
+  if (tokensStat && stat.mtimeMs < tokensStat.mtimeMs) reject(`${flag} file ${given} is older than design/tokens.css — a stale artifact is a claim about a different build.`);
+  if (stat.mtimeMs < pageStat.mtimeMs) reject(`${flag} file ${given} is older than ${header.page} — the report predates the page it claims to grade. Re-grade.`);
+  expect.usedShas.add(sha);
+  return { rel, sha, header, parsed, stat, real, pageSha, pageStat, shots, shotsA, shotsB };
+}
+
+// D15: the crosscheck --report path gets the same existence/containment
+// validation as other artifacts (existence/containment only — no
+// content grammar in this wave). Returns the path unchanged: the stored
+// form stays the caller's project-relative path, as before D15.
+function validateCrosscheckReport(project, given) {
+  const projectReal = (() => { try { return fs.realpathSync(project); } catch { return path.resolve(project); } })();
+  const designDir = path.resolve(project, 'design');
+  let designReal;
+  try { designReal = fs.realpathSync(designDir); } catch { designReal = path.join(projectReal, 'design'); }
+  const inside = (realPath, realDir) => realPath === realDir || realPath.startsWith(realDir + path.sep);
+  if (!inside(designReal, projectReal)) reject(`<project>/design/ resolves outside the project (real path ${designReal}) — a design/ directory outside the project cannot hold a cross-check report.`);
+  if (path.isAbsolute(given)) reject(`--report must be a path relative to the project, inside design/ — absolute paths are rejected (got "${given}").`);
+  const resolved = path.resolve(project, given);
+  if (resolved !== designDir && !resolved.startsWith(designDir + path.sep)) reject(`--report must resolve inside <project>/design/ (got "${given}" — '..' escapes are rejected).`);
+  let lstat;
+  try { lstat = fs.lstatSync(resolved); } catch { reject(`--report file does not exist: ${given} (the cross-check report must be written before its verdict is recorded — D15).`); }
+  if (lstat.isSymbolicLink()) reject(`--report file ${given} is a symlink — cross-check reports must be real files inside <project>/design/, not links to files elsewhere.`);
+  let stat;
+  try { stat = fs.statSync(resolved); } catch { reject(`--report file does not exist: ${given}.`); }
+  if (!stat.isFile() || stat.size === 0) reject(`--report file is empty or not a file: ${given}.`);
+  let real;
+  try { real = fs.realpathSync(resolved); } catch { reject(`--report file cannot be resolved: ${given}.`); }
+  if (!inside(real, designReal)) reject(`--report file ${given} resolves outside <project>/design/ (real path ${real}).`);
+}
+
 const OUTCOMES = ['kept', 'discarded', 're-pick', 'stopped', 'escalated', 'pending'];
 
 function parseOutcome(s) {
@@ -1011,6 +1389,38 @@ if (cmd === 'record') {
     console.error('run-log: REJECTED — --pairwise / --pairwise-agrees / --jury / --jury-mode / --jury-votes / --not-regraded need a graded round. A --grader none record has no scores to compare, to take a median of, or to mark sections not re-scored on. No entry written.');
     process.exit(2);
   }
+  // D15: single-use set + the expert-artifact validator, shared by the
+  // graded and no-grade branches (expert scores need their artifacts on
+  // both). The set is seeded from the log and grows with every artifact
+  // validated in this command, so two citations of one file in a single
+  // record are also refused.
+  const usedJudgeShas = collectUsedJudgeShas(readLog(args.project));
+  const validatedJudgeArtifacts = [];
+  const validateExpert = (expert, reportFlag, kind, pageRel) => {
+    if (expert.score === null) {
+      if (args[reportFlag] !== undefined) reject(`--${reportFlag} is cited without its expert score — an expert artifact backs an expert score, not a bare record.`);
+      return null;
+    }
+    if (args[reportFlag] === undefined) reject(`--${reportFlag} is required (D15): an expert score with no expert artifact is a self-assertion, not a second opinion. Run judge-report.mjs prepare --kind ${kind} and have the expert fill the report.`);
+    // QC round (F1): the expert artifact binds to the RECORD's page —
+    // its header page must equal the page this record grades and its
+    // page-sha256 must equal that page's current hash, exactly as the
+    // jury artifacts already bind. (pageRel is null only when the
+    // record itself carries no validated page — a --gate fail record
+    // with no --page — in which case the header's own page, hash-checked
+    // against disk by the validator, is the binding, as for pairwise.)
+    const art = validateJudgeArtifact(args.project, args[reportFlag], {
+      flag: reportFlag, kinds: [kind], round, grader: null, basis: null,
+      pageRel, tokensHash: null, notRegraded: null,
+      usedShas: usedJudgeShas, others: validatedJudgeArtifacts,
+      citedLegs: citedLegsOf(args),
+    });
+    if (art.parsed.expertScore !== expert.score || art.parsed.expertEvidence !== expert.evidence) {
+      reject(`--${reportFlag} file ${args[reportFlag]} records ${kind === 'expert-motion' ? 'Motion' : 'UX'} ${art.parsed.expertScore} — "${art.parsed.expertEvidence}", not the cited ${expert.score} — "${expert.evidence}". The record must transcribe the expert artifact, not assert over it.`);
+    }
+    validatedJudgeArtifacts.push(art);
+    return art;
+  };
   if (noGrade) {
     if (scores) {
       console.error('run-log: REJECTED — --grader none goes with --scores none only. A score IS a grade and needs an independent judge (judge-subagent | muse-manager | other-model). No entry written.');
@@ -1018,8 +1428,19 @@ if (cmd === 'record') {
     }
     if (args.grade !== undefined && args.grade !== 'none') usage('--grader none goes with --scores none and no grade; use a graded record for scores');
     if (!['pass', 'fail'].includes(args.gate)) usage('--gate must be pass or fail');
+    // D15: a no-grade record cites NO judge artifact — a judge report
+    // on a no-grade round would be a grade wearing a no-grade label.
+    // (Expert artifacts are separate: they back expert scores, which
+    // ARE allowed here, and are validated below.)
+    if (args['judge-report'] !== undefined || args['pairwise-reports'] !== undefined || args['judge-reports'] !== undefined) {
+      console.error('run-log: REJECTED — a --grader none record cites no judge artifact (--judge-report / --pairwise-reports / --judge-reports). A no-grade round has no judge; if a judge graded, record it as a graded round with the artifact. No entry written.');
+      process.exit(2);
+    }
     // D13: a --gate pass without both leg artifacts is refused (exit 2).
     const gateArtifacts = validateGateArtifacts(args.project, args);
+    // D15: expert scores on a no-grade record need their artifacts too.
+    const ngExpertMotionArt = validateExpert(expertMotion, 'expert-motion-report', 'expert-motion', gateArtifacts.page);
+    const ngExpertUxArt = validateExpert(expertUx, 'expert-ux-report', 'expert-ux', gateArtifacts.page);
     const rec = {
       kind: 'round', round, grader: null, independenceBasis: null,
       scores: null, grade: args.gate === 'fail' ? 'gate red, no grade' : 'gate green, vision not available',
@@ -1039,6 +1460,12 @@ if (cmd === 'record') {
       notRegraded: null,
       expertMotion: expertMotion.score, expertMotionEvidence: expertMotion.evidence,
       expertUx: expertUx.score, expertUxEvidence: expertUx.evidence,
+      judgeReport: null, judgeReportSha: null, pageSha: null,
+      pairwiseReports: null, pairwiseReportShas: null, juryReportShas: null,
+      expertMotionReport: ngExpertMotionArt ? ngExpertMotionArt.rel : null,
+      expertMotionReportSha: ngExpertMotionArt ? ngExpertMotionArt.sha : null,
+      expertUxReport: ngExpertUxArt ? ngExpertUxArt.rel : null,
+      expertUxReportSha: ngExpertUxArt ? ngExpertUxArt.sha : null,
       notes: args.notes || null,
       at: new Date().toISOString(),
     };
@@ -1055,32 +1482,140 @@ if (cmd === 'record') {
   // enough (rubric A1). muse-manager is accepted here exactly when its
   // basis proves it is a DIFFERENT instance with no production history.
   checkIndependenceBasis(args.basis, grader);
-  if (scores && (!args.evidence || !args.evidence.trim())) {
-    console.error('run-log: REJECTED — scores without evidence are not scores. Pass --evidence with one observable line per score. No entry written.');
-    process.exit(2);
-  }
-  // Same evidence bar as feedback --score-after: a score IS a grade, so
-  // evidence attached to a score must name an observable element (10+
-  // chars, not a generic impression such as "x" or "looks good").
-  if (args.evidence !== undefined && !evidenceNamesObservable(args.evidence)) {
-    console.error('run-log: REJECTED — --evidence (10+ characters) must name an observable element, e.g. a named element or a measurement — not a generic impression like "x" or "looks good". No entry written.');
-    process.exit(2);
-  }
-  if (!scores && args.grade !== undefined && args.grade !== 'none') usage('--scores "none" goes with no grade; use --scores t,l,c,s for a graded round');
   if (!['pass', 'fail'].includes(args.gate)) usage('--gate must be pass or fail');
+  // D15 scope rules, before any artifact work:
+  //  (a) an allowed grader with --scores none is a contradiction — a
+  //      grader label IS a grade claim; the no-grade path is --grader
+  //      none. (Before D15 this fell through and recorded a no-grade
+  //      label under an invented grader.)
+  if (!scores) reject(`--grader ${grader} goes with --scores <t,l,c,s>. An allowed grader with --scores none is not a recordable state — use --grader none --scores none for a no-grade round.`);
+  //  (b) scores on a failed gate: the judge is spawned only on a green
+  //      gate (D8 pre-filter), so a graded record on --gate fail has no
+  //      judge behind it by construction.
+  if (args.gate === 'fail') reject('a graded record requires --gate pass. A judge is spawned only on a green gate, so scores on a failed gate cannot come from a judge — record the round with --grader none --scores none, or fix the gate first.');
+  //  (c) the evidence is DERIVED from the judge artifact (below); a
+  //      caller-asserted --evidence on a graded round is the old
+  //      self-assertion channel and is refused, not ignored.
+  if (args.evidence !== undefined) reject('--evidence is not accepted on a graded record (D15): the recorded evidence is derived from the judge artifact\'s evidence cells, so the record transcribes the judge\'s own words instead of asserting over them.');
   // D13: a --gate pass without both leg artifacts is refused (exit 2).
   const gateArtifacts = validateGateArtifacts(args.project, args);
+  const tokensHash = resolveTokensHash(args.project, undefined, args['tokens-hash']);
+  // D15: the main judge artifact. The record's scores and evidence are
+  // a verified transcription of this file — nothing else.
+  const judgeArt = validateJudgeArtifact(args.project, args['judge-report'], {
+    flag: 'judge-report', kinds: ['absolute', 'cheap'], round, grader, basis: args.basis,
+    pageRel: gateArtifacts.page, tokensHash, notRegraded: notRegraded || [],
+    usedShas: usedJudgeShas, others: validatedJudgeArtifacts,
+    citedLegs: citedLegsOf(args),
+  });
+  validatedJudgeArtifacts.push(judgeArt);
+  const artScores = judgeArt.parsed.scores;
+  for (const axis of ['type', 'layout', 'colour', 'space']) {
+    if (artScores[axis] !== scores[axis]) reject(`--scores ${axis} is ${scores[axis]} but the judge artifact records ${artScores[axis]} — the record must transcribe the artifact's score table, not assert over it.`);
+  }
+  // The derived evidence keeps the old bar per cell (10+ chars naming
+  // an observable element) and the old stored shape: the four cells
+  // joined with '; ' in the same `evidence` field round-brief.mjs reads.
+  for (const cell of judgeArt.parsed.evidenceCells) {
+    if (!evidenceNamesObservable(cell)) reject(`the judge artifact's evidence cell "${cell}" does not name an observable element (10+ characters, a named element or a measurement) — evidence that names nothing is not evidence.`);
+  }
+  const derivedEvidence = judgeArt.parsed.evidenceCells.join('; ');
+  // D15: pairwise (P11) — two kind-pairwise artifacts, or no pairwise
+  // verdict. The recorded verdict must EQUAL the derived one.
+  let pairwiseArtShas = null;
+  let pairwiseArtPaths = null;
+  if (args['pairwise-reports'] !== undefined && !pairwise) reject('--pairwise-reports is cited without --pairwise — the reports back a verdict, they are not a verdict on their own.');
+  if (pairwiseAgrees !== null && !pairwise) reject('--pairwise-agrees needs --pairwise (and its --pairwise-reports) — it qualifies a verdict, it is not one.');
+  if (pairwise) {
+    const cited = (args['pairwise-reports'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (cited.length !== 2) reject('--pairwise requires --pairwise-reports <report-1,report-2> (D15): one report per pairwise judge call, both orders. A pairwise verdict with no artifacts is a self-assertion.');
+    const pArts = cited.map((p) => {
+      const art = validateJudgeArtifact(args.project, p, {
+        flag: 'pairwise-reports', kinds: ['pairwise'], round, grader: null, basis: null,
+        pageRel: null, tokensHash, notRegraded: null,
+        usedShas: usedJudgeShas, others: validatedJudgeArtifacts,
+        citedLegs: citedLegsOf(args),
+      });
+      validatedJudgeArtifacts.push(art);
+      return art;
+    });
+    // Swap proof: the second call's A/B sets are the first call's B/A
+    // sets (by screenshot hash multiset) — the two calls graded the
+    // same two versions in swapped order, or they did not run.
+    const hashSet = (list) => list.map((s) => s.sha256).sort().join(';');
+    if (hashSet(pArts[0].shotsA) !== hashSet(pArts[1].shotsB) || hashSet(pArts[0].shotsB) !== hashSet(pArts[1].shotsA)) {
+      reject('--pairwise-reports are not a swapped pair: report 2\'s shots-a / shots-b must be report 1\'s shots-b / shots-a (the same two versions, order swapped). Two reports of the same order are one call cited twice.');
+    }
+    // Derivation: the version whose shot-hash set equals the current
+    // page's set (the main artifact's screenshots) is the challenger;
+    // the other is the incumbent. Each report's keep line then derives
+    // a verdict; the two must agree, and the flag must equal them.
+    const challenger = new Set(judgeArt.shots.map((s) => s.sha256));
+    const derivedList = pArts.map((art) => {
+      const isChallenger = (list) => list.length === challenger.size && list.every((s) => challenger.has(s.sha256));
+      const aIs = isChallenger(art.shotsA);
+      const bIs = isChallenger(art.shotsB);
+      if (aIs === bIs) reject(`--pairwise-reports file ${art.rel}: exactly one of shots-a / shots-b must be the current page's screenshot set (the challenger) — neither or both matched, so the A/B mapping cannot be derived.`);
+      const kept = art.parsed.pairwiseKeep === 'A' ? aIs : bIs;
+      return kept ? 'keep-challenger' : 'keep-incumbent';
+    });
+    // Red-team round (PW-tie): two derivations that DISAGREE derive
+    // the verdict `tie` (the P11 rule D15 (5d) states) — recording
+    // --pairwise tie for exactly that pair is the transcription, not
+    // a contradiction; an AGREEING pair cited as a tie, or a
+    // disagreeing pair cited as a keep, is the mismatch.
+    const derived = derivedList[0] === derivedList[1] ? derivedList[0] : 'tie';
+    if (derived === 'tie' && pairwise !== 'tie') reject(`--pairwise-reports disagree after A/B derivation (${derivedList[0]} vs ${derivedList[1]}) — the pair disagrees, so the derived verdict is a tie by the P11 rule; record --pairwise tie, not ${pairwise}.`);
+    if (derived !== 'tie' && pairwise !== derived) reject(`--pairwise is ${pairwise} but the pairwise artifacts derive ${derived} — the record must transcribe the artifacts' verdict.`);
+    pairwiseArtShas = pArts.map((a) => a.sha).join(';');
+    pairwiseArtPaths = pArts.map((a) => a.rel).join(';');
+  }
+  // D15: jury (P14) — three kind-jury artifacts behind --jury /
+  // --jury-votes, or no jury fields. --jury-mode single forbids the
+  // jury fields entirely (the single grade is --scores).
+  let juryArtShas = null;
+  if (args['judge-reports'] !== undefined && !(jury || juryVotes)) reject('--judge-reports is cited without --jury / --jury-votes — the reports back jury votes, they are not votes on their own.');
+  if (juryMode === 'single' && (jury || juryVotes)) reject('--jury-mode single forbids --jury / --jury-votes (D15): a single-judge stop round records its grade as --scores with the absolute judge artifact; there are no jury votes to transcribe.');
+  if (jury || juryVotes) {
+    if (!jury || !juryVotes || !juryMode || juryMode === 'single') reject('--jury / --jury-votes need --jury-mode <disjoint-3|single-family> and --judge-reports <j1,j2,j3> (D15): three jury artifacts behind the votes, transcribed.');
+    const cited = (args['judge-reports'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (cited.length !== 3) reject('--jury requires --judge-reports <report-1,report-2,report-3> (D15): one report per juror. Jury votes with no artifacts are self-asserted.');
+    const jArts = cited.map((p) => {
+      const art = validateJudgeArtifact(args.project, p, {
+        flag: 'judge-reports', kinds: ['jury'], round, grader: null, basis: null,
+        pageRel: gateArtifacts.page, tokensHash, notRegraded: null,
+        usedShas: usedJudgeShas, others: validatedJudgeArtifacts,
+        citedLegs: citedLegsOf(args),
+      });
+      validatedJudgeArtifacts.push(art);
+      return art;
+    });
+    const canonScores = (s) => `${s.type},${s.layout},${s.colour},${s.space}`;
+    const artVoteSet = jArts.map((a) => canonScores(a.parsed.scores)).sort();
+    const flagVoteSet = juryVotes.map(canonScores).sort();
+    if (JSON.stringify(artVoteSet) !== JSON.stringify(flagVoteSet)) reject(`--jury-votes (${flagVoteSet.join(' | ')}) do not match the jury artifacts' score tables (${artVoteSet.join(' | ')}) as a set — the record must transcribe the jurors' reports.`);
+    const families = jArts.map((a) => a.header.family);
+    if (families.some((f) => !f || f === '-')) reject('--judge-reports: every jury artifact must name its model family in the header (family:) — the jury mode is checked against the families the jurors declared.');
+    if (juryMode === 'disjoint-3' && new Set(families).size !== 3) reject(`--jury-mode disjoint-3 needs three DISTINCT juror families; the artifacts declare: ${families.join(', ')}.`);
+    if (juryMode === 'single-family' && new Set(families).size !== 1) reject(`--jury-mode single-family needs ONE shared juror family; the artifacts declare: ${families.join(', ')}.`);
+    juryArtShas = jArts.map((a) => a.sha).join(';');
+  } else if (juryMode && juryMode !== 'single') {
+    reject(`--jury-mode ${juryMode} without --jury / --jury-votes records a jury that never voted — cite the votes and their three artifacts, or drop the mode.`);
+  }
+  // D15: expert scores need their expert artifacts (graded records too).
+  const gExpertMotionArt = validateExpert(expertMotion, 'expert-motion-report', 'expert-motion', gateArtifacts.page);
+  const gExpertUxArt = validateExpert(expertUx, 'expert-ux-report', 'expert-ux', gateArtifacts.page);
   const rec = {
     kind: 'round', round, grader, independenceBasis: args.basis.trim(),
-    scores, grade: scores ? 'graded' : (args.gate === 'fail' ? 'gate red, no grade' : 'gate green, vision not available'),
-    evidence: args.evidence || null, gate: args.gate,
+    scores, grade: 'graded',
+    evidence: derivedEvidence, gate: args.gate,
     gateLeg1: gateArtifacts ? gateArtifacts.gateLeg1 : null,
     gateLeg2: gateArtifacts ? gateArtifacts.gateLeg2 : null,
     gateLeg1Sha: gateArtifacts ? gateArtifacts.gateLeg1Sha : null,
     gateLeg2Sha: gateArtifacts ? gateArtifacts.gateLeg2Sha : null,
     gateFindings: args['gate-findings'] || null,
     variant: args.variant || null,
-    tokensHash: resolveTokensHash(args.project, undefined, args['tokens-hash']),
+    tokensHash,
     fixClass: args['fix-class'] || null,
     outcome: parseOutcome(args.outcome),
     page: gateArtifacts ? gateArtifacts.page : null,
@@ -1088,6 +1623,13 @@ if (cmd === 'record') {
     notRegraded,
     expertMotion: expertMotion.score, expertMotionEvidence: expertMotion.evidence,
     expertUx: expertUx.score, expertUxEvidence: expertUx.evidence,
+    judgeReport: judgeArt.rel, judgeReportSha: judgeArt.sha, pageSha: judgeArt.pageSha,
+    pairwiseReports: pairwiseArtPaths, pairwiseReportShas: pairwiseArtShas,
+    juryReportShas: juryArtShas,
+    expertMotionReport: gExpertMotionArt ? gExpertMotionArt.rel : null,
+    expertMotionReportSha: gExpertMotionArt ? gExpertMotionArt.sha : null,
+    expertUxReport: gExpertUxArt ? gExpertUxArt.rel : null,
+    expertUxReportSha: gExpertUxArt ? gExpertUxArt.sha : null,
     notes: args.notes || null,
     at: new Date().toISOString(),
   };
@@ -1099,6 +1641,8 @@ if (cmd === 'record') {
   if (!args.from || !args.change) usage('feedback needs --from "<human words>" and --change "<token diff>"');
   let scoreAfter = null;
   let grader = null;
+  let feedbackJudgeArt = null;
+  let feedbackEvidence = null;
   if (args['score-after']) {
     // A post-feedback score IS a grade: only an independent judge may give it.
     grader = (args.grader || '').trim();
@@ -1111,18 +1655,89 @@ if (cmd === 'record') {
     // Same two-half bar as record: fresh/separate context AND no
     // production history; either half alone is rejected.
     checkIndependenceBasis(args.basis, grader);
-    if (!args.evidence || !evidenceNamesObservable(args.evidence)) {
-      reject('--score-after requires --evidence (10+ characters) naming an observable element, e.g. a named element or a measurement — not a generic impression like "looks good".');
-    }
     scoreAfter = parseScores(args['score-after']);
+    // D15: the regrade needs its own judge artifact (kind regrade) —
+    // the round's artifact cannot be re-cited (single-use), and a
+    // caller-asserted --evidence is the old self-assertion channel.
+    if (args.evidence !== undefined) reject('--evidence is not accepted with --score-after (D15): the recorded evidence is derived from the regrade artifact\'s evidence cells.');
+    // Page binding (red-team round N12 — SEVERE): the regrade must
+    // grade THE PAGE THE ROUND GRADED, and the round record itself is
+    // the authority for which page that was. A graded round record
+    // always carries pageSha — the hash of the page actually graded —
+    // even when it was recorded without --page (page: null). The old
+    // code fell back to whatever page the regrade artifact named in
+    // exactly that case, so a regrade of a DIFFERENT page recorded
+    // cleanly. The rules now:
+    //   - the round's graded record has a pageSha: the artifact's
+    //     page-sha256 MUST equal it (checked after validation below),
+    //     and a --page passed to feedback must hash to it too;
+    //   - the round record also names a page: the artifact must name
+    //     that page (the pageRel check, as before);
+    //   - the round has a record but NO pageSha (a pre-D15 log line):
+    //     --page is REQUIRED and the artifact binds to that page
+    //     (path + its current hash, via the validator);
+    //   - no round record at all: the pre-existing behaviour (the
+    //     artifact's own page, hash-checked against disk).
+    // Red-team round 2 (NA4 — SEVERE, anchor poisoning): the anchor
+    // record is chosen ONLY from round lines that are genuinely
+    // graded AND whose citation verifies on disk right now
+    // (isVerifiedGradedRound). The round-1 code anchored on ANY later
+    // round line carrying a pageSha — so a hand-appended scoreless
+    // line (grader null, scores null, but a pageSha pointing at a
+    // DIFFERENT page: a shape the writer never produces, because a
+    // no-grade record stores pageSha null) became the anchor, and a
+    // regrade of that other page recorded cleanly against the round.
+    // Scoreless lines, grader-less lines, and lines whose citation
+    // does not verify NEVER anchor. When round records exist but none
+    // is a verified graded record, the pre-D15 fallback applies:
+    // --page is REQUIRED and the artifact binds to it by path +
+    // current hash. When there is no round record at all (NA20), the
+    // pre-existing behaviour is retained unchanged: --page anchors
+    // when given, else the artifact's own page binds.
+    const fbRows = readLog(args.project);
+    const fbRoundRecs = fbRows.filter((r) => r.kind === 'round' && r.round === round);
+    const fbGradedRec = [...fbRoundRecs].reverse().find((r) => isVerifiedGradedRound(args.project, r)) || null;
+    let feedbackPage = args.page || null;
+    if (fbGradedRec && !feedbackPage && fbGradedRec.page) feedbackPage = fbGradedRec.page;
+    if (fbGradedRec) {
+      if (args.page) {
+        const givenSha = sha256File(path.resolve(args.project, args.page));
+        if (!givenSha) reject(`--page file does not exist or cannot be read: ${args.page} — the feedback regrade must bind to the page round ${round} graded.`);
+        if (givenSha !== fbGradedRec.pageSha) reject(`--page ${args.page} hashes to ${givenSha.slice(0, 12)}… but round ${round}'s record graded a page with page-sha256 ${fbGradedRec.pageSha.slice(0, 12)}…${fbGradedRec.page ? ` (${fbGradedRec.page})` : ''} — the page whose hash differs is ${args.page}; the regrade must grade the page the round graded, not a different page.`);
+      }
+    } else if (fbRoundRecs.length && !args.page) {
+      reject(`round ${round} has round record(s) but none is a graded record whose judge citation verifies on disk (a scoreless line, a grader-less line, or a line whose citation does not verify never anchors a regrade), so the page it graded cannot be anchored from the log — pass --page <the page round ${round} graded> so the regrade artifact can be bound to it by path + current hash.`);
+    }
+    feedbackJudgeArt = validateJudgeArtifact(args.project, args['judge-report'], {
+      flag: 'judge-report', kinds: ['regrade'], round, grader, basis: args.basis,
+      pageRel: feedbackPage, tokensHash: resolveTokensHash(args.project, undefined, args['tokens-hash']),
+      notRegraded: null,
+      usedShas: collectUsedJudgeShas(fbRows), others: [],
+      citedLegs: citedLegsOf(args),
+    });
+    if (fbGradedRec && feedbackJudgeArt.pageSha !== fbGradedRec.pageSha) {
+      reject(`--judge-report file ${args['judge-report']} binds to page "${feedbackJudgeArt.header.page}" (page-sha256 ${feedbackJudgeArt.pageSha.slice(0, 12)}…) but round ${round}'s record graded ${fbGradedRec.page ? `page "${fbGradedRec.page}"` : 'a page recorded without --page'} with page-sha256 ${fbGradedRec.pageSha.slice(0, 12)}… — the page whose hash differs is "${feedbackJudgeArt.header.page}"; the regrade artifact must grade the page the round graded, not a different page. Re-prepare the regrade for that page.`);
+    }
+    for (const axis of ['type', 'layout', 'colour', 'space']) {
+      if (feedbackJudgeArt.parsed.scores[axis] !== scoreAfter[axis]) reject(`--score-after ${axis} is ${scoreAfter[axis]} but the regrade artifact records ${feedbackJudgeArt.parsed.scores[axis]} — the record must transcribe the artifact's score table.`);
+    }
+    for (const cell of feedbackJudgeArt.parsed.evidenceCells) {
+      if (!evidenceNamesObservable(cell)) reject(`the regrade artifact's evidence cell "${cell}" does not name an observable element (10+ characters, a named element or a measurement).`);
+    }
+    feedbackEvidence = feedbackJudgeArt.parsed.evidenceCells.join('; ');
+  } else if (args['judge-report'] !== undefined) {
+    reject('--judge-report is cited without --score-after — a regrade artifact backs a regrade score, not a bare feedback record.');
   }
   const rec = {
     kind: 'feedback', round, from: args.from, tokenChange: args.change,
     scoreAfter,
     grader: scoreAfter ? grader : null,
     independenceBasis: scoreAfter ? args.basis.trim() : null,
-    evidence: scoreAfter ? args.evidence.trim() : null,
+    evidence: scoreAfter ? feedbackEvidence : null,
     fixClass: args['fix-class'] || null,
+    judgeReport: feedbackJudgeArt ? feedbackJudgeArt.rel : null,
+    judgeReportSha: feedbackJudgeArt ? feedbackJudgeArt.sha : null,
+    pageSha: feedbackJudgeArt ? feedbackJudgeArt.pageSha : null,
     at: new Date().toISOString(),
   };
   appendLog(args.project, rec);
@@ -1215,6 +1830,9 @@ if (cmd === 'record') {
   // builder's context or history is not independent (synthesis §2 C5:
   // the generator cannot be the validator).
   checkIndependenceBasis(args.basis, checker);
+  // D15: the report must exist — before D15 the path was never stat'ed,
+  // so a clear verdict could cite a report that was never written.
+  validateCrosscheckReport(args.project, args.report.trim());
   const verdict = (severe === 0 && warning === waived) ? 'clear' : 'blocked';
   const rec = {
     kind: 'crosscheck', slice: slice || null, round,
@@ -1256,6 +1874,34 @@ if (cmd === 'record') {
     console.error(`run-log: REJECTED — the latest cross-check verdict for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} is ${latest.verdict.toUpperCase()} (SEVERE ${latest.severe}, WARNING ${latest.warning}, waived ${latest.waived}; report: ${latest.report}). A SEVERE finding blocks the land like a gate FAIL; fix and re-check first. No entry written.`);
     process.exit(2);
   }
+  // D15: a land also needs at least one ROUND record for the land's
+  // round — graded (artifact-backed, enforced at record time) or an
+  // explicit no-grade record (the human-gate path, labelled as such).
+  // Before D15, land checked only the gate + cross-check and closed
+  // the loop over a build no round had ever recorded. (Slice-binding
+  // of round records is a schema gap left open in D15: round records
+  // carry no slice field, so the precondition is on the round number,
+  // or on any round record when --round is omitted.)
+  // Red-team round 2 (NA19): existence is not enough — a round line
+  // counts toward the precondition only if it is (a) a verified
+  // graded record (isVerifiedGradedRound: scores + allowed grader +
+  // pageSha + the shared full verification on disk now), or (b) a
+  // genuine no-grade record (isGenuineNoGradeRound: the writer's
+  // no-grade field set — grader null, scores null, no grade-coupled
+  // fields, a timestamp — AND, since red-team round 3 (B3), both
+  // cited gate legs verifying on disk against the stored shas with
+  // the verdict matching the line's gate value; a full-shape line
+  // citing legs that never existed counted under the round-2 shape
+  // check alone). A hand-written minimal line in the no-grade
+  // colours (grader null, scores null, nothing else) satisfied the
+  // old existence check and must never count.
+  const roundRecs = readLog(args.project).filter((r) => r.kind === 'round'
+    && (round !== null ? r.round === round : true)
+    && (isVerifiedGradedRound(args.project, r) || isGenuineNoGradeRound(args.project, r)));
+  if (!roundRecs.length) {
+    console.error(`run-log: REJECTED — land for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} has no round record in the log that counts — no verified graded record (judge citation verifying on disk) and no genuine no-grade record for it. Record the round first (graded with its judge artifact, or an explicit --grader none no-grade record), then land. No entry written.`);
+    process.exit(2);
+  }
   const rec = {
     kind: 'land', slice: slice || null, round,
     gate: 'pass',
@@ -1279,13 +1925,16 @@ if (cmd === 'record') {
       const p = r.pairwise ? ` | pairwise: ${r.pairwise}${r.pairwiseAgrees !== null && r.pairwiseAgrees !== undefined ? ` (agrees with absolute: ${r.pairwiseAgrees ? 'yes' : 'no'})` : ''}` : '';
       const nr = r.notRegraded && r.notRegraded.length ? ` | not re-graded: ${r.notRegraded.join(', ')}` : '';
       const ga = r.gateLeg1 ? ` | gate artifacts: ${r.gateLeg1}${r.gateLeg1Sha ? ` (${r.gateLeg1Sha.slice(0, 12)}…)` : ''}, ${r.gateLeg2 || '?'}${r.gateLeg2Sha ? ` (${r.gateLeg2Sha.slice(0, 12)}…)` : ''}` : '';
-      console.log(`round ${r.round} | ${g} | ${s} | grade: ${r.grade} | gate: ${r.gate}${ga}${r.variant ? ` | variant: ${r.variant}` : ''}${r.tokensHash ? ` | tokens: ${r.tokensHash.slice(0, 12)}…` : ''}${r.fixClass ? ` | fix-class: ${r.fixClass}` : ''}${r.outcome ? ` | outcome: ${r.outcome}` : ''}${r.trigger ? ` | trigger: ${r.trigger}` : ''}${p}${j}${nr}${r.page ? ` | page: ${r.page}` : ''}${r.notes ? ` | ${r.notes}` : ''}`);
+      const ja = r.judgeReport ? ` | judge artifact: ${r.judgeReport}${r.judgeReportSha ? ` (${r.judgeReportSha.slice(0, 12)}…)` : ''}` : '';
+      const jr = r.juryReportShas ? ` | jury artifacts (sha): ${r.juryReportShas.split(';').map((x) => `${x.slice(0, 12)}…`).join(', ')}` : '';
+      const pr = r.pairwiseReportShas ? ` | pairwise artifacts (sha): ${r.pairwiseReportShas.split(';').map((x) => `${x.slice(0, 12)}…`).join(', ')}` : '';
+      console.log(`round ${r.round} | ${g} | ${s} | grade: ${r.grade} | gate: ${r.gate}${ga}${ja}${jr}${pr}${r.variant ? ` | variant: ${r.variant}` : ''}${r.tokensHash ? ` | tokens: ${r.tokensHash.slice(0, 12)}…` : ''}${r.fixClass ? ` | fix-class: ${r.fixClass}` : ''}${r.outcome ? ` | outcome: ${r.outcome}` : ''}${r.trigger ? ` | trigger: ${r.trigger}` : ''}${p}${j}${nr}${r.page ? ` | page: ${r.page}` : ''}${r.notes ? ` | ${r.notes}` : ''}`);
       if (r.gateFindings) console.log(`  gate findings: ${r.gateFindings}`);
       if (r.evidence) console.log(`  evidence: ${r.evidence}`);
-      if (r.expertMotion !== null && r.expertMotion !== undefined) console.log(`  Motion: ${r.expertMotion} (motion-expert) — ${r.expertMotionEvidence || ''}`);
-      if (r.expertUx !== null && r.expertUx !== undefined) console.log(`  UX: ${r.expertUx} (ux-expert) — ${r.expertUxEvidence || ''}`);
+      if (r.expertMotion !== null && r.expertMotion !== undefined) console.log(`  Motion: ${r.expertMotion} (motion-expert) — ${r.expertMotionEvidence || ''}${r.expertMotionReport ? ` [artifact: ${r.expertMotionReport}${r.expertMotionReportSha ? ` (${r.expertMotionReportSha.slice(0, 12)}…)` : ''}]` : ''}`);
+      if (r.expertUx !== null && r.expertUx !== undefined) console.log(`  UX: ${r.expertUx} (ux-expert) — ${r.expertUxEvidence || ''}${r.expertUxReport ? ` [artifact: ${r.expertUxReport}${r.expertUxReportSha ? ` (${r.expertUxReportSha.slice(0, 12)}…)` : ''}]` : ''}`);
     } else if (r.kind === 'feedback') {
-      console.log(`feedback (round ${r.round}): "${r.from}" -> ${r.tokenChange}${r.scoreAfter ? ` | after: T${r.scoreAfter.type}/L${r.scoreAfter.layout}/C${r.scoreAfter.colour}/S${r.scoreAfter.space} (grader: ${r.grader || 'MISSING'})` : ''}`);
+      console.log(`feedback (round ${r.round}): "${r.from}" -> ${r.tokenChange}${r.scoreAfter ? ` | after: T${r.scoreAfter.type}/L${r.scoreAfter.layout}/C${r.scoreAfter.colour}/S${r.scoreAfter.space} (grader: ${r.grader || 'MISSING'})` : ''}${r.judgeReport ? ` | judge artifact: ${r.judgeReport}${r.judgeReportSha ? ` (${r.judgeReportSha.slice(0, 12)}…)` : ''}` : ''}`);
       if (r.scoreAfter && r.evidence) console.log(`  evidence: ${r.evidence}`);
     } else if (r.kind === 'variant-pick') {
       console.log(`variant pick: "${r.variant}"${r.note ? ` — ${r.note}` : ''}`);
@@ -1335,8 +1984,40 @@ if (cmd === 'record') {
   // Effective scores: the stop-round jury median, when recorded, is the
   // round's score for keep/discard purposes (P14 replaces the single
   // grade on the stop round); otherwise the absolute scores.
+  // D15: best-version-kept must not crown a fabrication — a round on a
+  // failed gate, and a graded round with no judge artifact behind it
+  // (a pre-D15 self-asserted record, or a hand-appended log line), are
+  // excluded. A jury round's artifact proof is its juryReportShas; an
+  // absolute round's is its judgeReportSha.
+  // Red-team round (C3/C4 + the fake-citation case): presence is not
+  // proof on the READ path either. A crownable round must carry a
+  // non-null grader, and its judgeReport citation must VERIFY the
+  // same way record verified it: the cited file exists inside the
+  // project and hashes to the stored judgeReportSha. A scored line
+  // with grader null/absent, or citing a nonexistent file or an
+  // invented hash, is skipped like an artifact-less one.
+  // Red-team round 2 (C3/NA1/NA2/NA3): hash equality is not proof
+  // either — the cited artifact must also PARSE as the line's own
+  // report (well-formed, header round == the line's round, kind
+  // absolute/cheap, parsed score table == the line's scores), so a
+  // line citing ANOTHER round's real artifact (C3) is skipped. The
+  // gate must be exactly "pass" — a line with NO gate key (NA3)
+  // passed the old !== 'fail' test. A jury round must additionally
+  // produce its three juror artifacts at the conventional paths,
+  // each hashing to the corresponding juryReportShas entry (which
+  // must be exactly three 64-hex values) and parsing with the line's
+  // round — a jury round whose juror files were deleted (NA1) or
+  // whose shas are not hashes (NA2) is skipped, never crowned. Any
+  // failure skips the line; nothing here may throw.
+  // Red-team round 3: best no longer keeps its own weaker copies of
+  // those checks — the round-2 jury check that lived here verified
+  // juror hashes and header rounds but never the votes, the median,
+  // or the families (B2: an edited line was crowned on edited jury
+  // numbers), and its hash check followed symlinks (B7). Crowning
+  // now routes through the ONE shared verifier every read path uses:
+  // isVerifiedGradedRound (verifyGradedLine + verifyJuryLine).
   const effScores = (r) => r.jury || r.scores;
-  const rounds = readLog(args.project).filter((r) => r.kind === 'round' && effScores(r));
+  const rounds = readLog(args.project).filter((r) => r.kind === 'round' && ALLOWED_GRADERS.includes(r.grader) && effScores(r) && r.gate === 'pass' && isVerifiedGradedRound(args.project, r));
   if (!rounds.length) { console.log('run-log: no graded rounds yet.'); process.exit(0); }
   const total = (s) => s.type + s.layout + s.colour + s.space;
   const best = rounds.reduce((a, b) => (total(effScores(b)) > total(effScores(a)) ? b : a));
