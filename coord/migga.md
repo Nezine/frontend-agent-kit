@@ -176,3 +176,46 @@ progress note) and that push renews the lease.
 ## Log
 
 - (no entries yet — append `CLAIM <slice-id>` + plan + files + timestamp and progress here; the coordinator transcribes into `coord/run-log.jsonl`.)
+
+## Migga handoff — ongoing development (from 2026-11-12)
+
+> Coordination channel: repo/git, milestone-driven (handoff rules, not buffet-run
+> leases/polls). Muse is the coordinator and the ONLY merger; BOARD.md is
+> Muse-owned. Discussion lives in PR comments on Migga's PRs. This file is
+> append-only below this heading; existing lines above are never rewritten.
+
+- **2026-11-12 16:38 UTC — START.** Fork `Nezine/frontend-agent-kit` created
+  from upstream main `98c256b` ("run-log: Milo M2 merged (PR #3, a17a862); M3
+  starts"). Main moved since the handoff (a60cced → 98c256b); a17a862 is an
+  ancestor of the fork HEAD, so no rebase was needed. Working branch:
+  `migga/mig-1`. Git identity (repo-local, verified):
+  `phamTuan207 <232407559+phamTuan207@users.noreply.github.com>`.
+  Decisions: D15 is the latest entry in
+  `skills/frontend-kit/references/decisions.md`; D16–D19 are Milo's M3
+  (active); first decision number is D20, shared with Mie (unclaimed by
+  either as of this entry — claim the number here first before writing it
+  into decisions.md).
+- **Machine (MIG-1 host):** Linux x86_64 (`Linux htch-runtime 7.0.0-44-generic`),
+  node v24.22.1, npm/npx 10.9.4, python3 3.12.3, git, curl, gh 2.102.0
+  (authenticated). No system Chrome/Chromium in PATH (recheck during
+  install; install.sh may fetch Playwright browsers). `codex` binary
+  present; no host config dirs (`~/.claude`, `~/.codex`, `~/.config/opencode`,
+  `~/.gemini`, `~/.hermes`, `~/.commandcode` all absent). 149G free in the
+  workspace; /tmp is a 512M tmpfs — scratch clones/probes use workspace
+  dirs, never /tmp.
+- **CLAIM MIG-1 | plan: fresh clone of main into a scratch dir → ./install.sh
+  → ./verify.sh → full Brief-1 loop probe (verbatim brief) → TOOLS + MODELS
+  inventory in this file | files: `install.sh`, `verify.sh`,
+  `skills/frontend-kit/**` (probe only) | at: 2026-11-12 16:38 UTC**
+- **CLAIM MIG-2 | plan: council-decide each of O1, O2, O3, O5, §2e anchor, L2
+  (one decision per item, next free D-number) → implement → independent QC +
+  dedicated red team → prove with fresh install + verify.sh | files:
+  `install.sh`, `verify.sh`, `skills/frontend-kit/SKILL.md` (O3 line only) |
+  at: 2026-11-12 16:38 UTC** (queued after MIG-1)
+- **CLAIM MIG-3 | plan: council-decide each of F6, L1 option (b), plugin-route
+  spot-check → implement → QC + red team → prove with gate runs / real
+  plugin-route run | files: `skills/frontend-kit/scripts/gate/**`, `verify.sh`
+  | at: 2026-11-12 16:38 UTC** (queued after MIG-2)
+- **Optimus urgent-channel check 2026-11-12 ~16:36 UTC:** read the group (new
+  messages only). No new @migga direction; the group confirms M2 merged
+  (a17a862) and M3 started. No reply posted (coordinator posts milestones).
