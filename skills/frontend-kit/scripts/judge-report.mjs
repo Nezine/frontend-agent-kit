@@ -1196,6 +1196,23 @@ export function verifyCrosscheckLine(project, r) {
     fail('the line is not a crosscheck line');
     return { ok: false, reasons };
   }
+  // Round 7 (A7): the selection keys' TYPES are part of the writer's
+  // shape too. run-log.mjs writes slice as a non-empty string or null
+  // (a round-only record stores slice: null) and round as a positive
+  // integer or null (a slice-only record stores round: null) — both
+  // keys always present. Consumers select the verdict of record with
+  // strict === (land: latest for the slice/round; prepare: latest
+  // for the round), so a string-typed round ("1") is never SELECTED
+  // — but before round 7 it passed this verifier and the checker,
+  // leaving a line no consumer would act on standing as a clean
+  // verdict. Anything outside the writer's two shapes per key is
+  // not a line run-log.mjs writes.
+  if (r.slice !== null && (typeof r.slice !== 'string' || !r.slice.trim())) {
+    fail(`the crosscheck line's slice ${JSON.stringify(r.slice)} is not a non-empty string or null — run-log.mjs writes the slice id, or null for a round-only record`);
+  }
+  if (r.round !== null && (!Number.isInteger(r.round) || r.round < 1)) {
+    fail(`the crosscheck line's round ${JSON.stringify(r.round)} is not a positive integer or null — run-log.mjs writes the round number, or null for a slice-only record, and consumers select on it with strict equality`);
+  }
   const countsOk = [r.severe, r.warning, r.waived].every((n) => Number.isInteger(n) && n >= 0);
   if (!countsOk) {
     fail(`the crosscheck line's counts (severe ${JSON.stringify(r.severe)}, warning ${JSON.stringify(r.warning)}, waived ${JSON.stringify(r.waived)}) are not the non-negative integers run-log.mjs writes`);
@@ -1250,6 +1267,179 @@ export function verifyCrosscheckLine(project, r) {
         }
       }
     }
+  }
+  return { ok: reasons.length === 0, reasons };
+}
+
+// A stored TASTE-LOCK line, verified on read (round 7, F1). Before
+// round 7 no read path verified a lock line at all: round-brief
+// restated whichever stored line carried the highest lockVersion
+// (references, tokens path and version adopted verbatim — a
+// hand-appended line at version 99, its tokensHash copied from the
+// real tokens.css so the brief's own mismatch warning stayed
+// silent, became the lock every round brief restated), and the
+// `lock` command's version-exists check counted every stored line,
+// so one appended line could squat a version number forever. The
+// on-disk half a lock line CAN carry is exactly one file — the
+// tokens file it names — so verification is: lockVersion is a
+// positive integer (the writer's shape); the tokens path is
+// project-relative and resolves inside <project>/design/ to an
+// existing, non-symlink regular file; and the file's sha256 NOW
+// equals the stored tokensHash. Currency is the correct test for
+// the lock of record (the LATEST lock line — the consumer-side
+// selection in round-brief, the lock command's occupation check
+// and runlog-check all consult this one function): a lock whose
+// tokens file has since changed is stale by definition — the lock
+// no longer matches the file it locked — while OLDER lock lines
+// are history and are not held to currency (a re-lock legitimately
+// supersedes them; their files may since have moved on). What this
+// cannot distinguish — stated in D15 as an explicit extension of
+// the authorship residual — is a hand-appended line that DOES
+// verify: one naming the real tokens file (or another real file
+// the writer of the line placed inside design/) with its true
+// current hash. A lock has no second artifact to bind to, so such
+// a line is internally consistent in exactly the way a genuine
+// lock line is; the residual is the lock channel's instance of
+// the from-scratch forgery the D15 entry already names.
+export function verifyLockLine(project, r) {
+  const reasons = [];
+  const fail = (m) => { reasons.push(m); };
+  if (!r || r.kind !== 'taste-lock') {
+    fail('the line is not a taste-lock line');
+    return { ok: false, reasons };
+  }
+  if (!Number.isInteger(r.lockVersion) || r.lockVersion < 1) {
+    fail(`the lock line's lockVersion ${JSON.stringify(r.lockVersion)} is not a positive integer — run-log.mjs writes lock versions as positive integers`);
+  }
+  if (typeof r.tokens !== 'string' || !r.tokens) {
+    fail('the lock line names no tokens file — run-log.mjs records a lock only behind a --tokens path');
+  } else if (path.isAbsolute(r.tokens)) {
+    fail(`the lock line's tokens path ${r.tokens} is an absolute path — lock tokens are project-relative, inside design/`);
+  } else if (typeof r.tokensHash !== 'string' || !/^[0-9a-f]{64}$/i.test(r.tokensHash)) {
+    fail('the lock line carries no valid tokensHash (exactly 64 hex) — without the tokens file\'s stored hash there is nothing to verify the lock against');
+  } else {
+    const ctx = designContext(project);
+    const resolved = path.resolve(project, r.tokens);
+    let lstat = null;
+    try { lstat = fs.lstatSync(resolved); } catch { fail(`the lock line's tokens file ${r.tokens} does not exist — the locked tokens must be on disk for the lock to verify`); }
+    if (lstat) {
+      if (lstat.isSymbolicLink()) {
+        fail(`the lock line's tokens file ${r.tokens} is a symlink — locked tokens must be a real file inside <project>/design/, not a link`);
+      } else {
+        let stat = null;
+        try { stat = fs.statSync(resolved); } catch { stat = null; }
+        if (!stat || !stat.isFile()) {
+          fail(`the lock line's tokens file ${r.tokens} is not a file`);
+        } else {
+          let real = null;
+          try { real = fs.realpathSync(resolved); } catch { fail(`the lock line's tokens file ${r.tokens} cannot be resolved`); }
+          if (real) {
+            if (!ctx.inside(real, ctx.designReal)) {
+              fail(`the lock line's tokens file ${r.tokens} resolves outside <project>/design/ (real path ${real})`);
+            } else {
+              const sha = sha256File(real);
+              if (sha !== r.tokensHash.toLowerCase()) {
+                fail(`the locked tokens file ${r.tokens} now hashes to ${(sha || 'unreadable').slice(0, 12)}…, not the lock's stored tokensHash ${r.tokensHash.slice(0, 12)}… — the tokens moved after this lock was recorded, so the lock is stale`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return { ok: reasons.length === 0, reasons };
+}
+
+// One cited report file's existence/containment half, in the shape
+// verifyCrosscheckLine's report half accepts at record time
+// (lexical containment inside <project>/design/, exists, not a
+// symlink, a non-empty regular file, real path inside the real
+// design/). Returns a reason string, or null when the file stands.
+// `label` names the citing field in messages.
+function citedReportProblem(project, ctx, rel, label) {
+  if (path.isAbsolute(rel)) {
+    return `the ${label} ${rel} is an absolute path — citations are project-relative, inside design/`;
+  }
+  const resolved = path.resolve(project, rel);
+  if (resolved !== ctx.designDir && !resolved.startsWith(ctx.designDir + path.sep)) {
+    return `the ${label} ${rel} resolves outside <project>/design/ ('..' escapes are rejected)`;
+  }
+  let lstat = null;
+  try { lstat = fs.lstatSync(resolved); } catch { return `the ${label} ${rel} does not exist — the report must be written before it is cited`; }
+  if (lstat.isSymbolicLink()) {
+    return `the ${label} ${rel} is a symlink — reports must be real files inside <project>/design/, not links to files elsewhere`;
+  }
+  let stat = null;
+  try { stat = fs.statSync(resolved); } catch { stat = null; }
+  if (!stat || !stat.isFile() || stat.size === 0) {
+    return `the ${label} ${rel} is empty or not a file`;
+  }
+  let real = null;
+  try { real = fs.realpathSync(resolved); } catch { return `the ${label} ${rel} cannot be resolved`; }
+  if (real && !ctx.inside(real, ctx.designReal)) {
+    return `the ${label} ${rel} resolves outside <project>/design/ (real path ${real})`;
+  }
+  return null;
+}
+
+// A stored LAND line, verified on read (round 7, F2). Before round
+// 7 no consumer verified a stored land line: `show` printed it as
+// fact ("LAND (slice ghost, round 7): gate: pass … cross-check:
+// clear") and the checker never looked at one, so a hand-appended
+// land line stood as a shipment that never happened. (The `land`
+// command itself never trusted stored land lines — it re-derives
+// its preconditions before writing a new one — so this verifier's
+// consumer is runlog-check, the tripwire.) A land line verifies
+// only when its preconditions verify NOW, checked with the same
+// shared halves land itself applies before recording: the gate is
+// "pass" (the only value the writer stores); both cited gate legs
+// verify on disk against their stored shas with the verdict
+// matching (verifyCitedLegOnRead — the no-grade path's leg check)
+// and are two distinct files; the cited cross-check report exists
+// inside design/ (citedReportProblem — the same acceptance
+// verifyCrosscheckLine applies to a crosscheck line's report);
+// and a round record for the land's round exists IN THE SAME LOG
+// that counts toward land's own precondition — a verified graded
+// record (isVerifiedGradedRound) or a genuine no-grade record
+// (isGenuineNoGradeRound); a land line with no round recorded (a
+// null round) accepts any round record in the log, mirroring the
+// land command's precondition when --round is omitted. `rows` is
+// the log's parsed lines; the land line itself may be among them
+// (it is not a round line, so it never counts toward its own
+// precondition).
+export function verifyLandLine(project, rows, r) {
+  const reasons = [];
+  const fail = (m) => { reasons.push(m); };
+  if (!r || r.kind !== 'land') {
+    fail('the line is not a land line');
+    return { ok: false, reasons };
+  }
+  if (r.gate !== 'pass') {
+    fail(`the land line's gate is ${JSON.stringify(r.gate)}, not "pass" — run-log.mjs records a land only on --gate pass`);
+  }
+  const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
+  const leg2 = verifyCitedLegOnRead(project, r, 'leg2');
+  if (!leg1) fail(`the land line's gate leg 1 citation (${typeof r.gateLeg1 === 'string' ? r.gateLeg1 : 'none recorded'}) does not verify on disk against its stored sha with a PASS verdict`);
+  if (!leg2) fail(`the land line's gate leg 2 citation (${typeof r.gateLeg2 === 'string' ? r.gateLeg2 : 'none recorded'}) does not verify on disk against its stored sha with a PASS verdict`);
+  if (leg1 && leg2 && (leg1.real === leg2.real || (leg1.stat.dev === leg2.stat.dev && leg1.stat.ino === leg2.stat.ino))) {
+    fail('the land line\'s two cited gate legs are the same file — a gate pass stands behind two distinct leg artifacts');
+  }
+  if (typeof r.crosscheckReport !== 'string' || !r.crosscheckReport) {
+    fail('the land line cites no cross-check report — run-log.mjs records a land only behind the cross-check verdict\'s report');
+  } else {
+    const ctx = designContext(project);
+    if (!ctx.inside(ctx.designReal, ctx.projectReal)) {
+      fail(`<project>/design/ resolves outside the project (real path ${ctx.designReal}) — a design/ directory outside the project cannot hold a cross-check report`);
+    } else {
+      const problem = citedReportProblem(project, ctx, r.crosscheckReport, 'land line\'s cross-check report');
+      if (problem) fail(problem);
+    }
+  }
+  const roundRecs = (Array.isArray(rows) ? rows : []).filter((x) => x && x.kind === 'round'
+    && (r.round === null || r.round === undefined ? true : x.round === r.round)
+    && (isVerifiedGradedRound(project, x) || isGenuineNoGradeRound(project, x)));
+  if (!roundRecs.length) {
+    fail(`no verified graded or genuine no-grade round record${r.round === null || r.round === undefined ? '' : ` for round ${JSON.stringify(r.round)}`} exists in the same log — the land's round precondition does not verify`);
   }
   return { ok: reasons.length === 0, reasons };
 }

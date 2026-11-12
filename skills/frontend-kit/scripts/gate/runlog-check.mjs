@@ -119,6 +119,29 @@
 //      inside design/), because land and prepare act on the latest
 //      stored verdict and a hand-appended "clear" line over a
 //      genuine blocked verdict was verified by nobody.
+//      Round 7 (F1/F2/A7) extends rule 6 to the two stored line
+//      kinds round 6 still left unexamined — taste-lock and land —
+//      and tightens the crosscheck shapes: a crosscheck line's
+//      slice/round must carry the writer's types (A7 — a
+//      string-typed round passed every check while no consumer's
+//      strict === selection would ever act on it). A taste-lock
+//      line gets the writer's shape checks per line (lockVersion
+//      a positive integer, tokensHash 64-hex when present) plus,
+//      on the CLI path, the whole-log half: the LATEST lock line
+//      must verify against the tokens file it names (shared
+//      verifyLockLine — the file inside design/, not a symlink,
+//      still hashing to the stored tokensHash), because the round
+//      brief adopts that line as the lock of record and the lock
+//      command's version check counts only lines that verify. A
+//      land line's preconditions must verify NOW (shared
+//      verifyLandLine — cited gate legs on disk with matching
+//      shas and PASS verdicts, cited cross-check report inside
+//      design/, a verified graded or genuine no-grade round
+//      record for its round in the same log), because `show`
+//      prints stored land lines as fact. Purpose-fail lines get
+//      shape checks only: their fields are the human's own prose,
+//      display-only like a note (D15), with nothing on disk to
+//      verify against.
 //      A scored JURY
 //      round line's jury verifies as a jury (B2 — the recorded
 //      median is no longer trusted on the absolute citation alone):
@@ -439,6 +462,40 @@ export function checkRunLogLine(line, ctx) {
       }
     }
   }
+  // Rule 6, taste-lock shape (round 7, F1): the line-local half of
+  // the lock verification — the writer's shapes every consumer
+  // relies on: lockVersion a positive integer, and tokensHash,
+  // when the line carries one, exactly 64 hex (a lock line without
+  // a hash has nothing to verify against; with a project root the
+  // CLI's whole-log pass below runs the shared verifyLockLine on
+  // the LATEST lock line — currency is a property of the lock of
+  // record, not of history — and fails it there). No sibling
+  // module is needed for these two shape tests, so they run in
+  // both modes.
+  if (obj.kind === 'taste-lock') {
+    if (!Number.isInteger(obj.lockVersion) || obj.lockVersion < 1) {
+      problems.push(`taste-lock line's lockVersion ${JSON.stringify(obj.lockVersion)} is not a positive integer — run-log.mjs writes lock versions as positive integers (D15)`);
+    }
+    if (obj.tokensHash !== null && obj.tokensHash !== undefined
+      && !(typeof obj.tokensHash === 'string' && /^[0-9a-f]{64}$/i.test(obj.tokensHash))) {
+      problems.push(`taste-lock line's tokensHash is not exactly 64 hex — a lock's tokensHash is the sha256 of the tokens file it names (D15)`);
+    }
+  }
+  // Rule 6, purpose-fail shape (round 7, F2): a purpose-fail line
+  // is the human's own prose — there is nothing on disk to verify
+  // it against, and D15 scopes it as display-only, like a note —
+  // so the checker checks only the writer's shape: the action the
+  // replan command records (re-plan or re-pick) and a non-empty
+  // purpose string. A line outside that shape is not one
+  // run-log.mjs writes.
+  if (obj.kind === 'purpose-fail') {
+    if (obj.action !== 're-plan' && obj.action !== 're-pick') {
+      problems.push(`purpose-fail line's action ${JSON.stringify(obj.action)} is neither "re-plan" nor "re-pick" — the only actions run-log.mjs records (D15)`);
+    }
+    if (typeof obj.purpose !== 'string' || !obj.purpose.trim()) {
+      problems.push('purpose-fail line carries no purpose text — run-log.mjs records the failed purpose with the line (D15)');
+    }
+  }
   const walk = (value, key) => {
     if (typeof value === 'string') {
       if (key !== null && KEYWORD_RE.test(key) && value.length >= 16) {
@@ -501,6 +558,7 @@ if (invokedDirectly) {
   // directories up from the log file.
   const projectRoot = path.dirname(path.dirname(path.resolve(file)));
   let failed = false;
+  const rows = [];
   text.split('\n').forEach((line, i) => {
     if (line.trim() === '') return;
     const problem = checkRunLogLine(line, { projectRoot });
@@ -508,6 +566,54 @@ if (invokedDirectly) {
       console.log(`${file}:${i + 1}: ${problem}`);
       failed = true;
     }
+    let parsed = null;
+    try { parsed = JSON.parse(line); } catch { parsed = null; }
+    rows.push({ at: i + 1, obj: parsed });
   });
+  // Rule 6, whole-log halves (round 7, F1/F2): two verifications
+  // are properties of the LOG, not of one line, so they run here
+  // rather than in the per-line function above. (1) The LATEST
+  // taste-lock line — the lock of record — must verify against
+  // the tokens file it names (shared verifyLockLine); older lock
+  // lines are history and are not held to currency. (2) Every
+  // stored land line's preconditions must verify NOW (shared
+  // verifyLandLine: cited gate legs on disk with matching shas
+  // and PASS verdicts, cited cross-check report inside design/,
+  // and a verified graded or genuine no-grade round record for
+  // its round in this same log) — before round 7 a hand-appended
+  // land line passed this checker while `show` printed it as a
+  // shipment that never happened. Fail-closed like the citation
+  // halves: with no sibling module, lock and land lines are
+  // unverifiable and are flagged, never passed.
+  if (!judgeMod) {
+    for (const { at, obj } of rows) {
+      if (obj && (obj.kind === 'taste-lock' || obj.kind === 'land')) {
+        console.log(`${file}:${at}: ${obj.kind} line cannot be verified — judge-report parser unavailable (D15)`);
+        failed = true;
+      }
+    }
+  } else {
+    const all = rows.map((r) => r.obj);
+    let latestLock = null;
+    for (const entry of rows) {
+      if (entry.obj && entry.obj.kind === 'taste-lock') latestLock = entry;
+    }
+    if (latestLock) {
+      const lv = judgeMod.verifyLockLine(projectRoot, latestLock.obj);
+      if (!lv.ok) {
+        console.log(`${file}:${latestLock.at}: latest taste-lock line does not verify: ${lv.reasons.join('; ')} (D15)`);
+        failed = true;
+      }
+    }
+    for (const { at, obj } of rows) {
+      if (obj && obj.kind === 'land') {
+        const dv = judgeMod.verifyLandLine(projectRoot, all, obj);
+        if (!dv.ok) {
+          console.log(`${file}:${at}: land line does not verify: ${dv.reasons.join('; ')} (D15)`);
+          failed = true;
+        }
+      }
+    }
+  }
   process.exit(failed ? 1 : 0);
 }

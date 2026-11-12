@@ -4514,6 +4514,235 @@ else
   ok "best and runlog-check both refuse a cheap line whose notRegraded does not transcribe its artifact's not-regraded set (X5)"
 fi
 
+# --- Round 7 (F1/F2/A7): taste-lock lines, land lines and the
+# crosscheck selection-key types verify on read. Before round 7 no
+# read path verified a taste-lock line (the brief adopted the
+# highest-version stored line verbatim; the lock command's version
+# check counted every stored line) and no consumer verified a
+# stored land line (show printed it as fact; the checker never
+# looked at one); a crosscheck line with a string-typed round also
+# passed the checker while no consumer's strict === selection
+# would ever act on it. Fixture: a genuine project — lock v1,
+# clear crosscheck, graded round 1, genuine land — built once per
+# case so the appends never interact.
+r7_mkproj() {
+  local p="$1"
+  mkdir -p "$p/design/screenshots" "$p/design/judge"
+  cp "$work/tokens.css" "$p/design/tokens.css"
+  printf '<!doctype html><html><head><title>R7</title></head><body><main id="main"><h1>Verify fixture</h1></main></body></html>\n' > "$p/design/page.html"
+  printf 'PNGDATA' > "$p/design/screenshots/round-1-1440.png"
+  printf 'GATE RESULT: PASS\n' > "$p/design/gate-leg1.log"
+  printf '===== gate verdict: GREEN =====\n' > "$p/design/gate-leg2.log"
+  printf '# Cross-check report (verify fixture)\n\nIndependent check: 0 severe, 0 warning.\n' > "$p/design/cc.md"
+  # Same fixed-time discipline as the fixtures above: tokens/page at
+  # 12:00, gate legs at 12:01, and jr_fill_scores touches the judge
+  # artifact to 12:05 — every freshness chain (legs >= page, artifact
+  # >= tokens) holds by construction.
+  touch -d '2026-11-11 12:00' "$p/design/tokens.css" "$p/design/page.html"
+  touch -d '2026-11-11 12:01' "$p/design/gate-leg1.log" "$p/design/gate-leg2.log"
+  node "$run_log_mjs" --project "$p" lock --tokens design/tokens.css --refs "Ref A (verify.test)" --purpose "verify purpose" --approved-by human >/dev/null 2>&1 || return 1
+  node "$run_log_mjs" --project "$p" crosscheck --slice r7 --round 1 --severe 0 --warning 0 --report design/cc.md --checker crosscheck-subagent --basis "separate agent instance, no production history" >/dev/null 2>&1 || return 1
+  node "$judge_report_mjs" --project "$p" prepare --round 1 --kind absolute --grader muse-manager --brief-type landing --mode full --page design/page.html --shots design/screenshots/round-1-1440.png --locked-refs "Ref A (verify.test)" >/dev/null 2>&1 || return 1
+  jr_fill_scores "$p/design/judge/round-1.md" 4 4 4 4
+  node "$run_log_mjs" --project "$p" record --round 1 --grader muse-manager --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html --gate-findings "no findings" >/dev/null 2>&1 || return 1
+  node "$run_log_mjs" --project "$p" land --slice r7 --round 1 --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >/dev/null 2>&1 || return 1
+}
+r7_tokhash() { sha256sum "$1" | cut -d' ' -f1; }
+
+# (93) Genuine positives: the brief builds on the genuine lock and
+# shows it; a genuine v2 lock records; a duplicate genuine version
+# is still refused; the checker exits 0 on the whole genuine log
+# (genuine land line included — the F2 positive).
+r7p="$work/r7-genuine"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 genuine fixture failed to build — case (93) cannot run; see the r7 setup commands"
+else
+  node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t93.log" 2>&1
+  if ! grep -q "Lock version: 1" "$work/r7-t93.log"; then
+    fail "judge-artifact (D15): the brief did not build on the genuine lock v1 (F1 positive) — see $work/r7-t93.log"
+    cat "$work/r7-t93.log" >&2 || true
+  elif ! node "$run_log_mjs" --project "$r7p" lock --version 2 --tokens design/tokens.css --refs "Ref A (verify.test)" --approved-by human >"$work/r7-t93b.log" 2>&1; then
+    fail "judge-artifact (D15): a genuine lock --version 2 was refused (F1 positive) — see $work/r7-t93b.log"
+    cat "$work/r7-t93b.log" >&2 || true
+  elif node "$run_log_mjs" --project "$r7p" lock --version 2 --tokens design/tokens.css --refs "Ref A (verify.test)" --approved-by human >"$work/r7-t93c.log" 2>&1; then
+    fail "judge-artifact (D15): a duplicate genuine lock --version 2 was RECORDED — a verifying line still occupies its version (F1) — see $work/r7-t93c.log"
+    cat "$work/r7-t93c.log" >&2 || true
+  elif ! node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t93d.log" 2>&1; then
+    fail "judge-artifact (D15): runlog-check failed the genuine log (genuine locks + genuine land) (F1/F2 positives) — see $work/r7-t93d.log"
+    cat "$work/r7-t93d.log" >&2 || true
+  else
+    ok "genuine lock verifies end to end: brief shows v1, v2 records, a duplicate genuine version is refused, and runlog-check passes the genuine log incl. its land line (F1/F2)"
+  fi
+fi
+
+# (94) F1, wrong hash: a hand-appended v99 lock line whose
+# tokensHash is not the tokens file's hash — the brief refuses it
+# (verification notice, v99 never presented as the lock of record)
+# and the checker flags the log.
+r7p="$work/r7-wronghash"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (94) cannot run"
+else
+  printf '{"kind":"taste-lock","lockVersion":99,"tokens":"design/tokens.css","tokensHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","references":["Fake Ref (evil.test)"],"purpose":"attacker purpose","approvedBy":"attacker","at":"2026-11-12T00:00:00.000Z"}\n' >> "$r7p/design/run-log.jsonl"
+  node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t94.log" 2>&1
+  if ! grep -q "could not be verified" "$work/r7-t94.log" || grep -q "Lock version: 99" "$work/r7-t94.log"; then
+    fail "judge-artifact (D15): the brief adopted or silently buried a v99 lock line whose tokensHash is wrong (F1) — see $work/r7-t94.log"
+    cat "$work/r7-t94.log" >&2 || true
+  elif node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t94b.log" 2>&1; then
+    fail "judge-artifact (D15): runlog-check passed a log whose latest lock line carries a wrong tokensHash (F1) — see $work/r7-t94b.log"
+    cat "$work/r7-t94b.log" >&2 || true
+  else
+    ok "a lock line whose tokensHash is not its tokens file's hash is refused by the brief with a verification notice and flagged by runlog-check (F1)"
+  fi
+fi
+
+# (95) F1, missing file: the appended v99 line names a tokens file
+# that does not exist — the brief refuses it, and the line does
+# NOT occupy version 99 (a genuine lock --version 99 records).
+r7p="$work/r7-missing"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (95) cannot run"
+else
+  printf '{"kind":"taste-lock","lockVersion":99,"tokens":"design/missing.css","tokensHash":"%s","references":["Fake Ref (evil.test)"],"purpose":"attacker purpose","approvedBy":"attacker","at":"2026-11-12T00:00:00.000Z"}\n' "$(r7_tokhash "$r7p/design/tokens.css")" >> "$r7p/design/run-log.jsonl"
+  node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t95.log" 2>&1
+  if ! grep -q "could not be verified" "$work/r7-t95.log"; then
+    fail "judge-artifact (D15): the brief did not refuse a lock line naming a missing tokens file (F1) — see $work/r7-t95.log"
+    cat "$work/r7-t95.log" >&2 || true
+  elif ! node "$run_log_mjs" --project "$r7p" lock --version 99 --tokens design/tokens.css --refs "Ref B (verify.test)" --approved-by human >"$work/r7-t95b.log" 2>&1; then
+    fail "judge-artifact (D15): the unverifiable v99 line still OCCUPIED version 99 against a genuine lock (F1) — see $work/r7-t95b.log"
+    cat "$work/r7-t95b.log" >&2 || true
+  else
+    ok "a lock line naming a missing tokens file is refused by the brief and does not occupy its version against a genuine lock (F1)"
+  fi
+fi
+
+# (96) F1, escaping path: the appended v99 line names a tokens
+# path outside design/ — the brief refuses it and the checker
+# flags the log.
+r7p="$work/r7-escape"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (96) cannot run"
+else
+  printf '{"kind":"taste-lock","lockVersion":99,"tokens":"../outside.css","tokensHash":"%s","references":["Fake Ref (evil.test)"],"purpose":"attacker purpose","approvedBy":"attacker","at":"2026-11-12T00:00:00.000Z"}\n' "$(r7_tokhash "$r7p/design/tokens.css")" >> "$r7p/design/run-log.jsonl"
+  node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t96.log" 2>&1
+  if ! grep -q "could not be verified" "$work/r7-t96.log"; then
+    fail "judge-artifact (D15): the brief did not refuse a lock line whose tokens path escapes design/ (F1) — see $work/r7-t96.log"
+    cat "$work/r7-t96.log" >&2 || true
+  elif node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t96b.log" 2>&1; then
+    fail "judge-artifact (D15): runlog-check passed a log whose latest lock line's tokens path escapes design/ (F1) — see $work/r7-t96b.log"
+    cat "$work/r7-t96b.log" >&2 || true
+  else
+    ok "a lock line whose tokens path escapes design/ is refused by the brief and flagged by runlog-check (F1)"
+  fi
+fi
+
+# (97) F1, bad version shape: the appended line's lockVersion is
+# the STRING "99" — outside the writer's shape; the brief refuses
+# it and the checker flags the log.
+r7p="$work/r7-badversion"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (97) cannot run"
+else
+  printf '{"kind":"taste-lock","lockVersion":"99","tokens":"design/tokens.css","tokensHash":"%s","references":["Fake Ref (evil.test)"],"purpose":"attacker purpose","approvedBy":"attacker","at":"2026-11-12T00:00:00.000Z"}\n' "$(r7_tokhash "$r7p/design/tokens.css")" >> "$r7p/design/run-log.jsonl"
+  node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t97.log" 2>&1
+  if ! grep -q "could not be verified" "$work/r7-t97.log"; then
+    fail "judge-artifact (D15): the brief did not refuse a lock line with a string-typed lockVersion (F1) — see $work/r7-t97.log"
+    cat "$work/r7-t97.log" >&2 || true
+  elif node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t97b.log" 2>&1; then
+    fail "judge-artifact (D15): runlog-check passed a log whose latest lock line has a string-typed lockVersion (F1) — see $work/r7-t97b.log"
+    cat "$work/r7-t97b.log" >&2 || true
+  else
+    ok "a lock line with a string-typed lockVersion is refused by the brief and flagged by runlog-check (F1)"
+  fi
+fi
+
+# (98) F1, stale lock: the tokens file is edited AFTER the genuine
+# lock — the lock no longer matches its file. The brief refuses
+# with the stale reason named, the checker flags the latest lock,
+# version 1 does NOT stay occupied (the re-lock that supersedes
+# the stale line records), and after the re-lock both the brief
+# and the checker are green again (the older stale line is
+# history, not held to currency).
+r7p="$work/r7-stale"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (98) cannot run"
+else
+  printf '\n/* edited after the lock */\n' >> "$r7p/design/tokens.css"
+  node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t98.log" 2>&1
+  if ! grep -q "stale" "$work/r7-t98.log"; then
+    fail "judge-artifact (D15): the brief did not refuse the stale lock (tokens edited after locking) with the stale reason (F1) — see $work/r7-t98.log"
+    cat "$work/r7-t98.log" >&2 || true
+  elif node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t98b.log" 2>&1; then
+    fail "judge-artifact (D15): runlog-check passed a log whose latest lock is stale (F1) — see $work/r7-t98b.log"
+    cat "$work/r7-t98b.log" >&2 || true
+  elif ! node "$run_log_mjs" --project "$r7p" lock --version 1 --tokens design/tokens.css --refs "Ref A (verify.test)" --approved-by human >"$work/r7-t98c.log" 2>&1; then
+    fail "judge-artifact (D15): the stale line still OCCUPIED version 1 against the re-lock that supersedes it (F1) — see $work/r7-t98c.log"
+    cat "$work/r7-t98c.log" >&2 || true
+  elif ! node "$run_log_mjs" --project "$r7p" brief --round 2 >"$work/r7-t98d.log" 2>&1 || ! node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t98e.log" 2>&1; then
+    fail "judge-artifact (D15): after the re-lock the brief or runlog-check is not green again — the older stale line must be history, not a standing violation (F1) — see $work/r7-t98d.log / $work/r7-t98e.log"
+    cat "$work/r7-t98d.log" "$work/r7-t98e.log" >&2 || true
+  else
+    ok "a stale lock (tokens edited after locking) is refused by the brief as stale, flagged by runlog-check, does not block its own version's re-lock, and is history once superseded (F1)"
+  fi
+fi
+
+# (99) F2: a hand-appended land line with invented gate legs and
+# an invented cross-check report is flagged by runlog-check (the
+# same log's genuine land line passed in case (93)).
+r7p="$work/r7-fakeland"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (99) cannot run"
+else
+  printf '{"kind":"land","slice":"ghost","round":7,"gate":"pass","gateLeg1":"design/nope1.log","gateLeg2":"design/nope2.log","gateLeg1Sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","gateLeg2Sha":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","page":"design/page.html","crosscheckReport":"design/nope.md","notes":null,"at":"2026-11-12T00:00:00.000Z"}\n' >> "$r7p/design/run-log.jsonl"
+  if node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t99.log" 2>&1 || ! grep -q "land line does not verify" "$work/r7-t99.log"; then
+    fail "judge-artifact (D15): runlog-check did not flag the hand-appended land line with invented legs/report (F2) — see $work/r7-t99.log"
+    cat "$work/r7-t99.log" >&2 || true
+  else
+    ok "runlog-check flags a hand-appended land line whose cited legs and cross-check report do not exist (F2)"
+  fi
+fi
+
+# (100) A7: a hand-appended crosscheck line identical to a genuine
+# one except its round is the STRING "1" — the checker flags it
+# (consumers select with strict === and would never act on it, so
+# it must not stand as a clean verdict either).
+r7p="$work/r7-a7"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (100) cannot run"
+else
+  printf '{"kind":"crosscheck","slice":"r7","round":"1","severe":0,"warning":0,"waived":0,"verdict":"clear","report":"design/cc.md","checker":"crosscheck-subagent","independenceBasis":"separate agent instance, no production history","at":"2026-11-12T00:00:00.000Z"}\n' >> "$r7p/design/run-log.jsonl"
+  if node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t100.log" 2>&1 || ! grep -q "not a positive integer or null" "$work/r7-t100.log"; then
+    fail "judge-artifact (D15): runlog-check did not flag the crosscheck line with a string-typed round (A7) — see $work/r7-t100.log"
+    cat "$work/r7-t100.log" >&2 || true
+  else
+    ok "runlog-check flags a crosscheck line whose round is string-typed — the writer's selection keys carry the writer's types (A7)"
+  fi
+fi
+
+# (101) F2, purpose-fail: a genuine replan line passes the checker
+# (its fields are the human's own prose — shape only), and an
+# appended purpose-fail line outside the writer's shape (an
+# action run-log.mjs never records) is flagged.
+r7p="$work/r7-purposefail"
+if ! r7_mkproj "$r7p"; then
+  fail "judge-artifact (D15): round-7 fixture failed to build — case (101) cannot run"
+else
+  node "$run_log_mjs" --project "$r7p" replan --action re-pick --purpose "revised verify purpose" >"$work/r7-t101-setup.log" 2>&1 \
+    || fail "judge-artifact (D15): round-7 replan setup failed — case (101) will cascade; see $work/r7-t101-setup.log"
+  if ! node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t101.log" 2>&1; then
+    fail "judge-artifact (D15): runlog-check failed a log carrying a GENUINE purpose-fail line (F2) — see $work/r7-t101.log"
+    cat "$work/r7-t101.log" >&2 || true
+  else
+    printf '{"kind":"purpose-fail","action":"delete-everything","purpose":"attacker prose","round":null,"notes":null,"at":"2026-11-12T00:00:00.000Z"}\n' >> "$r7p/design/run-log.jsonl"
+    if node "$runlog_check_mjs" "$r7p/design/run-log.jsonl" >"$work/r7-t101b.log" 2>&1; then
+      fail "judge-artifact (D15): runlog-check passed a purpose-fail line with an action run-log.mjs never records (F2) — see $work/r7-t101b.log"
+      cat "$work/r7-t101b.log" >&2 || true
+    else
+      ok "a genuine purpose-fail line passes runlog-check (shape only — human prose) and an off-shape one is flagged (F2)"
+    fi
+  fi
+fi
+
 
 # --- 6. Playwright eyes ------------------------------------------------------
 # Skip-awareness (W-FIX-SKIP 2026-11-10): install.sh records --skip-eyes

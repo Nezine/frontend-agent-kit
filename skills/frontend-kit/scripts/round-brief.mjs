@@ -40,6 +40,16 @@
 // it never invents them. Round 1 has no prior round, so no gate
 // findings or evidence are required for it — the brief is lock + tokens.
 //
+// Round 7 (F1, D15): the lock of record is the LATEST taste-lock line,
+// and only when it verifies (verifyLockLine in judge-report.mjs —
+// the tokens file it names on disk inside design/, not a symlink,
+// still hashing to the stored tokensHash). A latest line that does
+// not verify makes the brief fail loudly with the verification
+// reasons as the notice, and its references/tokens/version are
+// never built on — the pre-round-7 behaviour (adopting the
+// highest-version line verbatim) let a hand-appended line become
+// the lock every brief restated.
+//
 // W3 (Design-Read check, fires at round 1 too): the brief FAILS LOUDLY
 // when design/DESIGN-READ.md names a scroll-motion pattern (or a 3D
 // component) without its implementation skill or an explicit 'none'
@@ -74,6 +84,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+// Round 7 (F1): the shared taste-lock verifier lives in
+// judge-report.mjs, next to the judge-report parser and the other
+// read-path verifiers — the same verifyLockLine run-log.mjs's lock
+// command and gate/runlog-check.mjs consult, so the brief's lock
+// verdict cannot drift from theirs.
+import { verifyLockLine } from './judge-report.mjs';
 
 const AXES = ['Type', 'Layout', 'Colour', 'Space'];
 
@@ -264,7 +280,28 @@ export function buildBrief(project, opts = {}) {
   if (!locks.length) {
     throw new Error('no taste lock in the run log — run `run-log.mjs lock` (SKILL.md step 1.8) before any round brief');
   }
-  const lock = locks.reduce((a, b) => ((b.lockVersion ?? 0) > (a.lockVersion ?? 0) ? b : a));
+  // Round 7 (F1): the lock of record is the LATEST lock line, and
+  // only if it verifies (shared verifyLockLine: lockVersion a
+  // positive integer; the tokens file it names on disk inside
+  // design/, not a symlink, and still hashing to the stored
+  // tokensHash). Before round 7 the brief adopted whichever stored
+  // line carried the HIGHEST version number — references, tokens
+  // path and version restated verbatim — so a hand-appended line
+  // (version 99, attacker-chosen references, a tokensHash copied
+  // from the real file so the mismatch warning below stayed
+  // silent) became the lock every round brief restated. A latest
+  // line that does not verify is NOT adopted, and the brief does
+  // NOT fall back to an earlier line: falling back would let a
+  // stale or fake latest line be quietly buried (the same
+  // no-fallback stance land takes with an unverifiable latest
+  // cross-check, round 6). The brief fails loud — its established
+  // contract for an unreconstructable lock — with the verification
+  // reasons as the notice, and nothing is built on the line.
+  const lock = locks[locks.length - 1];
+  const lockVerify = verifyLockLine(project, lock);
+  if (!lockVerify.ok) {
+    throw new Error(`the stored taste lock (v${lock.lockVersion ?? '?'}) could not be verified and is NOT adopted as the lock of record: ${lockVerify.reasons.join('; ')}. Re-lock (run-log.mjs lock) before building.`);
+  }
   const rounds = rows.filter((r) => r.kind === 'round').sort((a, b) => a.round - b.round);
   const maxRound = rounds.length ? rounds[rounds.length - 1].round : 0;
   const targetRound = opts.round ?? maxRound + 1;

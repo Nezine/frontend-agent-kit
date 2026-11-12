@@ -1061,6 +1061,18 @@ function verifyCrosscheckLine(project, r) {
     : { ok: false, reasons: ['the judge-report parser (judge-report.mjs, next to run-log.mjs) is unavailable — a stored cross-check verdict cannot be verified without it'] };
 }
 
+// Round 7 (F1): the stored taste-lock verifier the lock command's
+// version-occupation check consults — the same shared verifyLockLine
+// round-brief and gate/runlog-check.mjs use. Fail-closed like the
+// wrappers above: with no judge-report module, no stored lock line
+// verifies, so no stored line occupies its version through this
+// wrapper (the lock command's remaining semantics are unchanged).
+function verifyLockLine(project, r) {
+  return judgeReportMod
+    ? judgeReportMod.verifyLockLine(project, r)
+    : { ok: false, reasons: ['the judge-report parser (judge-report.mjs, next to run-log.mjs) is unavailable — a stored taste lock cannot be verified without it'] };
+}
+
 // Validate one cited judge artifact. `expect`:
 //   flag           — the CLI flag name, for messages
 //   kinds          — allowed header kinds
@@ -1767,13 +1779,27 @@ if (cmd === 'record') {
   // --version N records an explicit version. A re-pick creates a NEW
   // version; re-using an existing version is REJECTED (exit 2) — two
   // locks with one version would make the round brief ambiguous about
-  // which lock it restates.
+  // which lock it restates. (Round 7, F1: "existing" is a stored line
+  // that VERIFIES — the occupation check below; an unverifiable or
+  // stale stored line does not hold its version.)
   const existingLocks = readLog(args.project).filter((r) => r.kind === 'taste-lock');
+  // Round 7 (F1): a stored lock line OCCUPIES its version only if
+  // it verifies (shared verifyLockLine: the tokens file it names is
+  // on disk inside design/, not a symlink, and still hashes to the
+  // stored tokensHash). Before round 7 the existence check counted
+  // every stored line, so one hand-appended line could squat a
+  // version forever — and a genuine lock whose tokens had since
+  // moved (the stale line no longer matches its file) blocked its
+  // own version against the re-lock that supersedes it. A line
+  // that cannot verify does not occupy its version; the check's
+  // other semantics (explicit --version only, rejection exit 2,
+  // the default of existing-lock-count + 1) are unchanged.
+  const occupiedLocks = existingLocks.filter((r) => verifyLockLine(args.project, r).ok);
   let lockVersion;
   if (args.version !== undefined) {
     lockVersion = Number(args.version);
     if (!Number.isInteger(lockVersion) || lockVersion < 1) usage('--version must be a positive integer');
-    if (existingLocks.some((r) => r.lockVersion === lockVersion)) {
+    if (occupiedLocks.some((r) => r.lockVersion === lockVersion)) {
       console.error(`run-log: REJECTED — lock version ${lockVersion} already exists in the run log. A re-pick creates a NEW version (next: ${existingLocks.length + 1}). No entry written.`);
       process.exit(2);
     }
