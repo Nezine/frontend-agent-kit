@@ -610,8 +610,8 @@ fi
 # nested kit clone — D14, GAP-12) + package.json when
 # present. The built bundle is a scan subject for 1.1 ("or bundle").
 # RR4-04 (fix round 5): NUL-delimited throughout - a newline in a filename
-# must not split the list (find -print0, sort -z, read -d '' — no mapfile:
-# stock macOS /bin/bash is 3.2, which has no mapfile builtin).
+# must not split the list (find -print0, sort -z, read -d '' — no bash-4
+# array reader: stock macOS /bin/bash is 3.2, which lacks that builtin).
 sec_scan_files=()
 while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_scan_files+=("$_f"); done < <({
   if [[ "${#html_files[@]}" -gt 0 ]]; then printf '%s\0' "${html_files[@]}"; fi
