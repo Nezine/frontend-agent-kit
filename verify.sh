@@ -504,12 +504,19 @@ fi
 # the D13 error string (`Re-run ./install.sh`). A stale installed gate
 # FAILs §2e instead of passing silently and failing the next real gate
 # run on its own output.
-# Anchoring limits (D28, 2026-11-13): the two greps below are pinned
+# Anchoring limits (D28, 2026-11-13; pinned spellings extended by the
+# fix-pass round-2 red team, 2026-11-13): the two greps below are pinned
 # to the current spelling of the find line and the error call by
 # design — whitespace inside the line is tolerated, but a find split
 # across lines, a reworded error message, or a swapped exclusion order
 # FAILs §2e loudly (fail-closed) until the greps are updated with the
-# refactor. A comment quoting the whole find line still passes, and so
+# refactor. The pinned spellings are: the find line must read
+# `find "$project_dir" -type f` — `${project_dir}`, an unquoted or
+# single-quoted `$project_dir`, a missing `-type f`, or `-type f` moved
+# after the exclusions all FAIL; the error call must read
+# `console.error('gate: vendored checkers missing…')` — a double-quoted
+# or backtick call, or a space after the opening parenthesis, all FAIL.
+# A comment quoting the whole find line still passes, and so
 # would a decoy find line replicating the full invocation: that is
 # deliberate fabrication, out of scope per D13, not accidental
 # staleness.
@@ -530,7 +537,7 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
     [[ -f "$gdir/$gf" ]] || fail "installed gate file missing: $gdir/$gf (D13 — the installed skill cannot run the gate)"
   done
   [[ -x "$gdir/gate.sh" ]] || fail "installed gate.sh is not executable: $gdir/gate.sh (D13 — re-run ./install.sh)"
-  grep -qE "find[[:space:]]+\"\\\$project_dir\"[[:space:]]+-type[[:space:]]+f.*-not[[:space:]]+-path[[:space:]]+.?\*/design/gate-leg1\.log.?.*-not[[:space:]]+-path[[:space:]]+.?\*/design/gate-leg2\.log.?" "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion on the find line: $gdir/gate.sh (D13 — re-run ./install.sh)"
+  grep -qE "find[[:space:]]+\"\\\$project_dir\"[[:space:]]+-type[[:space:]]+f.*-not[[:space:]]+-path[[:space:]]+['\"]?\*/design/gate-leg1\.log.?.*-not[[:space:]]+-path[[:space:]]+['\"]?\*/design/gate-leg2\.log.?" "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion on the find line: $gdir/gate.sh (D13 — re-run ./install.sh)"
   grep -qE "console\.error\('gate: vendored checkers missing.*Re-run \./install\.sh" "$gdir/gate.mjs" 2>/dev/null || fail "installed gate.mjs is stale (pre-D13): missing the 'Re-run ./install.sh' error string: $gdir/gate.mjs (D13 — re-run ./install.sh)"
 done < <(all_skills_dirs)
 [[ "$checked_2e" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D13 §2e cannot check gate presence)"
@@ -581,7 +588,7 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
   done
   [[ -n "$(find "$tdir/references/motion" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]] || fail "installed template motion refs missing: no PNG under $tdir/references/motion (D14 — re-run ./install.sh)"
   # Fence-aware (D29): a heading inside a fenced code block does not count.
-  awk '/^```/{fence=!fence; next} !fence && /^## Section inventory([[:space:]]|$)/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  awk '/^[[:space:]]*(```|~~~)/{fence=!fence; next} !fence && /^## Section inventory([[:space:]]|$)/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
   # The heading alone proves nothing: require at least one inventory ROW
   # below it — a table line whose first cell is a real section id (not
   # the `id` header, not the `---` separator). The converge check reads
@@ -595,7 +602,7 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
   awk 'BEGIN{fence=0; f=0; found=0} /^[[:space:]]*(```|~~~)/{fence=!fence; next} /^#+[[:space:]]/{if(!fence && $0 ~ /^## Section inventory([[:space:]]|$)/)f=1; else f=0; next} f && /^[|][[:space:]]*[^|[:space:]][^|]*[|]/ && $0 !~ /^[|][[:space:]]*(id|[-:]+)[[:space:]]*[|]/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): '## Section inventory' has no inventory row (the converge check reads the first column as the section id): $tdir/PLAN.md (D14 — re-run ./install.sh)"
   [[ "$(wc -c < "$tdir/PLAN.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/PLAN.md (D14 — re-run ./install.sh)"
   # Fence-aware (D29): a heading inside a fenced code block does not count.
-  awk '/^```/{fence=!fence; next} !fence && /^## Intent \(one paragraph\)([[:space:]]|$)/{found=1; exit} END{exit !found}' "$tdir/TASTE.md" 2>/dev/null || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): missing the '## Intent (one paragraph)' heading: $tdir/TASTE.md (D14 — re-run ./install.sh)"
+  awk '/^[[:space:]]*(```|~~~)/{fence=!fence; next} !fence && /^## Intent \(one paragraph\)([[:space:]]|$)/{found=1; exit} END{exit !found}' "$tdir/TASTE.md" 2>/dev/null || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): missing the '## Intent (one paragraph)' heading: $tdir/TASTE.md (D14 — re-run ./install.sh)"
   [[ "$(wc -c < "$tdir/TASTE.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/TASTE.md (D14 — re-run ./install.sh)"
 done < <(all_skills_dirs)
 [[ "$checked_2f" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D14 §2f cannot check template presence)"
@@ -6180,6 +6187,13 @@ chrome_path_bad=0
 # set-but-invalid CHROME_PATH blocks the leg even when system Chrome
 # exists (findChrome throws on it before trying anything else), so it
 # gets its own WARN and wins over the system-Chrome OK below.
+# Literal-first divergence (D27 addendum, fix-pass round 2, 2026-11-13):
+# the literal test above runs before the glob branch, while findChrome
+# always expands the value and takes the first usable candidate — so
+# when a file whose literal name contains `*` exists, §9 and findChrome
+# can name different binaries (both real executables, so the verdict
+# agrees). Pathological precondition, documented not fixed: it needs a
+# `*` in a filename, and neither side can OK a non-executable.
 if [[ -n "${CHROME_PATH:-}" ]]; then
   if [[ -f "$CHROME_PATH" && -x "$CHROME_PATH" ]]; then chrome_bin="$CHROME_PATH"; chrome_via_env=1;
   elif [[ "$CHROME_PATH" == *\** ]]; then
