@@ -333,7 +333,10 @@ export function parseJudgeReport(text) {
 // verifyCrosscheckLine below is the one verifier for that channel,
 // called by all three consumers. The same round binds the fields
 // the field coverage still missed: a graded line's own cited gate
-// legs verify on disk (verifyGradedLegCitations, X2), juror and
+// legs verify on disk (X2 — round 8 moved that leg-currency check
+// OUT of the universal grade verification into
+// verifyLegCitationsCurrent, required only by the live-epoch
+// consumers; see its comment), juror and
 // expert artifacts bind the line's tokensHash (X3/X4), and a
 // graded line's notRegraded transcribes its artifact's
 // not-regraded header set (X5).
@@ -597,14 +600,8 @@ export function isPairwiseRoundLine(r) {
 // genuine record has; best filtered it locally before, but land,
 // feedback's anchor and the checker trusted the line through this
 // function, so the requirement lives here, in the shared core,
-// where every consumer inherits it. Round 6 adds the two halves of
-// the line that still verified on the strength of the citation
-// alone: (X2) the line's OWN cited gate legs — record stored
-// gateLeg1Sha / gateLeg2Sha from the artifacts it validated, but
-// no read path ever re-opened them for a GRADED line (the no-grade
-// path has verified its legs since round 3, B3), so a graded line
-// whose stored leg shas were edited to garbage still verified; and
-// (X5) the not-regraded transcription — record validates the main
+// where every consumer inherits it. Round 6 added (X5) the
+// not-regraded transcription — record validates the main
 // artifact's header not-regraded set against the record's
 // --not-regraded set (for BOTH kinds: the writer stores the parsed
 // flag, null when absent, and validates the header against
@@ -618,7 +615,11 @@ export function verifyGradedLine(project, r) {
   const core = verifyGradeCitation(project, r, ['absolute', 'cheap'], r.scores, "a round line's main citation is absolute | cheap");
   const experts = verifyExpertCitations(project, r);
   reasons.push(...core.reasons, ...experts.reasons);
-  reasons.push(...verifyGradedLegCitations(project, r));
+  // NOTE (round 8, C4): the line's cited gate legs are NOT verified
+  // here. Round 6 (X2) verified them inside this function; round 8
+  // moved leg currency OUT of the universal grade verification —
+  // see verifyLegCitationsCurrent below for the epoch rule and the
+  // consumers that require it.
   // Round 6 (X5): the not-regraded transcription. Record time
   // defines it as exact set equality — the header value split on
   // ',', trimmed, empties dropped ('-' is the empty set), sorted,
@@ -640,16 +641,39 @@ export function verifyGradedLine(project, r) {
   return { ok: reasons.length === 0, reasons };
 }
 
-// A GRADED line's own cited gate legs, verified on read (round 6,
-// X2): the same on-disk verification the no-grade path has applied
-// since round 3 (verifyCitedLegOnRead — the cited file exists
-// inside design/, is not a symlink, hashes to the stored
-// gateLeg<N>Sha, and carries the verdict matching the line's gate
-// value), plus the two legs being two distinct files. Returns
-// reasons (verifyGradedLine's currency) rather than the no-grade
-// path's boolean: a graded line's legs failing is one defect among
-// the several a read consumer reports.
-function verifyGradedLegCitations(project, r) {
+// A line's own cited gate legs, verified for CURRENCY on read
+// (round 6, X2; round 8, C4 — the EPOCH rule). The check itself is
+// round 6's X2, unchanged: the same on-disk verification the
+// no-grade path has applied since round 3 (verifyCitedLegOnRead —
+// the cited file exists inside design/, is not a symlink, hashes
+// to the stored gateLeg<N>Sha, and carries the verdict matching
+// the line's gate value), plus the two legs being two distinct
+// files. WHAT CHANGED in round 8 is WHO requires it. Round 6 ran
+// it inside verifyGradedLine, so every read consumer held EVERY
+// graded line to leg currency — but the two canonical leg files
+// (design/gate-leg1.log / gate-leg2.log) are ephemeral by design:
+// the next round's gate run overwrites them, so a genuine second
+// round rotated the evidence out from under the genuine first
+// round's line, and the checker failed a fully genuine log while
+// `best` forgot a genuinely graded round (C4, a fail-CLOSED false
+// positive). The epoch principle — round 7's lock ruling
+// generalised: currency checks (stored sha == current file) bind
+// the LIVE EPOCH, the records a live operation anchors on;
+// rotated history is checked for shape + artifact binding, not
+// leg currency, because the judge artifact (which carries the
+// stamped gate bit) is the durable evidence of a past round's
+// grade. Consumers therefore split:
+//   - feedback's anchor and land's round precondition (a graded
+//     record counts only with leg currency too — live operations
+//     standing on the line NOW);
+//   - land's own precondition inside verifyLandLine for the
+//     LATEST land line (its round half follows land's rule), and
+//     isGenuineNoGradeRound (unchanged since round 3);
+//   - runlog-check, for the LATEST round line only (older round
+//     lines get leg-citation SHAPE checks there instead);
+//   - NOT verifyGradedLine / `best`: a historical grade verifies
+//     through its judge artifact alone.
+export function verifyLegCitationsCurrent(project, r) {
   const reasons = [];
   const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
   const leg2 = verifyCitedLegOnRead(project, r, 'leg2');
@@ -658,7 +682,7 @@ function verifyGradedLegCitations(project, r) {
   if (leg1 && leg2 && (leg1.real === leg2.real || (leg1.stat.dev === leg2.stat.dev && leg1.stat.ino === leg2.stat.ino))) {
     reasons.push('the line\'s two cited gate legs are the same file (same device+inode — a hardlink pair) — the two gate legs must be two separate artifact files');
   }
-  return reasons;
+  return { ok: reasons.length === 0, reasons };
 }
 
 // A feedback line's regrade verification: the same core, with the
@@ -1129,7 +1153,13 @@ function verifyCitedLegOnRead(project, r, leg) {
 // record, but they are scores — a no-grade line carrying expert
 // scores whose citations do not verify (verifyExpertCitations)
 // does not count either.
-export function isGenuineNoGradeRound(project, r) {
+// The no-grade SHAPE alone (the field-set half of
+// isGenuineNoGradeRound, without the on-disk leg half): factored
+// out in round 8 because verifyLandLine's OLDER-land round half
+// accepts a genuine-SHAPED no-grade line — under the epoch rule a
+// historical land's no-grade round is not held to leg currency
+// either (its legs rotated with the same gate runs).
+function isNoGradeShape(r) {
   if (!r || r.kind !== 'round') return false;
   if (r.grader !== null && r.grader !== undefined) return false;
   if (r.scores !== null && r.scores !== undefined) return false;
@@ -1137,11 +1167,17 @@ export function isGenuineNoGradeRound(project, r) {
   if (typeof r.at !== 'string' || !r.at) return false;
   if (r.gate !== 'pass' && r.gate !== 'fail') return false;
   if (!r.gateLeg1 || !r.gateLeg2) return false;
-  const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
-  const leg2 = verifyCitedLegOnRead(project, r, 'leg2');
-  if (!leg1 || !leg2) return false;
-  if (leg1.real === leg2.real) return false;
-  if (leg1.stat.dev === leg2.stat.dev && leg1.stat.ino === leg2.stat.ino) return false;
+  return true;
+}
+
+export function isGenuineNoGradeRound(project, r) {
+  if (!isNoGradeShape(r)) return false;
+  // The on-disk leg half is the shared leg-currency check
+  // (verifyLegCitationsCurrent — the same helper land's graded
+  // half and the checker's latest-line check use, round 8): both
+  // cited legs verify against the stored shas with the verdict
+  // matching the line's gate value, as two distinct files.
+  if (!verifyLegCitationsCurrent(project, r).ok) return false;
   if ((r.expertMotion !== null && r.expertMotion !== undefined)
     || (r.expertUx !== null && r.expertUx !== undefined)) {
     if (!verifyExpertCitations(project, r).ok) return false;
@@ -1382,47 +1418,97 @@ function citedReportProblem(project, ctx, rel, label) {
   return null;
 }
 
-// A stored LAND line, verified on read (round 7, F2). Before round
-// 7 no consumer verified a stored land line: `show` printed it as
-// fact ("LAND (slice ghost, round 7): gate: pass … cross-check:
-// clear") and the checker never looked at one, so a hand-appended
-// land line stood as a shipment that never happened. (The `land`
-// command itself never trusted stored land lines — it re-derives
-// its preconditions before writing a new one — so this verifier's
-// consumer is runlog-check, the tripwire.) A land line verifies
-// only when its preconditions verify NOW, checked with the same
-// shared halves land itself applies before recording: the gate is
-// "pass" (the only value the writer stores); both cited gate legs
-// verify on disk against their stored shas with the verdict
-// matching (verifyCitedLegOnRead — the no-grade path's leg check)
-// and are two distinct files; the cited cross-check report exists
+// One cited gate leg's EXISTENCE + SHAPE on read, for a HISTORICAL
+// line (round 8, C4): the citation is a non-empty project-relative
+// path resolving lexically inside <project>/design/, the stored
+// sha is exactly 64 hex, and the file exists as a regular file.
+// No currency (no sha comparison, no verdict markers, no symlink
+// rule): the canonical leg files rotate with every gate run, so a
+// rotated historical citation cannot be held to the bytes it
+// named. Returns a reason string, or null when the citation
+// stands as shape.
+function citedLegShapeProblem(project, ctx, r, leg) {
+  const rel = leg === 'leg1' ? r.gateLeg1 : r.gateLeg2;
+  const sha = leg === 'leg1' ? r.gateLeg1Sha : r.gateLeg2Sha;
+  const n = leg === 'leg1' ? '1' : '2';
+  if (typeof rel !== 'string' || !rel) return `the line cites no gate leg ${n} — run-log.mjs records a land only behind both leg artifacts`;
+  if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/i.test(sha)) return `the line's gate leg ${n} sha is not exactly 64 hex — not a sha run-log.mjs stores`;
+  if (path.isAbsolute(rel)) return `the line's gate leg ${n} citation ${rel} is an absolute path — citations are project-relative, inside design/`;
+  const resolved = path.resolve(project, rel);
+  if (resolved !== ctx.designDir && !resolved.startsWith(ctx.designDir + path.sep)) return `the line's gate leg ${n} citation ${rel} resolves outside <project>/design/ ('..' escapes are rejected)`;
+  let stat = null;
+  try { stat = fs.statSync(resolved); } catch { return `the line's gate leg ${n} citation ${rel} does not exist`; }
+  if (!stat.isFile()) return `the line's gate leg ${n} citation ${rel} is not a file`;
+  return null;
+}
+
+// A stored LAND line, verified on read (round 7, F2; round 8, C4 —
+// the EPOCH split). Before round 7 no consumer verified a stored
+// land line: `show` printed it as fact ("LAND (slice ghost,
+// round 7): gate: pass … cross-check: clear") and the checker
+// never looked at one, so a hand-appended land line stood as a
+// shipment that never happened. (The `land` command itself never
+// trusted stored land lines — it re-derives its preconditions
+// before writing a new one — so this verifier's consumer is
+// runlog-check, the tripwire.) A land line verifies only when its
+// preconditions verify, checked with the same shared halves land
+// itself applies before recording: the gate is "pass" (the only
+// value the writer stores); the cited cross-check report exists
 // inside design/ (citedReportProblem — the same acceptance
 // verifyCrosscheckLine applies to a crosscheck line's report);
 // and a round record for the land's round exists IN THE SAME LOG
-// that counts toward land's own precondition — a verified graded
-// record (isVerifiedGradedRound) or a genuine no-grade record
-// (isGenuineNoGradeRound); a land line with no round recorded (a
-// null round) accepts any round record in the log, mirroring the
-// land command's precondition when --round is omitted. `rows` is
-// the log's parsed lines; the land line itself may be among them
-// (it is not a round line, so it never counts toward its own
-// precondition).
-export function verifyLandLine(project, rows, r) {
+// that counts toward land's own precondition; a land line with no
+// round recorded (a null round) accepts any round record in the
+// log, mirroring the land command's precondition when --round is
+// omitted. `rows` is the log's parsed lines; the land line itself
+// may be among them (it is not a round line, so it never counts
+// toward its own precondition).
+//
+// Round 8 (C4): WHICH leg standard applies is an epoch question,
+// selected by the caller's { current } flag (the checker passes
+// current: true only for the LATEST land line in the log). The
+// LATEST land line is the live epoch: its cited gate legs verify
+// on disk against their stored shas with a PASS verdict
+// (verifyCitedLegOnRead) as two distinct files, and its round
+// half follows the land command's live precondition — a graded
+// record counting only with leg currency
+// (isVerifiedGradedRound + verifyLegCitationsCurrent) or a
+// genuine no-grade record (isGenuineNoGradeRound). An OLDER land
+// line is rotated history: its legs are checked for existence +
+// shape only (citedLegShapeProblem — its stored shas named bytes
+// the next gate run legitimately overwrote), and its round half
+// accepts a graded record verifying through its judge ARTIFACT
+// (isVerifiedGradedRound) or a genuine-SHAPED no-grade line
+// (isNoGradeShape). Callers that omit the flag get the current
+// (stricter) reading — fail closed on an unknown epoch.
+export function verifyLandLine(project, rows, r, opts) {
   const reasons = [];
   const fail = (m) => { reasons.push(m); };
   if (!r || r.kind !== 'land') {
     fail('the line is not a land line');
     return { ok: false, reasons };
   }
+  const current = !opts || opts.current !== false;
   if (r.gate !== 'pass') {
     fail(`the land line's gate is ${JSON.stringify(r.gate)}, not "pass" — run-log.mjs records a land only on --gate pass`);
   }
-  const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
-  const leg2 = verifyCitedLegOnRead(project, r, 'leg2');
-  if (!leg1) fail(`the land line's gate leg 1 citation (${typeof r.gateLeg1 === 'string' ? r.gateLeg1 : 'none recorded'}) does not verify on disk against its stored sha with a PASS verdict`);
-  if (!leg2) fail(`the land line's gate leg 2 citation (${typeof r.gateLeg2 === 'string' ? r.gateLeg2 : 'none recorded'}) does not verify on disk against its stored sha with a PASS verdict`);
-  if (leg1 && leg2 && (leg1.real === leg2.real || (leg1.stat.dev === leg2.stat.dev && leg1.stat.ino === leg2.stat.ino))) {
-    fail('the land line\'s two cited gate legs are the same file — a gate pass stands behind two distinct leg artifacts');
+  if (current) {
+    const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
+    const leg2 = verifyCitedLegOnRead(project, r, 'leg2');
+    if (!leg1) fail(`the land line's gate leg 1 citation (${typeof r.gateLeg1 === 'string' ? r.gateLeg1 : 'none recorded'}) does not verify on disk against its stored sha with a PASS verdict`);
+    if (!leg2) fail(`the land line's gate leg 2 citation (${typeof r.gateLeg2 === 'string' ? r.gateLeg2 : 'none recorded'}) does not verify on disk against its stored sha with a PASS verdict`);
+    if (leg1 && leg2 && (leg1.real === leg2.real || (leg1.stat.dev === leg2.stat.dev && leg1.stat.ino === leg2.stat.ino))) {
+      fail('the land line\'s two cited gate legs are the same file — a gate pass stands behind two distinct leg artifacts');
+    }
+  } else {
+    const ctx = designContext(project);
+    const p1 = citedLegShapeProblem(project, ctx, r, 'leg1');
+    const p2 = citedLegShapeProblem(project, ctx, r, 'leg2');
+    if (p1) fail(p1);
+    if (p2) fail(p2);
+    if (!p1 && !p2 && path.resolve(project, r.gateLeg1) === path.resolve(project, r.gateLeg2)) {
+      fail('the land line\'s two cited gate legs are the same path — a gate pass stands behind two distinct leg artifacts');
+    }
   }
   if (typeof r.crosscheckReport !== 'string' || !r.crosscheckReport) {
     fail('the land line cites no cross-check report — run-log.mjs records a land only behind the cross-check verdict\'s report');
@@ -1435,9 +1521,12 @@ export function verifyLandLine(project, rows, r) {
       if (problem) fail(problem);
     }
   }
+  const roundCounts = current
+    ? (x) => (isVerifiedGradedRound(project, x) && verifyLegCitationsCurrent(project, x).ok) || isGenuineNoGradeRound(project, x)
+    : (x) => isVerifiedGradedRound(project, x) || isNoGradeShape(x);
   const roundRecs = (Array.isArray(rows) ? rows : []).filter((x) => x && x.kind === 'round'
     && (r.round === null || r.round === undefined ? true : x.round === r.round)
-    && (isVerifiedGradedRound(project, x) || isGenuineNoGradeRound(project, x)));
+    && roundCounts(x));
   if (!roundRecs.length) {
     fail(`no verified graded or genuine no-grade round record${r.round === null || r.round === undefined ? '' : ` for round ${JSON.stringify(r.round)}`} exists in the same log — the land's round precondition does not verify`);
   }

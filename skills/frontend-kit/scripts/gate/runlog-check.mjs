@@ -108,7 +108,8 @@
 //      — swap proof and verdict, tie rule included (N5), and
 //      expert evidence transcribes like expert scores (N6).
 //      Round 6 (X1–X5): the graded line's own cited gate legs
-//      verify on disk against their stored shas (X2), juror and
+//      verify on disk against their stored shas (X2 — round 8
+//      re-scoped this to the live epoch, see below), juror and
 //      expert artifacts bind the line's tokensHash (X3/X4), the
 //      line's notRegraded transcribes its artifact's not-regraded
 //      header set (X5) — and rule 6 now covers CROSSCHECK lines
@@ -133,12 +134,21 @@
 //      still hashing to the stored tokensHash), because the round
 //      brief adopts that line as the lock of record and the lock
 //      command's version check counts only lines that verify. A
-//      land line's preconditions must verify NOW (shared
-//      verifyLandLine — cited gate legs on disk with matching
-//      shas and PASS verdicts, cited cross-check report inside
-//      design/, a verified graded or genuine no-grade round
-//      record for its round in the same log), because `show`
-//      prints stored land lines as fact. Purpose-fail lines get
+//      land line's preconditions must verify (shared
+//      verifyLandLine — cited cross-check report inside design/,
+//      a round record for its round in the same log that counts
+//      toward land's precondition, and its cited gate legs: on
+//      disk with matching shas and PASS verdicts for the LATEST
+//      land line, existence + shape for older ones), because
+//      `show` prints stored land lines as fact. Round 8 (C4) is
+//      the epoch rule that splits those leg standards: leg
+//      currency binds only the live epoch — the LATEST round line
+//      and the LATEST land line in the log — because the two
+//      canonical leg files are overwritten by every later gate
+//      run, so holding rotated history to currency failed fully
+//      genuine logs; older round lines get leg-citation SHAPE
+//      checks per line instead, and a historical grade verifies
+//      through its judge artifact alone. Purpose-fail lines get
 //      shape checks only: their fields are the human's own prose,
 //      display-only like a note (D15), with nothing on disk to
 //      verify against.
@@ -436,6 +446,41 @@ export function checkRunLogLine(line, ctx) {
       }
     }
   }
+  // Rule 6, gate-leg citation SHAPE (round 8, C4 — the epoch rule):
+  // a round line's leg citations are checked for currency (stored
+  // sha == current file) ONLY where the line is the log's latest
+  // round line — that check lives in the CLI's whole-log pass,
+  // which can see the whole log. Every round line, latest or
+  // historical, gets the SHAPE half here, line-locally: the writer
+  // stores both leg citations or neither; a cited leg is a
+  // non-empty project-relative path resolving lexically inside
+  // design/ with a stored sha of exactly 64 hex, and the two cited
+  // paths are two distinct paths. A historical line's stored shas
+  // named bytes a later gate run legitimately overwrote, so shape
+  // is all a rotated citation can be held to here.
+  if (obj.kind === 'round') {
+    const cites1 = obj.gateLeg1 !== null && obj.gateLeg1 !== undefined;
+    const cites2 = obj.gateLeg2 !== null && obj.gateLeg2 !== undefined;
+    if (cites1 !== cites2) {
+      problems.push('round line cites only one of its two gate legs — run-log.mjs stores both leg citations or neither (D15)');
+    } else if (cites1 && cites2) {
+      const legShape = (rel, sha, n) => {
+        if (typeof rel !== 'string' || !rel) return `round line's gate leg ${n} citation is not a non-empty path string`;
+        if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/i.test(sha)) return `round line's gate leg ${n} sha is not exactly 64 hex — not a sha run-log.mjs stores`;
+        if (path.isAbsolute(rel)) return `round line's gate leg ${n} citation "${rel}" is an absolute path — citations are project-relative, inside design/`;
+        const norm = path.normalize(rel);
+        if (!norm.startsWith('design' + path.sep)) return `round line's gate leg ${n} citation "${rel}" does not resolve lexically inside design/`;
+        return null;
+      };
+      const s1 = legShape(obj.gateLeg1, obj.gateLeg1Sha, 1);
+      const s2 = legShape(obj.gateLeg2, obj.gateLeg2Sha, 2);
+      if (s1) problems.push(`${s1} (D15)`);
+      if (s2) problems.push(`${s2} (D15)`);
+      if (!s1 && !s2 && path.normalize(obj.gateLeg1) === path.normalize(obj.gateLeg2)) {
+        problems.push('round line cites the same path for both gate legs — the two legs are two distinct artifact files (D15)');
+      }
+    }
+  }
   // Rule 6, crosscheck half (round 6, X1): a crosscheck line is a
   // verdict other consumers act on (land, prepare's cross-check
   // bit), and before round 6 this checker never looked at one — a
@@ -570,21 +615,30 @@ if (invokedDirectly) {
     try { parsed = JSON.parse(line); } catch { parsed = null; }
     rows.push({ at: i + 1, obj: parsed });
   });
-  // Rule 6, whole-log halves (round 7, F1/F2): two verifications
-  // are properties of the LOG, not of one line, so they run here
-  // rather than in the per-line function above. (1) The LATEST
-  // taste-lock line — the lock of record — must verify against
-  // the tokens file it names (shared verifyLockLine); older lock
-  // lines are history and are not held to currency. (2) Every
-  // stored land line's preconditions must verify NOW (shared
-  // verifyLandLine: cited gate legs on disk with matching shas
-  // and PASS verdicts, cited cross-check report inside design/,
-  // and a verified graded or genuine no-grade round record for
-  // its round in this same log) — before round 7 a hand-appended
-  // land line passed this checker while `show` printed it as a
-  // shipment that never happened. Fail-closed like the citation
-  // halves: with no sibling module, lock and land lines are
-  // unverifiable and are flagged, never passed.
+  // Rule 6, whole-log halves (round 7, F1/F2; round 8, C4): some
+  // verifications are properties of the LOG, not of one line, so
+  // they run here rather than in the per-line function above.
+  // (1) The LATEST taste-lock line — the lock of record — must
+  // verify against the tokens file it names (shared
+  // verifyLockLine); older lock lines are history and are not
+  // held to currency. (2) Every stored land line's preconditions
+  // must verify (shared verifyLandLine: cited cross-check report
+  // inside design/, and a round record for its round in this same
+  // log that counts toward land's precondition) — before round 7
+  // a hand-appended land line passed this checker while `show`
+  // printed it as a shipment that never happened. (3) Round 8's
+  // epoch rule for gate legs: leg CURRENCY (stored sha == current
+  // file) is checked only for the LATEST round line and the
+  // LATEST land line — the live epoch. Older land lines verify
+  // with existence + shape legs and an artifact-verified round
+  // (verifyLandLine's { current: false } reading); older round
+  // lines got their leg-citation shape checks in the per-line
+  // pass above. Before round 8 every graded and land line was
+  // held to currency, so a genuine second round — whose gate run
+  // overwrites the two canonical leg files by design — made this
+  // checker fail the genuine first round's lines (C4). Fail-closed
+  // like the citation halves: with no sibling module, lock and
+  // land lines are unverifiable and are flagged, never passed.
   if (!judgeMod) {
     for (const { at, obj } of rows) {
       if (obj && (obj.kind === 'taste-lock' || obj.kind === 'land')) {
@@ -605,9 +659,30 @@ if (invokedDirectly) {
         failed = true;
       }
     }
-    for (const { at, obj } of rows) {
+    // Round 8 (C4): leg currency for the LATEST round line only,
+    // and only when the line cites both legs (a line citing neither
+    // has no citations to hold to currency — the per-line shape
+    // pass already flagged a line citing exactly one).
+    let latestRound = null;
+    for (const entry of rows) {
+      if (entry.obj && entry.obj.kind === 'round') latestRound = entry;
+    }
+    if (latestRound && typeof latestRound.obj.gateLeg1 === 'string' && latestRound.obj.gateLeg1
+      && typeof latestRound.obj.gateLeg2 === 'string' && latestRound.obj.gateLeg2) {
+      const lc = judgeMod.verifyLegCitationsCurrent(projectRoot, latestRound.obj);
+      if (!lc.ok) {
+        console.log(`${file}:${latestRound.at}: latest round line's cited gate legs do not verify: ${lc.reasons.join('; ')} (D15)`);
+        failed = true;
+      }
+    }
+    let latestLand = null;
+    for (const entry of rows) {
+      if (entry.obj && entry.obj.kind === 'land') latestLand = entry;
+    }
+    for (const entry of rows) {
+      const { at, obj } = entry;
       if (obj && obj.kind === 'land') {
-        const dv = judgeMod.verifyLandLine(projectRoot, all, obj);
+        const dv = judgeMod.verifyLandLine(projectRoot, all, obj, { current: entry === latestLand });
         if (!dv.ok) {
           console.log(`${file}:${at}: land line does not verify: ${dv.reasons.join('; ')} (D15)`);
           failed = true;

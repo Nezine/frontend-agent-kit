@@ -1050,6 +1050,20 @@ function isGenuineNoGradeRound(project, r) {
   return judgeReportMod ? judgeReportMod.isGenuineNoGradeRound(project, r) : false;
 }
 
+// Round 8 (C4 — the epoch rule): leg CURRENCY (a line's cited gate
+// legs still matching the files on disk) is required only by the
+// live-epoch consumers — feedback's anchor below and land's round
+// precondition — on top of the artifact verification. It is NOT
+// part of isVerifiedGradedRound / `best`: the canonical leg files
+// rotate with every gate run, so a historical graded round
+// verifies through its judge artifact alone. Fail closed like the
+// wrappers above when judge-report.mjs cannot be loaded.
+function verifyLegCitationsCurrent(project, r) {
+  return judgeReportMod
+    ? judgeReportMod.verifyLegCitationsCurrent(project, r)
+    : { ok: false, reasons: ['judge-report parser unavailable'] };
+}
+
 // Round 6 (X1): the stored-crosscheck verifier land consults — the
 // same shared verifyCrosscheckLine judge-report.mjs's prepare and
 // gate/runlog-check.mjs use. Fail-closed like the wrappers above:
@@ -1718,9 +1732,27 @@ if (cmd === 'record') {
     // current hash. When there is no round record at all (NA20), the
     // pre-existing behaviour is retained unchanged: --page anchors
     // when given, else the artifact's own page binds.
+    // Red-team round 8 (C4 — the epoch rule): the anchor candidate
+    // must ALSO pass leg currency (verifyLegCitationsCurrent). A
+    // regrade is a LIVE operation standing on the round's gate
+    // evidence now; the canonical leg files rotate with every later
+    // gate run, so a graded record whose cited legs no longer match
+    // the files on disk has had its gate evidence rotated away, and
+    // regrading it refuses — the operator records a fresh round
+    // instead. (The grade itself stays verified history through its
+    // judge artifact: `best` still crowns the round.) And when a
+    // graded-SHAPED record exists for the round (scores + an allowed
+    // grader + a pageSha — the writer's graded field shape) but none
+    // verifies as an anchor, feedback refuses outright, with or
+    // without --page: the --page fallback below exists for rounds
+    // with no graded-shaped record at all (pre-D15 lines, scoreless
+    // logs), not as a way around a failed verification.
     const fbRows = readLog(args.project);
     const fbRoundRecs = fbRows.filter((r) => r.kind === 'round' && r.round === round);
-    const fbGradedRec = [...fbRoundRecs].reverse().find((r) => isVerifiedGradedRound(args.project, r)) || null;
+    const fbGradedRec = [...fbRoundRecs].reverse().find((r) => isVerifiedGradedRound(args.project, r) && verifyLegCitationsCurrent(args.project, r).ok) || null;
+    const fbGradedShaped = fbRoundRecs.filter((r) => r.scores && typeof r.scores === 'object'
+      && ALLOWED_GRADERS.includes(r.grader)
+      && typeof r.pageSha === 'string' && /^[0-9a-f]{64}$/i.test(r.pageSha));
     let feedbackPage = args.page || null;
     if (fbGradedRec && !feedbackPage && fbGradedRec.page) feedbackPage = fbGradedRec.page;
     if (fbGradedRec) {
@@ -1729,6 +1761,8 @@ if (cmd === 'record') {
         if (!givenSha) reject(`--page file does not exist or cannot be read: ${args.page} — the feedback regrade must bind to the page round ${round} graded.`);
         if (givenSha !== fbGradedRec.pageSha) reject(`--page ${args.page} hashes to ${givenSha.slice(0, 12)}… but round ${round}'s record graded a page with page-sha256 ${fbGradedRec.pageSha.slice(0, 12)}…${fbGradedRec.page ? ` (${fbGradedRec.page})` : ''} — the page whose hash differs is ${args.page}; the regrade must grade the page the round graded, not a different page.`);
       }
+    } else if (fbGradedShaped.length) {
+      reject(`round ${round} has a graded record, but it does not verify as a regrade anchor NOW — its judge citation fails verification, or its cited gate legs no longer match the leg files on disk (a later round rotated the canonical gate legs) — so it never anchors a regrade, with or without --page. Record a fresh round for the page as it now stands, then regrade that round.`);
     } else if (fbRoundRecs.length && !args.page) {
       reject(`round ${round} has round record(s) but none is a graded record whose judge citation verifies on disk (a scoreless line, a grader-less line, or a line whose citation does not verify never anchors a regrade), so the page it graded cannot be anchored from the log — pass --page <the page round ${round} graded> so the regrade artifact can be bound to it by path + current hash.`);
     }
@@ -1946,11 +1980,20 @@ if (cmd === 'record') {
   // check alone). A hand-written minimal line in the no-grade
   // colours (grader null, scores null, nothing else) satisfied the
   // old existence check and must never count.
+  // Red-team round 8 (C4 — the epoch rule): a graded record counts
+  // only with leg CURRENCY on top of its artifact verification
+  // (verifyLegCitationsCurrent) — land is a live operation standing
+  // on the round's gate evidence now, and a later round's gate run
+  // rotates the canonical leg files, retiring earlier rounds'
+  // evidence. (The no-grade half needs no addition: leg currency
+  // has been inside isGenuineNoGradeRound since round 3. `best`
+  // deliberately does NOT require currency — historical grades
+  // verify through their judge artifacts.)
   const roundRecs = readLog(args.project).filter((r) => r.kind === 'round'
     && (round !== null ? r.round === round : true)
-    && (isVerifiedGradedRound(args.project, r) || isGenuineNoGradeRound(args.project, r)));
+    && ((isVerifiedGradedRound(args.project, r) && verifyLegCitationsCurrent(args.project, r).ok) || isGenuineNoGradeRound(args.project, r)));
   if (!roundRecs.length) {
-    console.error(`run-log: REJECTED — land for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} has no round record in the log that counts — no verified graded record (judge citation verifying on disk) and no genuine no-grade record for it. Record the round first (graded with its judge artifact, or an explicit --grader none no-grade record), then land. No entry written.`);
+    console.error(`run-log: REJECTED — land for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} has no round record in the log that counts — no verified graded record (judge citation verifying on disk, with its cited gate legs still matching the leg files on disk) and no genuine no-grade record for it. Record the round first (graded with its judge artifact, or an explicit --grader none no-grade record), then land. No entry written.`);
     process.exit(2);
   }
   const rec = {
