@@ -2,17 +2,24 @@
 
 > **Status:** v1. Fleet name: **muse-fleet** (chosen for the fleet; the repo itself is
 > renamed separately and is not part of this runbook).
-> **What fleet mode is:** four agents on four machines build one mobile app
-> with a real AI flow in a 5-hour run, then hand it to the humans to verify on
-> a real phone and present. The humans decide the idea beforehand and return
-> at the end to finalize. The agents run the build alone.
-> **Relationship to the buffet runbook:** `BUFFET-MODE.md` governs the
-> frontend loop inside a slice and the coordination machinery (claims, leases,
-> the merge protocol, deputy succession, cross-check). This file governs
-> build day on top of it: roles, slices, the clock, and the demo. Where the
-> two disagree, this file governs build day; `BUFFET-MODE.md` governs
-> everything else. The frontend loop itself is unchanged
-> (`skills/frontend-kit/`).
+> **What fleet mode is:** muse-fleet CONTAINS the entire workflow for build
+> day — roles, inventory, coordination, slices, gates, cross-grading, and
+> the hour-by-hour plan — in this one file. Four agents on four machines
+> build one mobile app with a real AI flow in a 5-hour run, then hand it to
+> the humans to verify on a real phone and present. The humans decide the
+> idea beforehand and return at the end to finalize. The agents run the
+> build alone.
+> **What the kit is inside the fleet:** the frontend-agent-kit is one
+> feature / one branch inside muse-fleet — the frontend tooling (the
+> taste-locked loop, the deterministic gates, the independent grader). It
+> keeps developing alongside the fleet: Milo's hardening track, Mie's
+> macOS track, Migga's hardening track, and the probe/gate work all
+> continue. Nothing of the kit's core is dropped — the fleet adds dev work
+> and 4-agent coordination around it; it does not replace it.
+> **Relationship to the buffet runbook:** `BUFFET-MODE.md` is the
+> coordination machinery the fleet reuses (claims, leases, the merge
+> protocol, deputy succession, cross-check). Where the two disagree, this
+> file governs build day; `BUFFET-MODE.md` governs everything else.
 > **Scope note:** this file names no event, venue, date, person, or team. The
 > run is "build day", the window is "the 5-hour run", agents are referred to
 > by codename and role only. The exact group chat for urgent contact is named
@@ -168,14 +175,24 @@ working first, then thicken it.
   saved outputs shareable by link) and to let a first user return to their
   result. That is a share-link + a counter, not accounts.
 
-## 5. The loop inside a slice
+## 5. The loop inside a slice — the look comes first
 
-The frontend loop is the kit loop, unchanged: taste lock → build →
-deterministic gate FIRST → screenshots at 1440/768/390 + independent grade
-1–5 on Type / Layout / Colour / Space with one evidence line per score →
-fix the top 2 as token diffs, best version kept → stop at ≥4 on every axis
-AND gate green, or after 3 rounds. The backend/demo layer uses the same
-shape with different evidence:
+**Visual quality is the top priority of this whole workflow.** The demo is
+40 points and it is judged by what the eye sees on the real phone — not by
+code elegance, not by backend completeness. Every decision in a slice is
+judged against the look first: taste lock before any HTML, screenshots at
+1440/768/390, independent grading on Type / Layout / Colour / Space. A
+slice that works but looks unfinished has failed the demo, whatever the
+backend does. Code elegance and backend completeness are second — they
+serve the look, they never outrank it.
+
+The frontend loop is the kit loop, carried over whole and still growing:
+taste lock → build → deterministic gate FIRST → screenshots at 1440/768/390
++ independent grade 1–5 on Type / Layout / Colour / Space with one
+evidence line per score → fix the top 2 as token diffs, best version kept
+→ stop at ≥4 on every axis AND gate green, or after 3 rounds. Taste
+target: 8/10. Acceptance bar: 60% slop-free. The backend/demo layer uses
+the same shape with different evidence:
 
 | Layer | Deterministic gate (must pass before any grading) | Independent grade (fresh context, never the builder) | Fix rule |
 |---|---|---|---|
@@ -402,7 +419,8 @@ idea). One small vertical slice, end-to-end, with a phone smoke test.
 - Builder NEVER grades its own work. The grader/judge is always an
   independent agent, and its verdict is recorded with file:line evidence.
 - Acceptance bar: **60% slop-free** (human-eye bar for the vague-brief
-  acceptance test). The ≥4-on-every-axis loop stop is unchanged.
+  acceptance test). Taste target: **8/10** (human blind grade). The
+  ≥4-on-every-axis loop stop is unchanged.
 - Tokens are committed before HTML. No exceptions. The gate runs before the
   grade. The cross-check runs after the gate and before the grade. Every
   score has one line of observable evidence and a named independent grader
