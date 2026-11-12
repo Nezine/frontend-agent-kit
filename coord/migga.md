@@ -228,3 +228,47 @@ progress note) and that push renews the lease.
   the group / Muse posts human-facing milestones only" rule is superseded by
   this user instruction for milestone updates only; coordination still lives
   in the repo. Recorded here so the coordinator sees it.
+- **2026-11-12 16:57 UTC — MIG-1 install + verify: DONE (remediated).**
+  Fresh clone of upstream main 98c256b into a scratch dir → `./install.sh`
+  exit 1 (its embedded verify run failed at the time) → remediated →
+  standalone `./verify.sh` exit 0: **0 failures, 0 unverified, 1 warning, 1
+  pending** (log: `~/workspace/scratch/mig1-verify2.log`, 255 OK lines).
+  Hosts installed: codex + muse (codex-cli 0.164.0-alpha.9 detected;
+  `~/workspace/custom-skills` present). Skills present in 3 copies
+  (`.agents/skills`, `.codex/skills`, `workspace/custom-skills`); engine
+  lockstep 0.1.21 verified by hash; vendored-allowlist matches the tree
+  hash-for-hash (27 entries, taste v2.5.1); gate leg 1 + leg 2 green on the
+  fixture; self-test passes; headless 390px screenshot succeeds via
+  chromium (44,696 bytes). Remaining warning (host-state): no system
+  Chrome — Playwright chromium covers eyes + gate leg 2 via CHROME_PATH.
+  Remaining pending (known O2, non-blocking): Impeccable hook NOT wired
+  for codex — `npx impeccable@4.8.2 install` failed 4x total (2x in
+  install, 2x manual retries) with the same network error downloading the
+  skill bundle from the releases host (TLS peer closed connection).
+  Remediation done: (a) `PATH` exported with `~/.local/bin` (gitleaks
+  8.30.1 was installed there but the dir is not on this VM's default
+  PATH — host-state; every future gate/verify run in this VM must export
+  it) — this cleared verify failures 1–3 + the D15 case-(104) unverified;
+  (b) Chrome-for-Testing placed via curl + the installer's own fallback
+  layout (`~/.cache/ms-playwright/chromium-1254`, binary runs:
+  Google Chrome for Testing 158.0.8127.18; headless shell placed the same
+  way, `chromium_headless_shell-1254`; `playwright-cli install-browser
+  --list` shows both) — this cleared verify failure 4 + the leg-2
+  unverified. Install log: `~/workspace/scratch/mig1-install.log`.
+  Environment notes: `cp -a` ownership preservation fails on this
+  filesystem (installer falls back to `cp -R`; content verified by
+  hashes); engine drift warning pinned 0.1.21 vs latest 0.1.22 — NOT
+  re-pinned (Muse owns the re-pin).
+- **GAP-14 PROPOSAL (awaiting coordinator award — NOT implemented):**
+  `install.sh` `playwright_curl_one` URL mapping misses the bare
+  `cdn.playwright.dev/builds/cft/...` shape the CLI actually emits.
+  Evidence: install log line "curl fallback: unknown artifact URL (no
+  cache-layout mapping — not guessing):
+  https://cdn.playwright.dev/builds/cft/158.0.8127.18/linux64/chrome-linux64.zip";
+  the case patterns only match `cdn.playwright.dev/*/builds/cft/...`
+  (needs a path segment between host and `/builds/`) and the
+  `storage.googleapis.com/chrome-for-testing-public/...` shape. The same
+  URL fetched fine with plain curl (207,460,506 B, exit 0) and the
+  browser runs. Proposed fix: add the bare-CDN shapes to the mapping
+  (same name/rev/exe_rel as the `*/builds/cft` entries). Awaiting a board
+  row before implementing.
