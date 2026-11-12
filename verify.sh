@@ -521,8 +521,8 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
     [[ -f "$gdir/$gf" ]] || fail "installed gate file missing: $gdir/$gf (D13 — the installed skill cannot run the gate)"
   done
   [[ -x "$gdir/gate.sh" ]] || fail "installed gate.sh is not executable: $gdir/gate.sh (D13 — re-run ./install.sh)"
-  grep -qF "*/design/gate-leg1.log" "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion: $gdir/gate.sh (D13 — re-run ./install.sh)"
-  grep -q 'Re-run \./install\.sh' "$gdir/gate.mjs" 2>/dev/null || fail "installed gate.mjs is stale (pre-D13): missing the 'Re-run ./install.sh' error string: $gdir/gate.mjs (D13 — re-run ./install.sh)"
+  grep -qE 'find .*-not -path .?\*/design/gate-leg1\.log.?' "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion on the find line: $gdir/gate.sh (D13 — re-run ./install.sh)"
+  grep -qE "console\.error\(.*Re-run \./install\.sh" "$gdir/gate.mjs" 2>/dev/null || fail "installed gate.mjs is stale (pre-D13): missing the 'Re-run ./install.sh' error string: $gdir/gate.mjs (D13 — re-run ./install.sh)"
 done < <(all_skills_dirs)
 [[ "$checked_2e" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D13 §2e cannot check gate presence)"
 [[ "$checked_2e" != 0 && "$fails" == "$fails_2e_before" ]] && ok "installed gate present in $checked_2e frontend-kit copy/copies (all 16 files, gate.sh executable, D13 content anchors present)"
@@ -536,11 +536,15 @@ done < <(all_skills_dirs)
 # the probe agent wrote stubs instead — TASTE.md 587 B vs template
 # 3,872 B; the stub PLAN.md had no Section inventory table, which made
 # converge-check a no-op). FAIL per missing file per copy, in the §2b
-# every-copy pattern. Presence alone cannot catch a stub, so two content
-# anchors are checked per copy: PLAN.md must contain a
-# `## Section inventory` heading, and TASTE.md must be at least 1KB
-# (the demonstrated stub was 587 B; the template is 3,872 B). No hashes:
-# they would churn on every legitimate template edit. The motion
+# every-copy pattern. Presence alone cannot catch a stub, so content
+# anchors are checked per copy: PLAN.md must carry a `## Section
+# inventory` heading at line start, at least one inventory ROW below
+# it (a table line whose first cell is a real section id — the converge
+# check reads the first column as the section id), and at least 1KB
+# (the template is 9,914 B; the demonstrated stub was 885 B); TASTE.md
+# must carry its `## Intent (one paragraph)` heading and be at least
+# 1KB (the demonstrated stub was 587 B; the template is 3,872 B). No
+# hashes: they would churn on every legitimate template edit. The motion
 # reference PNGs are checked as a non-empty directory, not by filename —
 # filenames may change, the tree must not go missing.
 template_files=(
@@ -567,7 +571,15 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
     [[ -f "$sd/frontend-kit/$tf" ]] || fail "installed template file missing: $sd/frontend-kit/$tf (D14 — the installed skill cannot perform Step 0)"
   done
   [[ -n "$(find "$tdir/references/motion" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]] || fail "installed template motion refs missing: no PNG under $tdir/references/motion (D14 — re-run ./install.sh)"
-  grep -qF '## Section inventory' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  grep -qE '^## Section inventory([[:space:]]|$)' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  # The heading alone proves nothing: require at least one inventory ROW
+  # below it — a table line whose first cell is a real section id (not
+  # the `id` header, not the `---` separator). The converge check reads
+  # the first column as the section id, so a PLAN.md with no rows makes
+  # converge-check a no-op — exactly the D14 defect.
+  awk '/^## Section inventory/{f=1; next} f && /^[|][^|]+[|]/ && $0 !~ /^[|][[:space:]]*(id|[-:]+)[[:space:]]*[|]/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): '## Section inventory' has no inventory row (the converge check reads the first column as the section id): $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  [[ "$(wc -c < "$tdir/PLAN.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  grep -qF '## Intent (one paragraph)' "$tdir/TASTE.md" 2>/dev/null || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): missing the '## Intent (one paragraph)' heading: $tdir/TASTE.md (D14 — re-run ./install.sh)"
   [[ "$(wc -c < "$tdir/TASTE.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/TASTE.md (D14 — re-run ./install.sh)"
 done < <(all_skills_dirs)
 [[ "$checked_2f" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D14 §2f cannot check template presence)"
@@ -6142,8 +6154,28 @@ fi
 # run with --skip-browser, which fails closed (H13), and the browser leg
 # is skipped, not passed.
 chrome_bin=""
+chrome_via_env=0
+chrome_path_bad=0
+# CHROME_PATH (SKILL.md step 0.3; consistency.mjs findChrome tries it
+# first and expands one `*` segment, newest match first): an explicit
+# CHROME_PATH is the browser the gate actually uses, so a set,
+# executable CHROME_PATH satisfies this check even with no system
+# Chrome. Try it literally, then glob-expanded, newest first. A
+# set-but-invalid CHROME_PATH blocks the leg even when system Chrome
+# exists (findChrome throws on it before trying anything else), so it
+# gets its own WARN and wins over the system-Chrome OK below.
+if [[ -n "${CHROME_PATH:-}" ]]; then
+  if [[ -f "$CHROME_PATH" && -x "$CHROME_PATH" ]]; then chrome_bin="$CHROME_PATH"; chrome_via_env=1;
+  else
+    _chrome_cands=($CHROME_PATH)
+    for (( _ci=${#_chrome_cands[@]}-1; _ci>=0; _ci-- )); do
+      if [[ -f "${_chrome_cands[$_ci]}" && -x "${_chrome_cands[$_ci]}" ]]; then chrome_bin="${_chrome_cands[$_ci]}"; chrome_via_env=1; break; fi
+    done
+    [[ "$chrome_via_env" == 0 ]] && chrome_path_bad=1
+  fi
+fi
 for _cb in google-chrome google-chrome-stable chromium chromium-browser; do
-  if command -v "$_cb" >/dev/null 2>&1; then chrome_bin="$(command -v "$_cb")"; break; fi
+  if [[ -z "$chrome_bin" ]] && command -v "$_cb" >/dev/null 2>&1; then chrome_bin="$(command -v "$_cb")"; break; fi
 done
 [[ -z "$chrome_bin" && -x /opt/google/chrome/chrome ]] && chrome_bin="/opt/google/chrome/chrome"
 # macOS app-bundle locations (mirror skills/frontend-kit/scripts/gate/consistency.mjs
@@ -6151,10 +6183,16 @@ done
 for _cp in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "/Applications/Chromium.app/Contents/MacOS/Chromium" "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "$HOME/Applications/Chromium.app/Contents/MacOS/Chromium"; do
   if [[ -z "$chrome_bin" && -x "$_cp" ]]; then chrome_bin="$_cp"; break; fi
 done
-if [[ -n "$chrome_bin" ]]; then
-  ok "system Chrome present ($chrome_bin) — gate.mjs consistency leg can run"
+if [[ "$chrome_path_bad" == 1 ]]; then
+  warn "CHROME_PATH is set ('$CHROME_PATH') but matches no executable Chrome/Chromium binary — consistency.mjs findChrome tries CHROME_PATH first and throws on a set-but-invalid value, so the browser leg cannot run until this is fixed or unset, even if system Chrome exists."
+elif [[ -n "$chrome_bin" ]]; then
+  if [[ "$chrome_via_env" == 1 ]]; then
+    ok "Chrome present via CHROME_PATH ($chrome_bin) — gate.mjs consistency leg can run"
+  else
+    ok "system Chrome present ($chrome_bin) — gate.mjs consistency leg can run"
+  fi
 else
-  warn "no system Chrome found (looked for google-chrome, google-chrome-stable, chromium, chromium-browser on PATH, /opt/google/chrome/chrome, and the macOS app bundles /Applications/Google Chrome.app, /Applications/Chromium.app, \$HOME/Applications/…) — gate.mjs consistency.mjs browser leg cannot run here; use --skip-browser (which fails closed, H13), and note the browser leg is SKIPPED, not passed. Playwright eyes are unaffected (they use chrome-for-testing)."
+  warn "no system Chrome found (looked for CHROME_PATH, google-chrome, google-chrome-stable, chromium, chromium-browser on PATH, /opt/google/chrome/chrome, and the macOS app bundles /Applications/Google Chrome.app, /Applications/Chromium.app, \$HOME/Applications/…) — gate.mjs consistency.mjs browser leg cannot run here; use --skip-browser (which fails closed, H13), and note the browser leg is SKIPPED, not passed. Playwright eyes are unaffected (they use chrome-for-testing)."
 fi
 
 # --- summary ------------------------------------------------------------------
