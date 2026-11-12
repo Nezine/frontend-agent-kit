@@ -157,10 +157,14 @@
 # environment where the scanner runs (the M1 test environment had no
 # gitleaks, which is how the miss survived to the proof).
 #
-# Scope — path-only, the same narrowness as the run log, restricted to
-# the canonical file names prepare writes: design/judge/round-*.md
-# covers all seven kinds (round-<n>.md, -cheap, -pairwise-<i>,
-# -jury-<i>, -regrade, -expert-motion, -expert-ux). It is NOT the whole
+# Scope — path-only, the same narrowness as the run log: the path
+# family design/judge/round-*.md contains all seven canonical names
+# prepare writes (round-<n>.md, -cheap, -pairwise-<i>, -jury-<i>,
+# -regrade, -expert-motion, -expert-ux). The regex matches any
+# round-*.md stem, not only those seven — a stem prepare never writes
+# is reachable only through a hand-authored citation (the D15
+# authorship residual) and faces the same grep backstop below. It is
+# NOT the whole
 # design/judge/ directory: a custom `prepare --out` name outside
 # round-*.md is NOT allowlisted and its stamped headers will still trip
 # the scanner — the canonical names are the supported shape. And per
@@ -178,8 +182,12 @@
 # gate.sh (no api_key/secret/password/access_token keyword on a header
 # line; the same reason tokensHash stays clean). Residual hole, same
 # class as the run-log hole (ii) above: a high-entropy string in a
-# judge report's prose, in a shape no pattern recognises, would be
-# missed by both layers once gitleaks skips the file.
+# judge report's prose, in a shape none of the kit's backstop patterns
+# recognises, would be missed by both layers once gitleaks skips the
+# file. ("Pattern" here means the kit's backstop patterns: gitleaks'
+# own generic-api-key rule DOES recognise some such labels —
+# session_token, auth_token — and that rule is the layer being
+# skipped; red team spot round, 2026-11-12.)
 #
 # [extend] useDefault = true keeps gitleaks' full default rule set and
 # merges this allowlist on top. A --config WITHOUT [extend] would REPLACE
