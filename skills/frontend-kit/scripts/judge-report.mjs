@@ -82,8 +82,8 @@
 // READ-PATH VERIFICATION LIVES HERE TOO (D15 red-team round 4): this
 // module also hosts the ONE implementation of the read-path grade
 // verifiers (verifyGradedLine / verifyJuryLine / verifyFeedbackLine /
-// verifyExpertCitations / verifyPairwiseLine / isVerifiedGradedRound /
-// isGenuineNoGradeRound / isJuryRoundLine) and of the independence-
+// verifyExpertCitations / verifyPairwiseLine / verifyCrosscheckLine /
+// isVerifiedGradedRound / isGenuineNoGradeRound / isJuryRoundLine) and of the independence-
 // basis check (checkIndependenceBasis). It is the shared home because
 // it is import-safe (the CLI below runs only when invoked directly);
 // run-log.mjs is not (its CLI runs at top level), so run-log.mjs
@@ -137,6 +137,11 @@ export const JUDGE_AXES = ['Type', 'Layout', 'Colour', 'Space'];
 // run-log.mjs keeps its own copy for its record-time messages; this
 // one serves prepare below and the read-path verifiers).
 export const ALLOWED_GRADERS = ['judge-subagent', 'muse-manager', 'other-model'];
+// The checker labels a crosscheck record may carry (the writer's
+// allowlist — run-log.mjs keeps its own copy for its record-time
+// messages, the same arrangement as ALLOWED_GRADERS above; this one
+// serves the read-path crosscheck verifier, verifyCrosscheckLine).
+export const ALLOWED_CHECKERS = ['security-expert', 'crosscheck-subagent', 'crosscheck-team'];
 // The judge skill's two no-grade refusal lines (frontend-judge SKILL.md,
 // "Output format"): a report carrying either is a refusal, not a grade.
 // Compared after stripInvisible, like every verdict line in this kit.
@@ -319,6 +324,19 @@ export function parseJudgeReport(text) {
 // verifiers live here, with the parser, because this module is
 // import-safe and run-log.mjs is not. runlog-check.mjs deletes its
 // copies and calls these. No consumer keeps a weaker private check.
+// Round 6 closes the channel the earlier field coverage never
+// opened: the CROSSCHECK line itself. A stored crosscheck verdict
+// was trusted by every consumer of it (land, prepare's cross-check
+// bit, and — by omission — runlog-check, which never looked at
+// crosscheck lines at all), so one hand-appended "clear" line
+// overrode a genuine blocked verdict everywhere.
+// verifyCrosscheckLine below is the one verifier for that channel,
+// called by all three consumers. The same round binds the fields
+// the field coverage still missed: a graded line's own cited gate
+// legs verify on disk (verifyGradedLegCitations, X2), juror and
+// expert artifacts bind the line's tokensHash (X3/X4), and a
+// graded line's notRegraded transcribes its artifact's
+// not-regraded header set (X5).
 // Every function below is total: it returns { ok, reasons } (or a
 // boolean), never throws, never exits.
 // ---------------------------------------------------------------------
@@ -513,7 +531,7 @@ function verifyGradeCitation(project, r, wantKinds, lineScores, kindExpectation)
   try { parsed = parseJudgeReport(fs.readFileSync(cited.real, 'utf8')); } catch { parsed = null; }
   if (!parsed || !parsed.header || parsed.problems.length) {
     fail(`the cited file does not parse as a well-formed judge report${parsed && parsed.problems.length ? ` (${parsed.problems[0]})` : ''}`);
-    return { ok: false, reasons };
+    return { ok: false, reasons, parsed: null };
   }
   const header = parsed.header;
   if (Number(header.round) !== r.round) fail(`the cited file is a report for round ${header.round}, not round ${r.round}`);
@@ -550,7 +568,10 @@ function verifyGradeCitation(project, r, wantKinds, lineScores, kindExpectation)
   if (parsed.bodyRound !== undefined && (parsed.bodyRound !== r.round || parsed.bodyGrader !== header.grader || parsed.bodyBasis !== header.basis)) {
     fail('the cited report body Round line disagrees with its header');
   }
-  return { ok: reasons.length === 0, reasons };
+  // `parsed` rides along for the callers' kind-specific
+  // transcription checks (round 6, X5: verifyGradedLine compares
+  // the line's notRegraded against this header's not-regraded set).
+  return { ok: reasons.length === 0, reasons, parsed };
 }
 
 // A round line carries PAIRWISE fields when any of pairwise /
@@ -576,7 +597,19 @@ export function isPairwiseRoundLine(r) {
 // genuine record has; best filtered it locally before, but land,
 // feedback's anchor and the checker trusted the line through this
 // function, so the requirement lives here, in the shared core,
-// where every consumer inherits it.
+// where every consumer inherits it. Round 6 adds the two halves of
+// the line that still verified on the strength of the citation
+// alone: (X2) the line's OWN cited gate legs — record stored
+// gateLeg1Sha / gateLeg2Sha from the artifacts it validated, but
+// no read path ever re-opened them for a GRADED line (the no-grade
+// path has verified its legs since round 3, B3), so a graded line
+// whose stored leg shas were edited to garbage still verified; and
+// (X5) the not-regraded transcription — record validates the main
+// artifact's header not-regraded set against the record's
+// --not-regraded set (for BOTH kinds: the writer stores the parsed
+// flag, null when absent, and validates the header against
+// `flag || []`), but no read path compared the stored field
+// against the header it transcribes.
 export function verifyGradedLine(project, r) {
   const reasons = [];
   if (r.gate !== 'pass') {
@@ -585,8 +618,47 @@ export function verifyGradedLine(project, r) {
   const core = verifyGradeCitation(project, r, ['absolute', 'cheap'], r.scores, "a round line's main citation is absolute | cheap");
   const experts = verifyExpertCitations(project, r);
   reasons.push(...core.reasons, ...experts.reasons);
+  reasons.push(...verifyGradedLegCitations(project, r));
+  // Round 6 (X5): the not-regraded transcription. Record time
+  // defines it as exact set equality — the header value split on
+  // ',', trimmed, empties dropped ('-' is the empty set), sorted,
+  // against the record's set — and applies it to the main artifact
+  // of either kind, so the read check mirrors it for either kind:
+  // the line's stored notRegraded (null when the flag was absent,
+  // which is the empty set) must equal the cited header's set.
+  if (core.parsed && core.parsed.header) {
+    const headerValue = core.parsed.header['not-regraded'];
+    const headerSet = (headerValue === '-' || headerValue === undefined
+      ? []
+      : String(headerValue).split(',').map((s) => s.trim()).filter(Boolean)).sort();
+    const lineSet = (Array.isArray(r.notRegraded) ? [...r.notRegraded] : []).sort();
+    if (JSON.stringify(headerSet) !== JSON.stringify(lineSet)) {
+      reasons.push(`the line's notRegraded ${JSON.stringify(r.notRegraded === undefined ? null : r.notRegraded)} does not transcribe the cited report's not-regraded set "${headerValue}" — record derives the field from the record's --not-regraded set and validates the header against it, so an edited field is not a transcription`);
+    }
+  }
   if (isPairwiseRoundLine(r)) reasons.push(...verifyPairwiseLine(project, r).reasons);
   return { ok: reasons.length === 0, reasons };
+}
+
+// A GRADED line's own cited gate legs, verified on read (round 6,
+// X2): the same on-disk verification the no-grade path has applied
+// since round 3 (verifyCitedLegOnRead — the cited file exists
+// inside design/, is not a symlink, hashes to the stored
+// gateLeg<N>Sha, and carries the verdict matching the line's gate
+// value), plus the two legs being two distinct files. Returns
+// reasons (verifyGradedLine's currency) rather than the no-grade
+// path's boolean: a graded line's legs failing is one defect among
+// the several a read consumer reports.
+function verifyGradedLegCitations(project, r) {
+  const reasons = [];
+  const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
+  const leg2 = verifyCitedLegOnRead(project, r, 'leg2');
+  if (!leg1) reasons.push(`the line's cited gate leg 1 (${typeof r.gateLeg1 === 'string' ? r.gateLeg1 : '(none)'}) does not verify on disk against its stored gateLeg1Sha with the verdict its gate value requires — a graded record's legs are part of the record, and an edited leg sha is not a transcription`);
+  if (!leg2) reasons.push(`the line's cited gate leg 2 (${typeof r.gateLeg2 === 'string' ? r.gateLeg2 : '(none)'}) does not verify on disk against its stored gateLeg2Sha with the verdict its gate value requires — a graded record's legs are part of the record, and an edited leg sha is not a transcription`);
+  if (leg1 && leg2 && (leg1.real === leg2.real || (leg1.stat.dev === leg2.stat.dev && leg1.stat.ino === leg2.stat.ino))) {
+    reasons.push('the line\'s two cited gate legs are the same file (same device+inode — a hardlink pair) — the two gate legs must be two separate artifact files');
+  }
+  return reasons;
 }
 
 // A feedback line's regrade verification: the same core, with the
@@ -645,6 +717,17 @@ export function verifyExpertCitations(project, r) {
         if (!pageShaNow || parsed.header['page-sha256'] !== pageShaNow) fail(`the cited ${label} expert artifact ${rel} binds page-sha256 ${String(parsed.header['page-sha256']).slice(0, 12)}…, not the current hash of the line's page ${r.page} (${(pageShaNow || 'unreadable').slice(0, 12)}…)`);
       }
     }
+    // Round 6 (X4): the expert artifact must bind the LINE'S tokens
+    // version, the way the pairwise artifacts already did — record
+    // time validates expert artifacts with no tokens expectation,
+    // so before round 6 a genuine expert artifact prepared against
+    // a DIFFERENT tokens.css (its score re-cited in the line)
+    // verified everywhere. Genuine prepare+fill artifacts from the
+    // same build carry the build's tokens hash, so a genuine line
+    // still verifies; the check applies only when the line carries
+    // a tokensHash (graded lines always store one — the sha of the
+    // tokens file record resolved; a no-grade line stores null).
+    if (typeof r.tokensHash === 'string' && r.tokensHash && parsed.header['tokens-sha256'] !== r.tokensHash.toLowerCase()) fail(`the cited ${label} expert artifact ${rel} binds tokens-sha256 ${String(parsed.header['tokens-sha256']).slice(0, 12)}…, not the line's tokensHash ${r.tokensHash.slice(0, 12)}… — the expert graded a different tokens version than the round`);
     if (parsed.expertScore !== score) fail(`the cited ${label} expert artifact ${rel} records ${label} ${parsed.expertScore}, not the line's ${scoreField} ${score} — the line does not transcribe the expert report`);
     if (parsed.expertEvidence !== r[evidenceField]) fail(`the cited ${label} expert artifact ${rel} records evidence "${parsed.expertEvidence}", not the line's ${evidenceField} ${typeof r[evidenceField] === 'string' ? `"${r[evidenceField]}"` : '(none)'} — the line does not transcribe the expert report`);
   }
@@ -761,6 +844,16 @@ export function verifyJuryLine(project, r) {
     // line) verified as this round's jury.
     if (typeof r.pageSha === 'string' && r.pageSha && parsed.header['page-sha256'] !== r.pageSha.toLowerCase()) { fail(`juror artifact ${rel} binds page-sha256 ${String(parsed.header['page-sha256']).slice(0, 12)}…, not the line's pageSha ${r.pageSha.slice(0, 12)}… — the juror graded a different page version than the round's judge`); continue; }
     if (typeof r.page === 'string' && r.page && parsed.header.page !== r.page) { fail(`juror artifact ${rel} grades page "${parsed.header.page}", not the recorded page "${r.page}"`); continue; }
+    // Round 6 (X3): the juror must also bind the LINE'S tokens
+    // version. Record time validates juror artifacts against the
+    // record's tokensHash (validateJudgeArtifact with the record's
+    // tokensHash), but the read path never compared it, so three
+    // genuine juror artifacts prepared against a DIFFERENT
+    // tokens.css — their shas, votes and median re-cited in the
+    // line consistently — derived a median for a build the round
+    // never graded. The check applies when the line carries a
+    // tokensHash (graded lines always store one).
+    if (typeof r.tokensHash === 'string' && r.tokensHash && parsed.header['tokens-sha256'] !== r.tokensHash.toLowerCase()) { fail(`juror artifact ${rel} binds tokens-sha256 ${String(parsed.header['tokens-sha256']).slice(0, 12)}…, not the line's tokensHash ${r.tokensHash.slice(0, 12)}… — the juror graded a different tokens version than the round`); continue; }
     if (!headerBasisEstablishesIndependence(parsed.header)) { fail(`juror artifact ${rel} carries no independence basis establishing BOTH fresh/separate context AND no production history`); continue; }
     parsedVotes.push(parsed.scores);
     families.push(parsed.header.family);
@@ -1056,6 +1149,111 @@ export function isGenuineNoGradeRound(project, r) {
   return true;
 }
 
+// A stored CROSSCHECK line, verified on read (round 6, X1 — the
+// round's SEVERE). Before round 6 the crosscheck channel was the
+// one grade-coupled channel NO read path verified: record derives
+// the verdict from the counts, restricts the checker to an
+// allowlist, requires the two-half independence basis, and (D15)
+// validates the cited report — but land trusted the LATEST stored
+// verdict, prepare derived its cross-check bit from the latest
+// stored verdict, and runlog-check never looked at crosscheck
+// lines at all. One hand-appended line — verdict "clear" over
+// counts that derive "blocked", an unlisted checker, a report path
+// naming nothing — therefore overrode a genuine blocked verdict in
+// all three consumers at once. This verifier mirrors the record
+// path exactly:
+//   - the counts are the writer's shape (non-negative integers,
+//     waived no greater than warning) and the stored verdict
+//     EQUALS the verdict derived from them — clear iff severe == 0
+//     AND warning == waived, blocked otherwise; those are the only
+//     two verdict values the writer stores;
+//   - the checker is on the record-time allowlist
+//     (ALLOWED_CHECKERS) and the stored independenceBasis passes
+//     the same two-half independence check record applies
+//     (independenceBasisProblem against the checker label);
+//   - with a project root, the cited report verifies the way
+//     record's validateCrosscheckReport accepts it: <project>/
+//     design/ itself resolves inside the project, the path is
+//     project-relative and resolves lexically inside design/, the
+//     file exists, is not a symlink, is a non-empty regular file,
+//     and its real path resolves inside the real design/. (A
+//     crosscheck line stores no report sha — there is no stored
+//     hash to compare, so existence/containment/shape is the whole
+//     on-disk half, exactly as at record time.)
+// `project` may be null (runlog-check's line-local mode): the
+// verdict derivation and the shape halves still apply; only the
+// report half is skipped, because there is no project to resolve
+// it against. Consumers keep their own SELECTION semantics (land:
+// latest for the slice/round; prepare: latest for the round) —
+// this function verifies the selected line, and a selected line
+// that does not verify is refused, never skipped for an earlier
+// one: falling back would let a genuine blocked verdict be buried
+// under a later fake clear, which is the attack.
+export function verifyCrosscheckLine(project, r) {
+  const reasons = [];
+  const fail = (m) => { reasons.push(m); };
+  if (!r || r.kind !== 'crosscheck') {
+    fail('the line is not a crosscheck line');
+    return { ok: false, reasons };
+  }
+  const countsOk = [r.severe, r.warning, r.waived].every((n) => Number.isInteger(n) && n >= 0);
+  if (!countsOk) {
+    fail(`the crosscheck line's counts (severe ${JSON.stringify(r.severe)}, warning ${JSON.stringify(r.warning)}, waived ${JSON.stringify(r.waived)}) are not the non-negative integers run-log.mjs writes`);
+  } else if (r.waived > r.warning) {
+    fail(`the crosscheck line waives ${r.waived} of ${r.warning} warnings — run-log.mjs never writes waived greater than warning`);
+  }
+  if (r.verdict !== 'clear' && r.verdict !== 'blocked') {
+    fail(`the crosscheck line's verdict ${JSON.stringify(r.verdict)} is not one of clear | blocked — the only verdicts run-log.mjs derives`);
+  } else if (countsOk && r.waived <= r.warning) {
+    const derived = (r.severe === 0 && r.warning === r.waived) ? 'clear' : 'blocked';
+    if (r.verdict !== derived) {
+      fail(`the crosscheck line's verdict "${r.verdict}" contradicts its own counts (SEVERE ${r.severe}, WARNING ${r.warning}, waived ${r.waived}) — run-log.mjs derives the verdict from the counts (clear iff severe == 0 and every warning is waived), which derives "${derived}" here, so this line was hand-appended or edited`);
+    }
+  }
+  if (typeof r.checker !== 'string' || !ALLOWED_CHECKERS.includes(r.checker)) {
+    fail(`the crosscheck line's checker ${JSON.stringify(r.checker)} is not an allowed independent cross-checker (${ALLOWED_CHECKERS.join(', ')}) — run-log.mjs records no other checker`);
+  } else {
+    const basisProblem = independenceBasisProblem(r.independenceBasis, r.checker);
+    if (basisProblem) fail(`the crosscheck line's independence basis does not verify: ${basisProblem}`);
+  }
+  if (project) {
+    const ctx = designContext(project);
+    if (!ctx.inside(ctx.designReal, ctx.projectReal)) {
+      fail(`<project>/design/ resolves outside the project (real path ${ctx.designReal}) — a design/ directory outside the project cannot hold a cross-check report`);
+    } else if (typeof r.report !== 'string' || !r.report) {
+      fail('the crosscheck line cites no report — run-log.mjs records a cross-check only behind a written report');
+    } else if (path.isAbsolute(r.report)) {
+      fail(`the crosscheck line's report ${r.report} is an absolute path — citations are project-relative, inside design/`);
+    } else {
+      const resolved = path.resolve(project, r.report);
+      if (resolved !== ctx.designDir && !resolved.startsWith(ctx.designDir + path.sep)) {
+        fail(`the crosscheck line's report ${r.report} resolves outside <project>/design/ ('..' escapes are rejected)`);
+      } else {
+        let lstat = null;
+        try { lstat = fs.lstatSync(resolved); } catch { fail(`the crosscheck line's report ${r.report} does not exist — the cross-check report must be written before its verdict is recorded`); }
+        if (lstat) {
+          if (lstat.isSymbolicLink()) {
+            fail(`the crosscheck line's report ${r.report} is a symlink — cross-check reports must be real files inside <project>/design/, not links to files elsewhere`);
+          } else {
+            let stat = null;
+            try { stat = fs.statSync(resolved); } catch { stat = null; }
+            if (!stat || !stat.isFile() || stat.size === 0) {
+              fail(`the crosscheck line's report ${r.report} is empty or not a file`);
+            } else {
+              let real = null;
+              try { real = fs.realpathSync(resolved); } catch { fail(`the crosscheck line's report ${r.report} cannot be resolved`); }
+              if (real && !ctx.inside(real, ctx.designReal)) {
+                fail(`the crosscheck line's report ${r.report} resolves outside <project>/design/ (real path ${real})`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return { ok: reasons.length === 0, reasons };
+}
+
 // ---------------------------------------------------------------------
 // prepare (the CLI — everything below runs only when invoked directly)
 // ---------------------------------------------------------------------
@@ -1166,7 +1364,12 @@ function deriveGateGreen(project, binding) {
 
 // The cross-check bit, derived from the run log: the LATEST crosscheck
 // record for this round must be verdict clear (a blocked verdict after
-// a clear one supersedes it — the same read `land` makes).
+// a clear one supersedes it — the same read `land` makes). Round 6
+// (X1): the latest record must also VERIFY (verifyCrosscheckLine —
+// verdict re-derived from its counts, allowed checker, independence
+// basis, cited report on disk). Before round 6 this read trusted the
+// stored verdict, so a hand-appended "clear" line over a genuine
+// blocked record stamped skeletons `cross-check: clear`.
 function deriveCrosscheckClear(project, round) {
   const logFile = path.join(project, 'design', 'run-log.jsonl');
   if (!fs.existsSync(logFile)) return 'design/run-log.jsonl does not exist — no cross-check verdict has been recorded for this round';
@@ -1179,6 +1382,8 @@ function deriveCrosscheckClear(project, round) {
   const checks = rows.filter((r) => r.kind === 'crosscheck' && r.round === round);
   const latest = checks[checks.length - 1];
   if (!latest) return `no cross-check record for round ${round} in the run log — record it (run-log.mjs crosscheck) before preparing a judge report`;
+  const ccv = verifyCrosscheckLine(project, latest);
+  if (!ccv.ok) return `the latest cross-check record for round ${round} does not verify (${ccv.reasons.join('; ')}) — the cross-check bit cannot be derived from an unverifiable record`;
   if (latest.verdict !== 'clear') return `the latest cross-check verdict for round ${round} is ${String(latest.verdict).toUpperCase()} — a judge is spawned only on a clear cross-check`;
   return null;
 }

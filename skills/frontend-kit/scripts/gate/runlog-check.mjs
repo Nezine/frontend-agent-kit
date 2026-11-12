@@ -99,7 +99,7 @@
 //      three 64-hex values joined with ';' (NA2), and its
 //      `pairwiseReportShas`, when present and non-null, exactly two
 //      (round 5, N5b — the same shape rule for the pairwise
-//      citation set). Round 5 (N1/N2/N3/N5/N6) completed the
+//      citation set). Round 5 (N1/N2/N3/N5/N6) extended the
 //      shared verifier's field coverage inside verifyGradedLine:
 //      the graded shape requires gate exactly "pass" (N1), the
 //      line's evidence must equal the cited report's derived
@@ -107,6 +107,18 @@
 //      a pairwise transcription re-derives from its two artifacts
 //      — swap proof and verdict, tie rule included (N5), and
 //      expert evidence transcribes like expert scores (N6).
+//      Round 6 (X1–X5): the graded line's own cited gate legs
+//      verify on disk against their stored shas (X2), juror and
+//      expert artifacts bind the line's tokensHash (X3/X4), the
+//      line's notRegraded transcribes its artifact's not-regraded
+//      header set (X5) — and rule 6 now covers CROSSCHECK lines
+//      too (X1): a crosscheck line verifies through the shared
+//      verifyCrosscheckLine (verdict re-derived from its own
+//      counts, checker on the record-time allowlist, independence
+//      basis, and — on the CLI path — its cited report existing
+//      inside design/), because land and prepare act on the latest
+//      stored verdict and a hand-appended "clear" line over a
+//      genuine blocked verdict was verified by nobody.
 //      A scored JURY
 //      round line's jury verifies as a jury (B2 — the recorded
 //      median is no longer trusted on the absolute citation alone):
@@ -398,6 +410,32 @@ export function checkRunLogLine(line, ctx) {
             }
           }
         }
+      }
+    }
+  }
+  // Rule 6, crosscheck half (round 6, X1): a crosscheck line is a
+  // verdict other consumers act on (land, prepare's cross-check
+  // bit), and before round 6 this checker never looked at one — a
+  // hand-appended "clear" line whose own counts derive "blocked",
+  // naming an unlisted checker or a report that does not exist,
+  // passed here while land and prepare trusted it. The check is
+  // delegated to the SAME shared verifyCrosscheckLine: with a
+  // project root the full verification runs (verdict re-derived
+  // from the counts, checker allowlist, independence basis, cited
+  // report on disk inside design/); without a root the line-local
+  // halves run (derivation + shapes — there is no project to
+  // resolve the report against). Fail-closed like the citation
+  // half: with a root and no sibling module, the line is
+  // unverifiable and is flagged, never passed.
+  if (obj.kind === 'crosscheck') {
+    if (!judgeMod) {
+      if (ctx && ctx.projectRoot) {
+        problems.push('crosscheck line cannot be verified — judge-report parser unavailable (D15)');
+      }
+    } else {
+      const cv = judgeMod.verifyCrosscheckLine(ctx && ctx.projectRoot ? ctx.projectRoot : null, obj);
+      if (!cv.ok) {
+        problems.push(`crosscheck line does not verify: ${cv.reasons.join('; ')} (D15)`);
       }
     }
   }

@@ -1020,8 +1020,9 @@ function citedLegsOf(a) {
 // ---------------------------------------------------------------------
 // READ-PATH VERIFICATION (red-team round 3; round 4: SHARED, not
 // mirrored): the verifiers themselves — verifyGradedLine,
-// verifyJuryLine, verifyExpertCitations, isVerifiedGradedRound,
-// isGenuineNoGradeRound — live in judge-report.mjs, next to the
+// verifyJuryLine, verifyExpertCitations, verifyCrosscheckLine,
+// isVerifiedGradedRound, isGenuineNoGradeRound — live in
+// judge-report.mjs, next to the
 // parser, and are imported from there (judgeReportMod, above).
 // judge-report.mjs is import-safe; this file is not (its CLI runs
 // at top level), which is why the shared home is there and not
@@ -1047,6 +1048,17 @@ function isVerifiedGradedRound(project, r) {
 
 function isGenuineNoGradeRound(project, r) {
   return judgeReportMod ? judgeReportMod.isGenuineNoGradeRound(project, r) : false;
+}
+
+// Round 6 (X1): the stored-crosscheck verifier land consults — the
+// same shared verifyCrosscheckLine judge-report.mjs's prepare and
+// gate/runlog-check.mjs use. Fail-closed like the wrappers above:
+// with no judge-report module, no stored crosscheck verdict
+// verifies, so land refuses rather than trusting the line.
+function verifyCrosscheckLine(project, r) {
+  return judgeReportMod
+    ? judgeReportMod.verifyCrosscheckLine(project, r)
+    : { ok: false, reasons: ['the judge-report parser (judge-report.mjs, next to run-log.mjs) is unavailable — a stored cross-check verdict cannot be verified without it'] };
 }
 
 // Validate one cited judge artifact. `expect`:
@@ -1868,6 +1880,19 @@ if (cmd === 'record') {
   const latest = checks[checks.length - 1];
   if (!latest) {
     console.error(`run-log: REJECTED — land for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} has no cross-check verdict in the log. Record it first (run-log.mjs crosscheck ...), then land. No entry written.`);
+    process.exit(2);
+  }
+  // Round 6 (X1): the latest verdict must also VERIFY as a record
+  // run-log.mjs could have written (verifyCrosscheckLine: verdict
+  // re-derived from the line's own counts, checker on the allowlist,
+  // independence basis, cited report existing inside design/). Before
+  // round 6 land trusted the stored verdict, so one hand-appended
+  // "clear" line over a genuine blocked verdict landed the slice.
+  // There is no fallback to an earlier line: the latest line is the
+  // verdict of record, and an unverifiable one refuses the land.
+  const ccVerify = verifyCrosscheckLine(args.project, latest);
+  if (!ccVerify.ok) {
+    console.error(`run-log: REJECTED — the latest cross-check record for slice ${slice || '(no slice)'}${round !== null ? ` (round ${round})` : ''} does not verify: ${ccVerify.reasons.join('; ')}. Land acts only on a cross-check record that verifies as written. No entry written.`);
     process.exit(2);
   }
   if (latest.verdict !== 'clear') {
