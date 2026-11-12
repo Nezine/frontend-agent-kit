@@ -36,6 +36,15 @@ dealt-moment budget with scroll patterns, GetLayers effects, and
 animated icons, while a still Grainient gradient is a background token
 (not a dealt moment), and a display typeface and a hero structure cost no
 budget.
+The reference-sites backbone lives in
+`references/reference-sites.md`: ten canonical sites mapped to the aspect
+each teaches best (animations, onboarding, UI, typography, minimalism,
+search and filters, art direction, dashboards, landing layouts,
+micro-interactions) — an optional step-1 reference direction, used only
+when the brief names no references of its own, never mandatory, never a
+grading input. Never brief "modern and professional" with no references:
+pick the aspects the brief needs and learn from the sites that teach them;
+adapt the principles to the brand, never copy a site.
 The 5 structural variants + 1 break-frame variant (6 total) as concrete token directions live in
 `references/variant-briefs.md`; the variant scoring procedure
 (blind, random order, play first) lives in
