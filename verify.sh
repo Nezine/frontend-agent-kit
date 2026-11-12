@@ -993,6 +993,11 @@ fi
 rl_proj="$work/runlog-proj"
 mkdir -p "$rl_proj/design"
 cp "$work/tokens.css" "$rl_proj/design/tokens.css"
+# D15 adjudication: the setup cross-checks below cite design/cc.md as
+# their report, and the D15 crosscheck --report rule requires the cited
+# report to exist (a real, non-empty file inside design/) before the
+# verdict is recorded — so the shared fixture creates it once, here.
+printf '# Cross-check report (verify fixture)\n\nIndependent security cross-check of slice d12-test: 0 severe, 0 warning — verdict clear.\n' > "$rl_proj/design/cc.md"
 run_log_mjs=""
 while IFS= read -r sd || [[ -n "$sd" ]]; do
   cand="$sd/frontend-kit/scripts/run-log.mjs"
@@ -1211,6 +1216,7 @@ mkdir -p "$work/rl-outdesign"
 printf 'GATE RESULT: PASS\n' > "$work/rl-outdesign/gate-leg1.log"
 printf '===== gate verdict: GREEN =====\n' > "$work/rl-outdesign/gate-leg2.log"
 printf ':root{}\n' > "$work/rl-outdesign/tokens.css"
+printf '# Cross-check report (verify fixture)\n\nIndependent security cross-check of slice d12-test: 0 severe, 0 warning — verdict clear.\n' > "$work/rl-outdesign/cc.md"
 touch -d '2026-11-11 12:00' "$work/rl-outdesign/tokens.css"
 if mv "$rl_proj/design" "$work/rl-design-backup" && ln -s "$work/rl-outdesign" "$rl_proj/design" 2>/dev/null; then
   rl_before="$(rl_lines)"
@@ -1221,21 +1227,31 @@ if mv "$rl_proj/design" "$work/rl-design-backup" && ln -s "$work/rl-outdesign" "
   else
     ok "run-log refuses record --gate pass with design/ symlinked outside the project (exit 2, nothing written)"
   fi
-  # (13b) R1 on land: same shape, after a clear cross-check recorded
-  # through the symlinked design/ (the cross-check itself needs no
-  # validator, so it lands in the outside dir's log, where land reads it).
+  # (13b) R1 on land + D15 on crosscheck: same symlinked design/. Under
+  # D15 the cross-check itself is refused here — its report must resolve
+  # inside the project's real design/ (the cc.md in the outside dir
+  # exists, so the refusal is the containment rule, not a missing file).
+  # Land needs no seeded verdict to reach its refusal: land validates
+  # the gate artifacts — which refuse a design/ outside the project —
+  # before it reads any cross-check verdict. Both refusals are asserted
+  # (exit 2, containment message, nothing written) as this one case.
+  rl_before="$(rl_lines)"
   if node "$run_log_mjs" --project "$rl_proj" crosscheck --slice d12-test --severe 0 --warning 0 --report design/cc.md --checker security-expert --basis "fresh context, no production history" >"$work/runlog-t13b-cc.log" 2>&1; then
-    rl_before="$(rl_lines)"
-    if node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t13b.log" 2>&1; then
-      fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project exited 0 — the land path must not bypass the design/ refusal (exit 2)"
-    elif [[ "$(rl_lines)" != "$rl_before" ]]; then
-      fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project wrote to the run log — a refused entry must write nothing"
-    else
-      ok "run-log refuses land --gate pass with design/ symlinked outside the project (exit 2, nothing written)"
-    fi
-  else
-    fail "run-log refusal (D13): setup cross-check failed for the symlinked-design/ land case — see $work/runlog-t13b-cc.log"
+    fail "run-log refusal (D15): crosscheck --report design/cc.md with design/ symlinked outside the project exited 0 — a cross-check report must resolve inside the project's design/ (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D15): crosscheck with design/ symlinked outside the project wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "resolves outside the project" "$work/runlog-t13b-cc.log"; then
+    fail "run-log refusal (D15): crosscheck with design/ symlinked outside the project exited 2 but not via the design/ containment message — see $work/runlog-t13b-cc.log"
     cat "$work/runlog-t13b-cc.log" >&2 || true
+  elif node "$run_log_mjs" --project "$rl_proj" land --slice d12-test --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/runlog-t13b.log" 2>&1; then
+    fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project exited 0 — the land path must not bypass the design/ refusal (exit 2)"
+  elif [[ "$(rl_lines)" != "$rl_before" ]]; then
+    fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "resolves outside the project" "$work/runlog-t13b.log"; then
+    fail "run-log refusal (D13): land --gate pass with design/ symlinked outside the project exited 2 but not via the design/ containment message — see $work/runlog-t13b.log"
+    cat "$work/runlog-t13b.log" >&2 || true
+  else
+    ok "run-log refuses crosscheck and land --gate pass with design/ symlinked outside the project (exit 2, containment message, nothing written)"
   fi
   rm -f "$rl_proj/design"
   mv "$work/rl-design-backup" "$rl_proj/design"
@@ -2621,6 +2637,1658 @@ elif ! grep -q "contains its leg's FAIL verdict" "$work/runlog-t83.log"; then
 else
   ok "run-log refuses record --gate pass with a U+13441 FAIL line alongside a real PASS line (exit 2, FAIL-verdict message, nothing written)"
 fi
+
+# --- 5c. run-log judge-artifact mechanism (D15, GAP-13) --------------------
+# A graded record must TRANSCRIBE a judge artifact the orchestrator
+# prepared (judge-report.mjs prepare) and an independent judge filled
+# in on disk — scores, evidence, pairwise/jury verdicts and expert
+# scores with no artifact, or not matching the artifact, are REFUSED
+# (exit 2, nothing written). §5b above is NOT touched by this section.
+# Its crosscheck cases cite design/cc.md: the §5b fixtures create that
+# report file (the shared setup, and case (13)'s outside dir for its
+# symlinked-design/ cases), and case (13b) asserts the D15 containment
+# refusal for a crosscheck — and the D13 refusal for a land — behind a
+# symlinked design/ (see the D15 entry in references/decisions.md).
+# §5c uses real report files throughout.
+jr_proj="$work/judge-proj"
+mkdir -p "$jr_proj/design/screenshots" "$jr_proj/design/screenshots-prev" "$jr_proj/design/judge" "$jr_proj/design/crosscheck"
+cp "$work/tokens.css" "$jr_proj/design/tokens.css"
+cp "$jr_proj/design/tokens.css" "$work/tokens-d15-orig.css"
+printf '<html><body><main id="main"><h1>Learn</h1></main></body></html>\n' > "$jr_proj/design/page.html"
+cp "$jr_proj/design/page.html" "$work/page-d15-orig.html"
+for v in 1440 768 390; do
+  printf 'PNG-%s-A' "$v" > "$jr_proj/design/screenshots/$v.png"
+  printf 'PNG-%s-B' "$v" > "$jr_proj/design/screenshots-prev/$v.png"
+done
+printf 'GATE RESULT: PASS\n' > "$jr_proj/design/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$jr_proj/design/gate-leg2.log"
+for r in 1 2 3 4 5 6 7 9; do printf 'cross-check report r%s\n' "$r" > "$jr_proj/design/crosscheck/round-$r.md"; done
+touch -d '2026-11-11 12:00' "$jr_proj/design/tokens.css"
+touch -d '2026-11-11 12:01' "$jr_proj/design/page.html"
+touch -d '2026-11-11 12:02' "$jr_proj/design/screenshots/"*.png "$jr_proj/design/screenshots-prev/"*.png "$jr_proj/design/gate-leg1.log" "$jr_proj/design/gate-leg2.log" "$jr_proj/design/crosscheck/"*.md
+judge_report_mjs="$(dirname "$run_log_mjs")/judge-report.mjs"
+[[ -f "$judge_report_mjs" ]] || judge_report_mjs="$root/skills/frontend-kit/scripts/judge-report.mjs"
+runlog_check_mjs="$(dirname "$run_log_mjs")/gate/runlog-check.mjs"
+[[ -f "$runlog_check_mjs" ]] || runlog_check_mjs="$root/skills/frontend-kit/scripts/gate/runlog-check.mjs"
+jr_log="$jr_proj/design/run-log.jsonl"
+jr_lines() { if [[ -f "$jr_log" ]]; then grep -c . "$jr_log" || true; else printf '0'; fi; }
+jr_basis="fresh context, no production history"
+jr_legs="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html"
+# Setup: cross-check records (the gate/cross-check bits prepare derives
+# from); round 9 sits on its own slice for the land case (32).
+jr_cc_ok=1
+for r in 1 2 3 4 5 6 7; do
+  node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/judge-cc-$r.log" 2>&1 || jr_cc_ok=0
+done
+node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15-land --round 9 --severe 0 --warning 0 --report design/crosscheck/round-9.md --checker security-expert --basis "$jr_basis" >"$work/judge-cc-9.log" 2>&1 || jr_cc_ok=0
+if [[ "$jr_cc_ok" != 1 ]]; then
+  fail "judge-artifact (D15): setup cross-check records failed — the §5c cases below will cascade; see $work/judge-cc-*.log"
+fi
+# jr_reject <name> <logfile> <pattern> <cmd...>: the command must exit
+# non-zero (run-log refusals are exit 2), write nothing, and refuse via
+# a message containing <pattern>.
+jr_reject() {
+  local name="$1" logf="$2" pat="$3"; shift 3
+  local before; before="$(jr_lines)"
+  if "$@" >"$logf" 2>&1; then
+    fail "judge-artifact (D15): $name exited 0 — must be refused (exit 2)"
+  elif [[ "$(jr_lines)" != "$before" ]]; then
+    fail "judge-artifact (D15): $name wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "$pat" "$logf"; then
+    fail "judge-artifact (D15): $name was refused but not via the expected message (/$pat/) — see $logf"
+    cat "$logf" >&2 || true
+  else
+    ok "run-log refuses $name (exit 2, nothing written)"
+  fi
+}
+jr_prep() { # round kind [extra prepare args...] — expert kinds are stamped by their expert; no --grader.
+  local round="$1" kind="$2"; shift 2
+  local grader_args=(--grader judge-subagent)
+  if [[ "$kind" == expert-* ]]; then grader_args=(); fi
+  if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round "$round" --kind "$kind" "${grader_args[@]}" --brief-type landing --mode full --page design/page.html "$@" >"$work/judge-prep-$round-$kind.log" 2>&1; then
+    fail "judge-artifact (D15): prepare round $round kind $kind failed — dependent cases will cascade; see $work/judge-prep-$round-$kind.log"
+    cat "$work/judge-prep-$round-$kind.log" >&2 || true
+  fi
+}
+# jr_fill_scores <file> <t> <l> <c> <s>: fill a skeleton the way a judge
+# would — basis in, PENDING out, evidence + scores in the table.
+jr_fill_scores() {
+  sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+    -e 's/— grader: \([^ ]*\) (?)/— grader: \1 (fresh context, no production history)/' \
+    -e "s/| Type | ? | ? |/| Type | hero heading 64px vs ref 1 | $2 |/" \
+    -e "s/| Layout | ? | ? |/| Layout | section gap 96px vs ref 1 | $3 |/" \
+    -e "s/| Colour | ? | ? |/| Colour | accent button contrast 4.6 vs ref 1 | $4 |/" \
+    -e "s/| Space | ? | ? |/| Space | card padding 32px vs ref 1 | $5 |/" \
+    -e 's/^Fix order: ?$/Fix order: Layout first, then Type./' "$1"
+  touch -d '2026-11-11 12:05' "$1"
+}
+jr_fill_pairwise() { # file keep
+  sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+    -e 's/pairwise call \(.\) of 2 (?)/pairwise call \1 of 2 (fresh context, no production history)/' \
+    -e 's/^Defects in A: ?$/Defects in A: hero heading clips 2px at 390px/' \
+    -e 's/^Defects in B: ?$/Defects in B: section gap 12px off scale/' \
+    -e "s/^Pairwise: keep ? — ?\$/Pairwise: keep $2 — hero heading fits at 390px, gap 96px on scale/" "$1"
+  touch -d '2026-11-11 12:05' "$1"
+}
+# (1) graded record with NO --judge-report → exit 2 (the C-memo escape:
+# self-asserted scores on a green gate).
+jr_reject "graded record without --judge-report" "$work/judge-t1.log" "judge-report is required" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --gate pass $jr_legs
+# (2) --judge-report citing a file that does not exist → exit 2.
+jr_reject "record citing a missing judge artifact" "$work/judge-t2.log" "does not exist" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-42.md --gate pass $jr_legs
+# (3) --judge-report as an ABSOLUTE path → exit 2 (relative-to-project only).
+jr_prep 1 absolute
+jr_reject "record citing an absolute-path judge artifact" "$work/judge-t3.log" "must be a path relative" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report "$jr_proj/design/judge/round-1.md" --gate pass $jr_legs
+# (4) --judge-report citing a SYMLINK → exit 2.
+ln -sf round-1.md "$jr_proj/design/judge/link.md"
+jr_reject "record citing a symlinked judge artifact" "$work/judge-t4.log" "is a symlink" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/link.md --gate pass $jr_legs
+# (5) --judge-report citing an EMPTY file → exit 2.
+: > "$jr_proj/design/judge/round-8.md"
+jr_reject "record citing an empty judge artifact" "$work/judge-t5.log" "is empty" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 8 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-8.md --gate pass $jr_legs
+# (6) the UNFILLED prepare skeleton (PENDING + ? cells) → exit 2.
+jr_reject "record citing the unfilled judge skeleton" "$work/judge-t6.log" "PENDING" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $jr_legs
+jr_fill_scores "$jr_proj/design/judge/round-1.md" 4 4 4 4
+# (7) round MISMATCH: the round-1 artifact cited for round 2 → exit 2.
+jr_reject "record citing an artifact of another round" "$work/judge-t7.log" "is a report for round" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $jr_legs
+# (8) HEADLINE POSITIVE: prepare -> judge fills -> record exits 0 and the
+# stored line transcribes the artifact (judgeReport + judgeReportSha +
+# pageSha + the derived evidence, cells joined with '; ').
+# KNOWN LIMITATION, stated not hidden: this harness fills the artifact
+# BY HAND — a builder-authored judge-shaped artifact that is internally
+# consistent records exactly like a real judge's (D15 residual B1). The
+# mechanism's bar is that self-grading now requires deliberate, on-disk,
+# internally-consistent forgery that a QC re-grade or an audit of
+# design/judge/ can contradict; it does not and cannot prove authorship.
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $jr_legs --outcome stopped >"$work/judge-t8.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"judgeReport":"design/judge/round-1.md"' && tail -n 1 "$jr_log" | grep -q '"judgeReportSha":"[0-9a-f]\{64\}"' && tail -n 1 "$jr_log" | grep -q '"pageSha":"[0-9a-f]\{64\}"' && tail -n 1 "$jr_log" | grep -q '"evidence":"hero heading 64px vs ref 1; section gap 96px vs ref 1; accent button contrast 4.6 vs ref 1; card padding 32px vs ref 1"'; then
+    ok "run-log records a graded round from a filled judge artifact (judgeReport/judgeReportSha/pageSha stored, evidence derived from the artifact cells)"
+  else
+    fail "judge-artifact (D15): headline positive recorded but the stored line lacks judgeReport/judgeReportSha/pageSha or the derived evidence"
+  fi
+else
+  fail "judge-artifact (D15): headline positive (prepare -> fill -> record) failed — see $work/judge-t8.log"
+  cat "$work/judge-t8.log" >&2 || true
+fi
+# (9) REUSE of the same artifact for a second grade → exit 2 (single-use).
+jr_reject "record reusing a judge artifact" "$work/judge-t9.log" "already been cited" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $jr_legs
+# (10) a NO-GRADE record citing a judge artifact → exit 2.
+jr_reject "no-grade record citing a judge artifact" "$work/judge-t10.log" "cites no judge artifact" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader none --scores none --gate fail --judge-report design/judge/round-1.md
+# (11) allowed grader + --scores none → exit 2.
+jr_reject "allowed grader with --scores none" "$work/judge-t11.log" "goes with --scores" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores none --gate fail
+# (12) scores on a FAILED gate → exit 2 (no judge is spawned on red).
+jr_reject "scores recorded on a failed gate" "$work/judge-t12.log" "requires --gate pass" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate fail
+# Round 2 artifact for the mismatch family (13)–(17).
+jr_prep 2 absolute
+jr_fill_scores "$jr_proj/design/judge/round-2.md" 3 3 3 3
+# (13) SCORE mismatch: artifact says 3,3,3,3, flags claim 4,4,4,4 → exit 2.
+jr_reject "record whose --scores differ from the artifact" "$work/judge-t13.log" "judge artifact records" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-2.md --gate pass $jr_legs
+# (14) GRADER mismatch: artifact grader judge-subagent, flag other-model → exit 2.
+jr_reject "record whose --grader differs from the artifact" "$work/judge-t14.log" "names grader" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader other-model --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $jr_legs
+# (15) BASIS mismatch: the flag basis is not the artifact's basis → exit 2.
+jr_reject "record whose --basis differs from the artifact" "$work/judge-t15.log" "different independence basis" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "different agent, no production history of this build" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $jr_legs
+# (16) PAGE EDITED after judging (gate legs re-run, so only the artifact's
+# page hash can catch it) → exit 2.
+printf '<html><body><main id="main"><h1>EDITED</h1></main></body></html>\n' > "$jr_proj/design/page.html"
+touch -d '2026-11-11 12:06' "$jr_proj/design/page.html"
+touch -d '2026-11-11 12:07' "$jr_proj/design/gate-leg1.log" "$jr_proj/design/gate-leg2.log"
+jr_reject "record after the page was edited post-judging" "$work/judge-t16.log" "page changed after judging" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $jr_legs
+cp "$work/page-d15-orig.html" "$jr_proj/design/page.html"
+touch -d '2026-11-11 12:01' "$jr_proj/design/page.html"
+touch -d '2026-11-11 12:02' "$jr_proj/design/gate-leg1.log" "$jr_proj/design/gate-leg2.log"
+# (17) STALE artifact: the report predates the current page → exit 2.
+touch -d '2026-11-11 11:59' "$jr_proj/design/judge/round-2.md"
+jr_reject "record citing a judge artifact older than the page" "$work/judge-t17.log" "is older than" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $jr_legs
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-2.md"
+# Round 2 positive (the mismatches above must not have consumed it).
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $jr_legs >"$work/judge-t17b.log" 2>&1 && [[ "$(jr_lines)" == "$((jr_before + 1))" ]]; then
+  ok "run-log records round 2 once the flags transcribe the artifact (3,3,3,3)"
+else
+  fail "judge-artifact (D15): round 2 positive record failed — see $work/judge-t17b.log"
+  cat "$work/judge-t17b.log" >&2 || true
+fi
+# (18) TOKENS EDITED after judging: the artifact's tokens hash no longer
+# matches the record's tokens hash → exit 2; restored tokens record fine.
+jr_prep 3 absolute
+jr_fill_scores "$jr_proj/design/judge/round-3.md" 4 4 4 4
+printf ':root{--color-canvas:#000}\n' >> "$jr_proj/design/tokens.css"
+touch -d '2026-11-11 12:00' "$jr_proj/design/tokens.css"
+jr_reject "record after tokens.css was edited post-judging" "$work/judge-t18.log" "binds to tokens-sha256" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 3 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-3.md --gate pass $jr_legs
+cp "$work/tokens-d15-orig.css" "$jr_proj/design/tokens.css"
+touch -d '2026-11-11 12:00' "$jr_proj/design/tokens.css"
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 3 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-3.md --gate pass $jr_legs >"$work/judge-t18b.log" 2>&1 && [[ "$(jr_lines)" == "$((jr_before + 1))" ]]; then
+  ok "run-log records round 3 with the tokens restored (hash binding is content, not assertion)"
+else
+  fail "judge-artifact (D15): round 3 positive record failed — see $work/judge-t18b.log"
+  cat "$work/judge-t18b.log" >&2 || true
+fi
+# (19) feedback --score-after with NO regrade artifact → exit 2.
+jr_reject "feedback --score-after without a regrade artifact" "$work/judge-t19.log" "judge-report is required" \
+  node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 3 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis"
+# (20) feedback --score-after with a caller --evidence → exit 2 (derived only).
+jr_reject "feedback --score-after with caller-asserted --evidence" "$work/judge-t20.log" "not accepted with --score-after" \
+  node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 3 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-3-regrade.md --evidence "hero heading 64px vs ref 1"
+# (21) feedback WITH a filled regrade artifact → exit 0, artifact cited.
+jr_prep 3 regrade --grader other-model
+jr_fill_scores "$jr_proj/design/judge/round-3-regrade.md" 4 4 4 4
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 3 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-3-regrade.md >"$work/judge-t21.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"judgeReport":"design/judge/round-3-regrade.md"' && tail -n 1 "$jr_log" | grep -q '"judgeReportSha":"[0-9a-f]\{64\}"'; then
+    ok "run-log records feedback --score-after from a regrade artifact (judgeReport/judgeReportSha stored)"
+  else
+    fail "judge-artifact (D15): feedback positive recorded but the stored line lacks the regrade artifact citation"
+  fi
+else
+  fail "judge-artifact (D15): feedback with a regrade artifact failed — see $work/judge-t21.log"
+  cat "$work/judge-t21.log" >&2 || true
+fi
+# Jury on round 4: absolute + three juror artifacts (families fam1..fam3).
+jr_prep 4 absolute
+jr_prep 4 jury --index 1 --family fam1
+jr_prep 4 jury --index 2 --family fam2
+jr_prep 4 jury --index 3 --family fam3
+jr_fill_scores "$jr_proj/design/judge/round-4.md" 4 4 4 4
+jr_fill_scores "$jr_proj/design/judge/round-4-jury-1.md" 4 4 4 4
+jr_fill_scores "$jr_proj/design/judge/round-4-jury-2.md" 4 3 4 4
+jr_fill_scores "$jr_proj/design/judge/round-4-jury-3.md" 3 4 4 4
+# (22) jury with only TWO --judge-reports → exit 2.
+jr_reject "jury record citing only two juror artifacts" "$work/judge-t22.log" "one report per juror" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 4 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-4.md --gate pass $jr_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "4,4,4,4;4,3,4,4;3,4,4,4" --judge-reports design/judge/round-4-jury-1.md,design/judge/round-4-jury-2.md
+# (23) jury VOTES that do not match the artifacts' tables → exit 2.
+jr_reject "jury record whose votes differ from the artifacts" "$work/judge-t23.log" "do not match the jury artifacts" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 4 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-4.md --gate pass $jr_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "5,5,5,5;4,3,4,4;3,4,4,4" --judge-reports design/judge/round-4-jury-1.md,design/judge/round-4-jury-2.md,design/judge/round-4-jury-3.md
+# (24) jury POSITIVE: votes transcribed, median derived, shas stored.
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 4 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-4.md --gate pass $jr_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "4,4,4,4;4,3,4,4;3,4,4,4" --judge-reports design/judge/round-4-jury-1.md,design/judge/round-4-jury-2.md,design/judge/round-4-jury-3.md >"$work/judge-t24.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"juryReportShas":"[0-9a-f]\{64\};[0-9a-f]\{64\};[0-9a-f]\{64\}"'; then
+    ok "run-log records a jury round transcribed from three juror artifacts (juryReportShas stored)"
+  else
+    fail "judge-artifact (D15): jury positive recorded but the stored line lacks juryReportShas"
+  fi
+else
+  fail "judge-artifact (D15): jury positive record failed — see $work/judge-t24.log"
+  cat "$work/judge-t24.log" >&2 || true
+fi
+# Pairwise on round 5: absolute (current page = challenger) + two
+# pairwise artifacts, the second with A/B swapped.
+jr_prep 5 absolute
+jr_prep 5 pairwise --index 1 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
+jr_prep 5 pairwise --index 2 --shots-a design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png --shots-b design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png
+jr_fill_scores "$jr_proj/design/judge/round-5.md" 4 4 4 4
+jr_fill_pairwise "$jr_proj/design/judge/round-5-pairwise-1.md" A
+jr_fill_pairwise "$jr_proj/design/judge/round-5-pairwise-2.md" B
+# (25) pairwise with only ONE report → exit 2.
+jr_reject "pairwise record citing only one pairwise artifact" "$work/judge-t25.log" "one report per pairwise judge call" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 5 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-5.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-reports design/judge/round-5-pairwise-1.md
+# (26) pairwise citing the SAME report twice (not a swapped pair) → exit 2.
+jr_reject "pairwise record citing the same artifact twice" "$work/judge-t26.log" "is the same file as" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 5 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-5.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-reports design/judge/round-5-pairwise-1.md,design/judge/round-5-pairwise-1.md
+# (27) pairwise SPLIT: both calls keep the CURRENT page's set in their
+# own A/B terms edited to disagree after derivation → exit 2 (a tie).
+sed -i 's/^Pairwise: keep B —/Pairwise: keep A —/' "$jr_proj/design/judge/round-5-pairwise-2.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-5-pairwise-2.md"
+jr_reject "pairwise record whose artifacts disagree after derivation" "$work/judge-t27.log" "disagree after A/B derivation" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 5 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-5.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-reports design/judge/round-5-pairwise-1.md,design/judge/round-5-pairwise-2.md
+sed -i 's/^Pairwise: keep A —/Pairwise: keep B —/' "$jr_proj/design/judge/round-5-pairwise-2.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-5-pairwise-2.md"
+# (28) pairwise POSITIVE: both calls derive keep-challenger; flag agrees.
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 5 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-5.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-agrees yes --pairwise-reports design/judge/round-5-pairwise-1.md,design/judge/round-5-pairwise-2.md >"$work/judge-t28.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"pairwiseReportShas":"[0-9a-f]\{64\};[0-9a-f]\{64\}"'; then
+    ok "run-log records a pairwise verdict derived from two swapped pairwise artifacts (pairwiseReportShas stored)"
+  else
+    fail "judge-artifact (D15): pairwise positive recorded but the stored line lacks pairwiseReportShas"
+  fi
+else
+  fail "judge-artifact (D15): pairwise positive record failed — see $work/judge-t28.log"
+  cat "$work/judge-t28.log" >&2 || true
+fi
+# Experts on round 6 (a no-grade record: expert scores are allowed there
+# WITH their artifacts).
+# (29) expert score with NO expert artifact → exit 2.
+jr_reject "expert score without an expert artifact" "$work/judge-t29.log" "expert-motion-report is required" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 6 --grader none --scores none --gate fail --expert-motion 4 --expert-motion-evidence "hero reveal travels 24px in 220ms"
+jr_prep 6 expert-motion
+sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+  -e 's/— grader: \([^ ]*\) (?)/— grader: \1 (fresh context, no production history)/' \
+  -e 's/^Motion: ? (motion-expert) — ?$/Motion: 4 (motion-expert) — hero reveal travels 24px in 220ms/' \
+  "$jr_proj/design/judge/round-6-expert-motion.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-6-expert-motion.md"
+# (30) expert score MISMATCH: artifact says 4, flag claims 5 → exit 2.
+jr_reject "expert score differing from the expert artifact" "$work/judge-t30.log" "not the cited" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 6 --grader none --scores none --gate fail --expert-motion 5 --expert-motion-evidence "hero reveal travels 24px in 220ms" --expert-motion-report design/judge/round-6-expert-motion.md
+# (31) expert POSITIVE on the no-grade record.
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 6 --grader none --scores none --gate fail --expert-motion 4 --expert-motion-evidence "hero reveal travels 24px in 220ms" --expert-motion-report design/judge/round-6-expert-motion.md >"$work/judge-t31.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"expertMotionReportSha":"[0-9a-f]\{64\}"'; then
+    ok "run-log records an expert score transcribed from its expert artifact (expertMotionReportSha stored)"
+  else
+    fail "judge-artifact (D15): expert positive recorded but the stored line lacks expertMotionReportSha"
+  fi
+else
+  fail "judge-artifact (D15): expert positive record failed — see $work/judge-t31.log"
+  cat "$work/judge-t31.log" >&2 || true
+fi
+# (32) LAND with a clear cross-check + green gate but NO round record
+# for the land's round → exit 2 (D15 land precondition).
+jr_reject "land with no round record for its round" "$work/judge-t32.log" "has no round record" \
+  node "$run_log_mjs" --project "$jr_proj" land --slice d15-land --round 9 --gate pass $jr_legs
+# (33) a judge artifact containing a REFUSAL line is void → exit 2.
+jr_prep 7 absolute
+jr_fill_scores "$jr_proj/design/judge/round-7.md" 4 4 4 4
+printf 'Not an independent judge in this context; grade is gate green, vision not available.\n' >> "$jr_proj/design/judge/round-7.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-7.md"
+jr_reject "record citing a void (refusal-carrying) judge artifact" "$work/judge-t33.log" "refusal line" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-7.md --gate pass $jr_legs
+# (34) the same refusal line with a ZERO-WIDTH SPACE inserted inside it
+# is still a refusal line (the void check strips invisibles) → exit 2.
+sed -i "s/^Not an independent judge/Not\xe2\x80\x8b an independent judge/" "$jr_proj/design/judge/round-7.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-7.md"
+jr_reject "record citing a judge artifact with a ZWSP-split refusal line" "$work/judge-t34.log" "refusal line" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-7.md --gate pass $jr_legs
+# (35) UNICODE INSERTION, lenient side: a ZWSP inside the Round line's
+# grader label is stripped by the parser and the record succeeds (the
+# §5b note's leniency asymmetry, mirrored for judge artifacts).
+jr_prep 7 cheap
+jr_fill_scores "$jr_proj/design/judge/round-7-cheap.md" 4 4 4 4
+sed -i 's/— grader: judge-subagent (/— grader: judge-\xe2\x80\x8bsubagent (/' "$jr_proj/design/judge/round-7-cheap.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-7-cheap.md"
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-7-cheap.md --gate pass $jr_legs >"$work/judge-t35.log" 2>&1 && [[ "$(jr_lines)" == "$((jr_before + 1))" ]]; then
+  ok "run-log records from a judge artifact with a ZWSP inserted in the Round-line grader label (invisible insertion stripped, lenient)"
+else
+  fail "judge-artifact (D15): ZWSP-in-Round-line positive record failed — see $work/judge-t35.log"
+  cat "$work/judge-t35.log" >&2 || true
+fi
+# (36) crosscheck --report citing a file that does not exist → exit 2
+# (before D15 the path was never stat'ed and the verdict recorded).
+jr_reject "crosscheck citing a nonexistent report file" "$work/judge-t36.log" "report file does not exist" \
+  node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15 --round 1 --severe 0 --warning 0 --report design/crosscheck/NEVER.md --checker security-expert --basis "$jr_basis"
+# (37) runlog-check structural rule (D15): the clean §5c log passes; a
+# copy with a hand-appended scored line (grader + scores, no artifact
+# citation) FAILS — the downstream tripwire for the escape.
+if node "$runlog_check_mjs" "$jr_log" >"$work/judge-t37a.log" 2>&1; then
+  ok "runlog-check passes the artifact-backed §5c run log"
+else
+  fail "judge-artifact (D15): runlog-check failed the clean §5c log — see $work/judge-t37a.log"
+  cat "$work/judge-t37a.log" >&2 || true
+fi
+cp "$jr_log" "$work/judge-fake.jsonl"
+printf '%s\n' '{"kind":"round","round":99,"grader":"judge-subagent","scores":{"type":5,"layout":5,"colour":5,"space":5},"gate":"pass"}' >> "$work/judge-fake.jsonl"
+if node "$runlog_check_mjs" "$work/judge-fake.jsonl" >"$work/judge-t37b.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed a hand-appended scored line with no judge artifact citation — the structural tripwire is missing"
+else
+  ok "runlog-check fails a hand-appended scored line with no judge artifact citation (D15 structural rule)"
+fi
+# --- QC-round cases (38)–(42): expert page binding (F1), the
+# not-swapped pairwise pair (F4a), the unicode-SUBSTITUTION boundary
+# (F4b). Setup: a second built page + a round-9 cross-check record
+# (round 8's judge dir already holds case (5)'s empty file, and
+# prepare never overwrites, so the graded family below uses round 9).
+printf '<html><body><main id="main"><h1>Other page</h1></main></body></html>\n' > "$jr_proj/design/page2.html"
+touch -d '2026-11-11 12:01' "$jr_proj/design/page2.html"
+printf 'cross-check report r9\n' > "$jr_proj/design/crosscheck/round-9.md"
+touch -d '2026-11-11 12:02' "$jr_proj/design/crosscheck/round-9.md"
+if ! node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15 --round 9 --severe 0 --warning 0 --report design/crosscheck/round-9.md --checker security-expert --basis "$jr_basis" >"$work/judge-cc-9b.log" 2>&1; then
+  fail "judge-artifact (D15): QC-round setup cross-check for round 9 failed — cases (38)–(42) will cascade; see $work/judge-cc-9b.log"
+  cat "$work/judge-cc-9b.log" >&2 || true
+fi
+jr_fill_expert() { # file domain label score evidence — fill an expert skeleton the way the expert would.
+  sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+    -e "s/^$2: ? ($3) — ?\$/$2: $4 ($3) — $5/" "$1"
+  touch -d '2026-11-11 12:05' "$1"
+}
+# (38) F1 (QC A8): an expert-motion artifact prepared against page2,
+# cited on a NO-GRADE record whose page is page.html → exit 2 (before
+# the QC fix the expert validator took no page binding and this
+# recorded). The artifact's score/evidence match the flags, so only
+# the page binding can refuse it.
+if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round 7 --kind expert-motion --brief-type landing --mode full --page design/page2.html >"$work/judge-prep-7-expert-motion-p2.log" 2>&1; then
+  fail "judge-artifact (D15): prepare of the page2 expert-motion artifact failed — case (38) will cascade; see $work/judge-prep-7-expert-motion-p2.log"
+  cat "$work/judge-prep-7-expert-motion-p2.log" >&2 || true
+fi
+jr_fill_expert "$jr_proj/design/judge/round-7-expert-motion.md" Motion motion-expert 4 "hero reveal travels 24px in 220ms"
+jr_reject "expert artifact bound to a different page on a no-grade record" "$work/judge-t38.log" "not the recorded page" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader none --scores none --gate fail --page design/page.html --expert-motion 4 --expert-motion-evidence "hero reveal travels 24px in 220ms" --expert-motion-report design/judge/round-7-expert-motion.md
+# Round 9 graded family for (39)–(41): absolute artifact on page.html,
+# an expert-motion artifact bound to page2, a correctly-bound
+# expert-ux artifact, and two pairwise artifacts.
+jr_prep 9 absolute
+jr_fill_scores "$jr_proj/design/judge/round-9.md" 4 4 4 4
+if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round 9 --kind expert-motion --brief-type landing --mode full --page design/page2.html >"$work/judge-prep-9-expert-motion-p2.log" 2>&1; then
+  fail "judge-artifact (D15): prepare of the round-9 page2 expert-motion artifact failed — case (39) will cascade; see $work/judge-prep-9-expert-motion-p2.log"
+  cat "$work/judge-prep-9-expert-motion-p2.log" >&2 || true
+fi
+jr_fill_expert "$jr_proj/design/judge/round-9-expert-motion.md" Motion motion-expert 4 "hero reveal travels 24px in 220ms"
+# (39) F1, graded branch: the same wrong-page expert artifact cited on
+# a GRADED record for page.html → exit 2.
+jr_reject "expert artifact bound to a different page on a graded record" "$work/judge-t39.log" "not the recorded page" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 9 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-9.md --gate pass $jr_legs --expert-motion 4 --expert-motion-evidence "hero reveal travels 24px in 220ms" --expert-motion-report design/judge/round-9-expert-motion.md
+# (40) F4a: pairwise citing two DISTINCT artifacts whose A/B sets are
+# in the SAME order (call 2 repeats call 1's order instead of swapping)
+# → exit 2. Distinct files, both well-formed and filled — only the
+# missing swap can refuse the record (contrast (26): same file twice).
+jr_prep 9 pairwise --index 1 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
+jr_prep 9 pairwise --index 2 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
+jr_fill_pairwise "$jr_proj/design/judge/round-9-pairwise-1.md" A
+jr_fill_pairwise "$jr_proj/design/judge/round-9-pairwise-2.md" A
+jr_reject "pairwise record citing two artifacts in the same A/B order (not swapped)" "$work/judge-t40.log" "not a swapped pair" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 9 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-9.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-reports design/judge/round-9-pairwise-1.md,design/judge/round-9-pairwise-2.md
+# (41) F1 positive control: an expert-ux artifact bound to the record's
+# OWN page records on the graded round (the binding refuses the wrong
+# page, not expert artifacts as such).
+jr_prep 9 expert-ux
+jr_fill_expert "$jr_proj/design/judge/round-9-expert-ux.md" UX ux-expert 4 "focus ring reaches the signup button at stop 3 of 9"
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 9 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-9.md --gate pass $jr_legs --expert-ux 4 --expert-ux-evidence "focus ring reaches the signup button at stop 3 of 9" --expert-ux-report design/judge/round-9-expert-ux.md >"$work/judge-t41.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"expertUxReportSha":"[0-9a-f]\{64\}"'; then
+    ok "run-log records a graded round whose expert artifact is bound to the record's page (expertUxReportSha stored)"
+  else
+    fail "judge-artifact (D15): graded expert positive recorded but the stored line lacks expertUxReportSha"
+  fi
+else
+  fail "judge-artifact (D15): graded expert positive (correct page) failed — see $work/judge-t41.log"
+  cat "$work/judge-t41.log" >&2 || true
+fi
+# (42) F4b: UNICODE SUBSTITUTION, strict side — a Cyrillic а (U+0430,
+# byte pair \xd0\xb0) REPLACES the Latin a in the Round line's grader
+# token. Contrast (35): an INSERTED invisible is stripped by
+# stripInvisible and the record succeeds (lenient); a substitution is
+# NOT recovered — canonicalisation deletes inserted invisibles only,
+# it does not fold visible look-alikes (the F8 boundary, documented at
+# stripInvisible in judge-report.mjs) — so the forged token fails the
+# header/body equality and the record is refused. Verified against the
+# current code before this case was written: exit 2, "does not match
+# its header".
+jr_prep 9 cheap
+jr_fill_scores "$jr_proj/design/judge/round-9-cheap.md" 4 4 4 4
+sed -i 's/grader: judge-subagent (/grader: judge-sub\xd0\xb0gent (/' "$jr_proj/design/judge/round-9-cheap.md"
+touch -d '2026-11-11 12:05' "$jr_proj/design/judge/round-9-cheap.md"
+jr_reject "record citing a judge artifact with a substituted look-alike in the Round-line grader token" "$work/judge-t42.log" "does not match its header" \
+  node "$run_log_mjs" --project "$jr_proj" record --round 9 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-9-cheap.md --gate pass $jr_legs
+
+# --- Red-team-round cases (43)–(49): the feedback regrade page
+# binding (N12, SEVERE), the pairwise-tie positive, the read-path
+# fake shapes (runlog-check + best), and prepare containment.
+printf 'cross-check report r10\n' > "$jr_proj/design/crosscheck/round-10.md"
+printf 'cross-check report r11\n' > "$jr_proj/design/crosscheck/round-11.md"
+touch -d '2026-11-11 12:02' "$jr_proj/design/crosscheck/round-10.md" "$jr_proj/design/crosscheck/round-11.md"
+jr_cc2_ok=1
+for r in 10 11; do
+  node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/judge-cc-$r.log" 2>&1 || jr_cc2_ok=0
+done
+if [[ "$jr_cc2_ok" != 1 ]]; then
+  fail "judge-artifact (D15): red-team-round setup cross-checks for rounds 10/11 failed — cases (43)–(46) will cascade; see $work/judge-cc-1*.log"
+fi
+jr_legs_nopage="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log"
+# (43) N12 setup positive: a graded record WITHOUT --page stores
+# page: null but DOES store pageSha (the hash of the page the judge
+# artifact binds to) — the shape the N12 escape hid behind.
+jr_prep 10 absolute
+jr_fill_scores "$jr_proj/design/judge/round-10.md" 4 4 4 4
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 10 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-10.md --gate pass $jr_legs_nopage >"$work/judge-t43.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"page":null' && tail -n 1 "$jr_log" | grep -q '"pageSha":"[0-9a-f]\{64\}"'; then
+    ok "run-log records a graded round without --page (page null, pageSha stored — the N12 setup shape)"
+  else
+    fail "judge-artifact (D15): round 10 recorded without --page but the stored line lacks page:null + pageSha"
+  fi
+else
+  fail "judge-artifact (D15): round 10 graded record without --page failed — see $work/judge-t43.log"
+  cat "$work/judge-t43.log" >&2 || true
+fi
+# (44) N12 ATTACK: a regrade artifact prepared for page2.html cited on
+# feedback for round 10 (graded on page.html, recorded without
+# --page), feedback itself passing no --page → exit 2. Before the
+# red-team fix this recorded: the artifact's own page became the
+# binding and the round's pageSha was never consulted.
+if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round 10 --kind regrade --grader other-model --brief-type landing --mode full --page design/page2.html --out design/judge/round-10-regrade-wrong.md >"$work/judge-prep-10-regrade-wrong.log" 2>&1; then
+  fail "judge-artifact (D15): prepare of the wrong-page regrade artifact failed — case (44) will cascade; see $work/judge-prep-10-regrade-wrong.log"
+  cat "$work/judge-prep-10-regrade-wrong.log" >&2 || true
+fi
+jr_fill_scores "$jr_proj/design/judge/round-10-regrade-wrong.md" 5 5 5 5
+jr_reject "feedback regrade artifact bound to a different page than the round graded (no --page anywhere)" "$work/judge-t44.log" "page whose hash differs" \
+  node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 10 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-10-regrade-wrong.md
+# (45) N12 CONTROL: a regrade artifact for the page round 10 actually
+# graded (page.html), feedback still passing no --page → exit 0.
+jr_prep 10 regrade --grader other-model
+jr_fill_scores "$jr_proj/design/judge/round-10-regrade.md" 4 4 4 4
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 10 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-10-regrade.md >"$work/judge-t45.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"judgeReport":"design/judge/round-10-regrade.md"'; then
+    ok "run-log records feedback whose regrade artifact binds to the page the round graded (pageSha match, no --page needed)"
+  else
+    fail "judge-artifact (D15): N12 control feedback recorded but the stored line lacks the regrade citation"
+  fi
+else
+  fail "judge-artifact (D15): N12 control feedback (correct page, no --page) failed — see $work/judge-t45.log"
+  cat "$work/judge-t45.log" >&2 || true
+fi
+# (46) PW-TIE POSITIVE: the two pairwise derivations DISAGREE (call 1
+# keeps the challenger in its A/B terms; call 2, swapped, keeps the
+# incumbent in its) — the derived verdict is tie, and recording
+# --pairwise tie transcribes it (companion to (27): the same
+# disagreement cited as a keep is refused).
+jr_prep 11 absolute
+jr_prep 11 pairwise --index 1 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
+jr_prep 11 pairwise --index 2 --shots-a design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png --shots-b design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png
+jr_fill_scores "$jr_proj/design/judge/round-11.md" 4 4 4 4
+jr_fill_pairwise "$jr_proj/design/judge/round-11-pairwise-1.md" A
+jr_fill_pairwise "$jr_proj/design/judge/round-11-pairwise-2.md" A
+jr_before="$(jr_lines)"
+if node "$run_log_mjs" --project "$jr_proj" record --round 11 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-11.md --gate pass $jr_legs --pairwise tie --pairwise-reports design/judge/round-11-pairwise-1.md,design/judge/round-11-pairwise-2.md >"$work/judge-t46.log" 2>&1; then
+  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"pairwise":"tie"'; then
+    ok "run-log records --pairwise tie when the two pairwise artifacts' derivations disagree (the derived verdict)"
+  else
+    fail "judge-artifact (D15): pairwise tie recorded but the stored line lacks pairwise:tie"
+  fi
+else
+  fail "judge-artifact (D15): pairwise tie positive failed — see $work/judge-t46.log"
+  cat "$work/judge-t46.log" >&2 || true
+fi
+# (47) READ-PATH fake shapes: a hand-written log whose scored lines
+# carry (i) grader null, (ii) no grader key at all, (iii) a citation
+# naming a nonexistent file with an invented sha. runlog-check must
+# fail it (grader + citation-verification messages), and `best` must
+# crown none of it.
+fake_proj="$work/fake-proj"
+mkdir -p "$fake_proj/design"
+printf '%s\n' '{"kind":"round","round":1,"grader":null,"scores":{"type":5,"layout":5,"colour":5,"space":5},"gate":"pass"}' > "$fake_proj/design/run-log.jsonl"
+printf '%s\n' '{"kind":"round","round":2,"scores":{"type":5,"layout":5,"colour":5,"space":5},"gate":"pass"}' >> "$fake_proj/design/run-log.jsonl"
+printf '%s\n' '{"kind":"round","round":3,"grader":"judge-subagent","scores":{"type":5,"layout":5,"colour":5,"space":5},"gate":"pass","judgeReport":"design/judge/round-3.md","judgeReportSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' >> "$fake_proj/design/run-log.jsonl"
+if node "$runlog_check_mjs" "$fake_proj/design/run-log.jsonl" >"$work/judge-t47a.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed a hand-written log of grader-less / fake-citation scored lines"
+elif ! grep -q "carries no grader" "$work/judge-t47a.log" || ! grep -q "does not exist or cannot be read" "$work/judge-t47a.log"; then
+  fail "judge-artifact (D15): runlog-check failed the fake log but not via the grader / citation-verification messages — see $work/judge-t47a.log"
+  cat "$work/judge-t47a.log" >&2 || true
+elif ! node "$run_log_mjs" --project "$fake_proj" best >"$work/judge-t47b.log" 2>&1 || ! grep -q "no graded rounds yet" "$work/judge-t47b.log"; then
+  fail "judge-artifact (D15): best crowned a hand-written fake round — see $work/judge-t47b.log"
+  cat "$work/judge-t47b.log" >&2 || true
+else
+  ok "runlog-check fails grader-less and fake-citation scored lines, and best crowns none of them (read-path verification)"
+fi
+# (48) PREPARE CONTAINMENT: design/judge is a symlink to a directory
+# OUTSIDE the project — prepare must refuse (exit 2) and write nothing
+# there. (A lexical inside-design/judge check alone passes this.)
+esc_proj="$work/judge-escape-proj"
+mkdir -p "$esc_proj/design/screenshots" "$esc_proj/design/crosscheck" "$work/judge-outside"
+cp "$work/tokens.css" "$esc_proj/design/tokens.css"
+cp "$work/page-d15-orig.html" "$esc_proj/design/page.html"
+for v in 1440 768 390; do printf 'PNG-%s-A' "$v" > "$esc_proj/design/screenshots/$v.png"; done
+printf 'GATE RESULT: PASS\n' > "$esc_proj/design/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$esc_proj/design/gate-leg2.log"
+printf 'cross-check report r1\n' > "$esc_proj/design/crosscheck/round-1.md"
+touch -d '2026-11-11 12:00' "$esc_proj/design/tokens.css"
+touch -d '2026-11-11 12:01' "$esc_proj/design/page.html"
+touch -d '2026-11-11 12:02' "$esc_proj/design/screenshots/"*.png "$esc_proj/design/gate-leg1.log" "$esc_proj/design/gate-leg2.log" "$esc_proj/design/crosscheck/round-1.md"
+if ! node "$run_log_mjs" --project "$esc_proj" crosscheck --slice d15 --round 1 --severe 0 --warning 0 --report design/crosscheck/round-1.md --checker security-expert --basis "$jr_basis" >"$work/judge-cc-esc.log" 2>&1; then
+  fail "judge-artifact (D15): escape-project setup cross-check failed — case (48) will cascade; see $work/judge-cc-esc.log"
+  cat "$work/judge-cc-esc.log" >&2 || true
+fi
+ln -s "$work/judge-outside" "$esc_proj/design/judge"
+if node "$judge_report_mjs" --project "$esc_proj" prepare --round 1 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/judge-t48.log" 2>&1; then
+  fail "judge-artifact (D15): prepare wrote a skeleton through a design/judge symlink pointing outside the project"
+elif ! grep -q "outside the project" "$work/judge-t48.log"; then
+  fail "judge-artifact (D15): prepare refused the symlinked design/judge but not via the containment message — see $work/judge-t48.log"
+  cat "$work/judge-t48.log" >&2 || true
+elif [[ -n "$(ls -A "$work/judge-outside")" ]]; then
+  fail "judge-artifact (D15): prepare refused but a file still landed outside the project"
+else
+  ok "judge-report prepare refuses when design/judge resolves outside the project (exit 2, nothing written)"
+fi
+# (49) PREPARE CONTAINMENT: an explicit --shots path resolving outside
+# the project → exit 2, no skeleton written.
+printf 'PNG-OUT' > "$work/outside-shot.png"
+if node "$judge_report_mjs" --project "$jr_proj" prepare --round 12 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html --shots ../outside-shot.png >"$work/judge-t49.log" 2>&1; then
+  fail "judge-artifact (D15): prepare accepted a --shots path resolving outside the project"
+elif ! grep -q "resolves outside the project" "$work/judge-t49.log"; then
+  fail "judge-artifact (D15): prepare refused the outside --shots path but not via the containment message — see $work/judge-t49.log"
+  cat "$work/judge-t49.log" >&2 || true
+elif [[ -f "$jr_proj/design/judge/round-12.md" ]]; then
+  fail "judge-artifact (D15): prepare refused the outside --shots path but still wrote the skeleton"
+else
+  ok "judge-report prepare refuses a --shots path resolving outside the project (exit 2, no file)"
+fi
+
+# --- Red-team-round-2 cases (50)–(60): anchor poisoning (NA4,
+# SEVERE), the land precondition (NA19), and the read-path family
+# (C3 cross-round citation, NA1 deleted juror artifacts, NA2
+# juryReportShas shape, NA3 gate-key-absent, NA8 symlink citation),
+# plus the NA20 exception control. A dedicated project: round 1
+# graded 3,3,3,3 (absolute), round 2 a jury round (median 5,5,5,5),
+# rounds 4/5 absolute artifacts prepared but never recorded (citation
+# targets for the appended-line cases).
+rp_proj="$work/readpath-proj"
+mkdir -p "$rp_proj/design/screenshots" "$rp_proj/design/screenshots-prev" "$rp_proj/design/judge" "$rp_proj/design/crosscheck"
+cp "$work/tokens.css" "$rp_proj/design/tokens.css"
+cp "$work/page-d15-orig.html" "$rp_proj/design/page.html"
+cp "$jr_proj/design/page2.html" "$rp_proj/design/page2.html"
+for v in 1440 768 390; do
+  printf 'PNG-%s-A' "$v" > "$rp_proj/design/screenshots/$v.png"
+  printf 'PNG-%s-B' "$v" > "$rp_proj/design/screenshots-prev/$v.png"
+done
+printf 'GATE RESULT: PASS\n' > "$rp_proj/design/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$rp_proj/design/gate-leg2.log"
+for r in 1 2 3 4 5 12; do printf 'cross-check report r%s\n' "$r" > "$rp_proj/design/crosscheck/round-$r.md"; done
+touch -d '2026-11-11 12:00' "$rp_proj/design/tokens.css"
+touch -d '2026-11-11 12:01' "$rp_proj/design/page.html" "$rp_proj/design/page2.html"
+touch -d '2026-11-11 12:02' "$rp_proj/design/screenshots/"*.png "$rp_proj/design/screenshots-prev/"*.png "$rp_proj/design/gate-leg1.log" "$rp_proj/design/gate-leg2.log" "$rp_proj/design/crosscheck/"*.md
+rp_log="$rp_proj/design/run-log.jsonl"
+rp_lines() { if [[ -f "$rp_log" ]]; then grep -c . "$rp_log" || true; else printf '0'; fi; }
+rp_legs="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html"
+rp_setup_ok=1
+for r in 1 2 3 4 5 12; do
+  node "$run_log_mjs" --project "$rp_proj" crosscheck --slice d15 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/rp-cc-$r.log" 2>&1 || rp_setup_ok=0
+done
+rp_prep() { # round kind [extra prepare args...]
+  local round="$1" kind="$2"; shift 2
+  if ! node "$judge_report_mjs" --project "$rp_proj" prepare --round "$round" --kind "$kind" --grader judge-subagent --brief-type landing --mode full --page design/page.html "$@" >"$work/rp-prep-$round-$kind.log" 2>&1; then
+    fail "judge-artifact (D15): read-path project prepare round $round kind $kind failed — cases (50)–(60) will cascade; see $work/rp-prep-$round-$kind.log"
+    cat "$work/rp-prep-$round-$kind.log" >&2 || true
+    rp_setup_ok=0
+  fi
+}
+rp_prep 1 absolute
+jr_fill_scores "$rp_proj/design/judge/round-1.md" 3 3 3 3
+node "$run_log_mjs" --project "$rp_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-1.md --gate pass $rp_legs >"$work/rp-rec-1.log" 2>&1 || rp_setup_ok=0
+rp_prep 2 absolute
+rp_prep 2 jury --index 1 --family fam1
+rp_prep 2 jury --index 2 --family fam2
+rp_prep 2 jury --index 3 --family fam3
+jr_fill_scores "$rp_proj/design/judge/round-2.md" 5 5 5 5
+jr_fill_scores "$rp_proj/design/judge/round-2-jury-1.md" 5 5 5 5
+jr_fill_scores "$rp_proj/design/judge/round-2-jury-2.md" 5 5 5 4
+jr_fill_scores "$rp_proj/design/judge/round-2-jury-3.md" 5 4 5 5
+node "$run_log_mjs" --project "$rp_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 5,5,5,5 --judge-report design/judge/round-2.md --gate pass $rp_legs --outcome stopped --jury 5,5,5,5 --jury-mode disjoint-3 --jury-votes "5,5,5,5;5,5,5,4;5,4,5,5" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/rp-rec-2.log" 2>&1 || rp_setup_ok=0
+rp_prep 4 absolute
+jr_fill_scores "$rp_proj/design/judge/round-4.md" 4 4 4 4
+rp_prep 5 absolute
+jr_fill_scores "$rp_proj/design/judge/round-5.md" 5 5 5 5
+if [[ "$rp_setup_ok" != 1 ]]; then
+  fail "judge-artifact (D15): read-path project setup failed — cases (50)–(60) will cascade; see $work/rp-*.log"
+fi
+rp_page_sha="$(sha256sum "$rp_proj/design/page.html" | cut -d' ' -f1)"
+rp_page2_sha="$(sha256sum "$rp_proj/design/page2.html" | cut -d' ' -f1)"
+rp_r1_sha="$(sha256sum "$rp_proj/design/judge/round-1.md" | cut -d' ' -f1)"
+rp_r4_sha="$(sha256sum "$rp_proj/design/judge/round-4.md" | cut -d' ' -f1)"
+rp_r5_sha="$(sha256sum "$rp_proj/design/judge/round-5.md" | cut -d' ' -f1)"
+# rp_reject <name> <logfile> <pattern> <cmd...>: like jr_reject, for
+# the read-path project's log.
+rp_reject() {
+  local name="$1" logf="$2" pat="$3"; shift 3
+  local before; before="$(rp_lines)"
+  if "$@" >"$logf" 2>&1; then
+    fail "judge-artifact (D15): $name exited 0 — must be refused (exit 2)"
+  elif [[ "$(rp_lines)" != "$before" ]]; then
+    fail "judge-artifact (D15): $name wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "$pat" "$logf"; then
+    fail "judge-artifact (D15): $name was refused but not via the expected message (/$pat/) — see $logf"
+    cat "$logf" >&2 || true
+  else
+    ok "run-log refuses $name (exit 2, nothing written)"
+  fi
+}
+# (50) POSITIVE CONTROL: runlog-check passes the genuine read-path
+# log (graded + jury lines) under the round-2 rule-6 extensions —
+# the shape/parse checks must not false-positive on writer output.
+if node "$runlog_check_mjs" "$rp_log" >"$work/rp-t50.log" 2>&1; then
+  ok "runlog-check passes a genuine graded + jury run log under the round-2 rule extensions"
+else
+  fail "judge-artifact (D15): runlog-check failed the genuine read-path log — see $work/rp-t50.log"
+  cat "$work/rp-t50.log" >&2 || true
+fi
+# (51) POSITIVE CONTROL: best crowns the genuine jury round — the
+# parse + juror-artifact verification must not break real crowning.
+if node "$run_log_mjs" --project "$rp_proj" best >"$work/rp-t51.log" 2>&1 && grep -q "best: round 2" "$work/rp-t51.log" && grep -q "jury median" "$work/rp-t51.log"; then
+  ok "best crowns the genuine jury round (citation parses, juror artifacts verify)"
+else
+  fail "judge-artifact (D15): best did not crown the genuine jury round — see $work/rp-t51.log"
+  cat "$work/rp-t51.log" >&2 || true
+fi
+# (52) NA1: one juror artifact DELETED after the jury round recorded
+# — best must skip the jury line entirely and crown round 1, not the
+# jury round on its absolute citation alone.
+rm "$rp_proj/design/judge/round-2-jury-2.md"
+if node "$run_log_mjs" --project "$rp_proj" best >"$work/rp-t52.log" 2>&1 && grep -q "best: round 1" "$work/rp-t52.log"; then
+  ok "best skips a jury round whose juror artifacts no longer verify (NA1) and crowns the genuine absolute round"
+else
+  fail "judge-artifact (D15): best crowned a jury round with a deleted juror artifact (NA1) — see $work/rp-t52.log"
+  cat "$work/rp-t52.log" >&2 || true
+fi
+# (53) C3: a hand-appended round-6 line citing round 1's REAL
+# artifact (path + true sha copied from the genuine line — the hash
+# verifies) with the artifact's own scores. runlog-check must fail
+# it on the PARSE half (header round 1 != line round 6), and best
+# must not crown it.
+printf '%s\n' "{\"kind\":\"round\",\"round\":6,\"grader\":\"judge-subagent\",\"independenceBasis\":\"fresh context, no production history\",\"scores\":{\"type\":3,\"layout\":3,\"colour\":3,\"space\":3},\"grade\":\"graded\",\"gate\":\"pass\",\"judgeReport\":\"design/judge/round-1.md\",\"judgeReportSha\":\"$rp_r1_sha\",\"pageSha\":\"$rp_page_sha\"}" >> "$rp_log"
+if node "$runlog_check_mjs" "$rp_log" >"$work/rp-t53a.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed a line citing another round's artifact (C3)"
+elif ! grep -q "report for round 1, not round 6" "$work/rp-t53a.log"; then
+  fail "judge-artifact (D15): runlog-check failed the cross-round citation but not via the parse message — see $work/rp-t53a.log"
+  cat "$work/rp-t53a.log" >&2 || true
+elif ! node "$run_log_mjs" --project "$rp_proj" best >"$work/rp-t53b.log" 2>&1 || ! grep -q "best: round 1" "$work/rp-t53b.log"; then
+  fail "judge-artifact (D15): best crowned the cross-round citation line (C3) — see $work/rp-t53b.log"
+  cat "$work/rp-t53b.log" >&2 || true
+else
+  ok "runlog-check fails a cross-round citation on the parse half and best does not crown it (C3)"
+fi
+# (54) NA2: a scored line whose juryReportShas is "nothex" — the
+# citation itself is genuine (round 4's real artifact, its own
+# scores), so only the juryReportShas shape rule can fail it.
+cp "$rp_log" "$rp_proj/design/run-log-na2.jsonl"
+printf '%s\n' "{\"kind\":\"round\",\"round\":4,\"grader\":\"judge-subagent\",\"independenceBasis\":\"fresh context, no production history\",\"scores\":{\"type\":4,\"layout\":4,\"colour\":4,\"space\":4},\"grade\":\"graded\",\"gate\":\"pass\",\"judgeReport\":\"design/judge/round-4.md\",\"judgeReportSha\":\"$rp_r4_sha\",\"pageSha\":\"$rp_page_sha\",\"jury\":{\"type\":5,\"layout\":5,\"colour\":5,\"space\":5},\"juryMode\":\"disjoint-3\",\"juryReportShas\":\"nothex\"}" >> "$rp_proj/design/run-log-na2.jsonl"
+if node "$runlog_check_mjs" "$rp_proj/design/run-log-na2.jsonl" >"$work/rp-t54.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed a scored line with juryReportShas \"nothex\" (NA2)"
+elif ! grep -q "juryReportShas" "$work/rp-t54.log"; then
+  fail "judge-artifact (D15): runlog-check failed the NA2 line but not via the juryReportShas message — see $work/rp-t54.log"
+  cat "$work/rp-t54.log" >&2 || true
+else
+  ok "runlog-check fails a scored line whose juryReportShas is not three 64-hex values (NA2)"
+fi
+# (55) NA8: a scored line citing a SYMLINK to round 1's artifact
+# (the target's true sha — the hash verifies through the link).
+# Only the lstat symlink rule can fail it.
+ln -sf round-1.md "$rp_proj/design/judge/link-1.md"
+cp "$rp_log" "$rp_proj/design/run-log-na8.jsonl"
+printf '%s\n' "{\"kind\":\"round\",\"round\":1,\"grader\":\"judge-subagent\",\"independenceBasis\":\"fresh context, no production history\",\"scores\":{\"type\":3,\"layout\":3,\"colour\":3,\"space\":3},\"grade\":\"graded\",\"gate\":\"pass\",\"judgeReport\":\"design/judge/link-1.md\",\"judgeReportSha\":\"$rp_r1_sha\",\"pageSha\":\"$rp_page_sha\"}" >> "$rp_proj/design/run-log-na8.jsonl"
+if node "$runlog_check_mjs" "$rp_proj/design/run-log-na8.jsonl" >"$work/rp-t55.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed a scored line citing a symlinked judge artifact (NA8)"
+elif ! grep -q "is a symlink" "$work/rp-t55.log"; then
+  fail "judge-artifact (D15): runlog-check failed the NA8 line but not via the symlink message — see $work/rp-t55.log"
+  cat "$work/rp-t55.log" >&2 || true
+else
+  ok "runlog-check fails a scored line citing a symlinked judge artifact (NA8)"
+fi
+# (56) NA4, land half: an appended scoreless pageSha line for round
+# 3 (a round with a clear cross-check but NO genuine round record)
+# must NOT satisfy land's precondition → exit 2.
+printf '%s\n' "{\"kind\":\"round\",\"round\":3,\"grader\":null,\"scores\":null,\"grade\":\"gate green, vision not available\",\"gate\":\"pass\",\"page\":\"design/page2.html\",\"pageSha\":\"$rp_page2_sha\",\"judgeReport\":null,\"judgeReportSha\":null}" >> "$rp_log"
+rp_reject "land whose only round record is an appended scoreless pageSha line" "$work/rp-t56.log" "has no round record" \
+  node "$run_log_mjs" --project "$rp_proj" land --slice d15 --round 3 --gate pass $rp_legs
+# (57) NA4, feedback half (SEVERE): the same poison appended for
+# round 1 — which HAS a genuine graded record on page.html — plus a
+# regrade artifact prepared for page2.html. Before the round-2 fix
+# the appended line (the LATER pageSha carrier) anchored the
+# regrade and this recorded; the anchor now comes only from the
+# verified graded record → exit 2.
+printf '%s\n' "{\"kind\":\"round\",\"round\":1,\"grader\":null,\"scores\":null,\"grade\":\"gate green, vision not available\",\"gate\":\"pass\",\"page\":\"design/page2.html\",\"pageSha\":\"$rp_page2_sha\",\"judgeReport\":null,\"judgeReportSha\":null}" >> "$rp_log"
+if ! node "$judge_report_mjs" --project "$rp_proj" prepare --round 1 --kind regrade --grader other-model --brief-type landing --mode full --page design/page2.html >"$work/rp-prep-1-regrade-p2.log" 2>&1; then
+  fail "judge-artifact (D15): prepare of the NA4 wrong-page regrade failed — case (57) will cascade; see $work/rp-prep-1-regrade-p2.log"
+  cat "$work/rp-prep-1-regrade-p2.log" >&2 || true
+fi
+jr_fill_scores "$rp_proj/design/judge/round-1-regrade.md" 5 5 5 5
+rp_reject "feedback regrade anchored only by an appended scoreless pageSha line" "$work/rp-t57.log" "not the recorded page" \
+  node "$run_log_mjs" --project "$rp_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 1 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-1-regrade.md
+# (58) NA4, checker half: runlog-check flags the appended scoreless
+# pageSha lines themselves (the impossible shape) → exit 1.
+if node "$runlog_check_mjs" "$rp_log" >"$work/rp-t58.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed the log carrying appended scoreless pageSha lines (NA4)"
+elif ! grep -q "carries a pageSha" "$work/rp-t58.log"; then
+  fail "judge-artifact (D15): runlog-check failed the NA4 log but not via the scoreless-pageSha message — see $work/rp-t58.log"
+  cat "$work/rp-t58.log" >&2 || true
+else
+  ok "runlog-check fails scoreless lines carrying a pageSha (the NA4 poison shape)"
+fi
+# (59) NA3: a scored line with NO gate key at all, citing round 5's
+# real artifact with the artifact's own scores (the citation parses
+# and verifies — the absent gate is the only defect). best must not
+# crown it: crowning requires gate exactly "pass".
+printf '%s\n' "{\"kind\":\"round\",\"round\":5,\"grader\":\"judge-subagent\",\"independenceBasis\":\"fresh context, no production history\",\"scores\":{\"type\":5,\"layout\":5,\"colour\":5,\"space\":5},\"grade\":\"graded\",\"judgeReport\":\"design/judge/round-5.md\",\"judgeReportSha\":\"$rp_r5_sha\",\"pageSha\":\"$rp_page_sha\"}" >> "$rp_log"
+if node "$run_log_mjs" --project "$rp_proj" best >"$work/rp-t59.log" 2>&1 && grep -q "best: round 1" "$work/rp-t59.log"; then
+  ok "best does not crown a scored line with no gate key (NA3 — crowning requires gate exactly pass)"
+else
+  fail "judge-artifact (D15): best crowned a scored line with no gate key (NA3) — see $work/rp-t59.log"
+  cat "$work/rp-t59.log" >&2 || true
+fi
+# (60) NA20 CONTROL (behaviour retained, not changed): feedback
+# --score-after for a round with NO round record at all still
+# records, anchored by --page (the pre-D15 fallback form).
+rp_prep 12 regrade --grader other-model
+jr_fill_scores "$rp_proj/design/judge/round-12-regrade.md" 4 4 4 4
+rp_before="$(rp_lines)"
+if node "$run_log_mjs" --project "$rp_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 12 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-12-regrade.md --page design/page.html >"$work/rp-t60.log" 2>&1 && [[ "$(rp_lines)" == "$((rp_before + 1))" ]]; then
+  ok "run-log records feedback for a round with no round record, --page-anchored (NA20 behaviour retained)"
+else
+  fail "judge-artifact (D15): NA20 control feedback (no round record, --page given) failed — see $work/rp-t60.log"
+  cat "$work/rp-t60.log" >&2 || true
+fi
+
+# --- Red-team-round-3 cases (61)–(68): the shared-verifier round.
+# Round 2 hardened the read paths call-site by call-site; round 3
+# proved the drift (B1 scored-poison anchor, B1b leg-as-artifact,
+# B2 jury median trusted on read, B3 no-grade leg citations never
+# opened, B4 runlog-check fallback not fail-closed, B5 grader
+# misattribution, B6 stale-page pageSha edit, B7 symlink asymmetry).
+# The fix routes every read consumer through ONE full verification
+# (run-log.mjs verifyGradedLine + verifyJuryLine; runlog-check was
+# written to mirror it and fail closed when its parser sibling is
+# absent — red-team round 4 proved the mirror had drifted, and the
+# verifiers now live in judge-report.mjs, imported by BOTH
+# consumers; see the round-4 cases (69)–(78) below).
+# Each case gets its own small project, built like the read-path
+# project above.
+r3_legs="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html"
+r3_mkproj() { # dir — tokens/page/page2/shots/legs + cross-checks rounds 1..3 (slice r3)
+  local P="$1" r
+  mkdir -p "$P/design/screenshots" "$P/design/screenshots-prev" "$P/design/judge" "$P/design/crosscheck"
+  cp "$work/tokens.css" "$P/design/tokens.css"
+  cp "$work/page-d15-orig.html" "$P/design/page.html"
+  printf '<html><body><main id="main"><h1>Other page</h1></main></body></html>\n' > "$P/design/page2.html"
+  for v in 1440 768 390; do
+    printf 'PNG-%s-A' "$v" > "$P/design/screenshots/$v.png"
+    printf 'PNG-%s-B' "$v" > "$P/design/screenshots-prev/$v.png"
+  done
+  printf 'GATE RESULT: PASS\n' > "$P/design/gate-leg1.log"
+  printf '===== gate verdict: GREEN =====\n' > "$P/design/gate-leg2.log"
+  for r in 1 2 3; do printf 'cross-check report r%s\n' "$r" > "$P/design/crosscheck/round-$r.md"; done
+  touch -d '2026-11-11 12:00' "$P/design/tokens.css"
+  touch -d '2026-11-11 12:01' "$P/design/page.html" "$P/design/page2.html"
+  touch -d '2026-11-11 12:02' "$P/design/screenshots/"*.png "$P/design/screenshots-prev/"*.png "$P/design/gate-leg1.log" "$P/design/gate-leg2.log" "$P/design/crosscheck/"*.md
+  for r in 1 2 3; do
+    node "$run_log_mjs" --project "$P" crosscheck --slice r3 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/r3-cc-$r.log" 2>&1 \
+      || fail "judge-artifact (D15): round-3 project setup cross-check round $r failed — cases (61)–(68) using it will cascade; see $work/r3-cc-$r.log"
+  done
+}
+r3_prep() { # proj round kind [extra prepare args...] — bound to design/page.html
+  local P="$1" round="$2" kind="$3"; shift 3
+  node "$judge_report_mjs" --project "$P" prepare --round "$round" --kind "$kind" --grader judge-subagent --brief-type landing --mode full --page design/page.html "$@" >"$work/r3-prep-$round-$kind.log" 2>&1 \
+    || fail "judge-artifact (D15): round-3 prepare round $round kind $kind failed — dependent cases will cascade; see $work/r3-prep-$round-$kind.log"
+}
+r3_reject() { # name logfile pattern projlog cmd... — like jr_reject, for a named project log
+  local name="$1" logf="$2" pat="$3" plog="$4"; shift 4
+  local before; before="$(grep -c . "$plog" || true)"
+  if "$@" >"$logf" 2>&1; then
+    fail "judge-artifact (D15): $name exited 0 — must be refused (exit 2)"
+  elif [[ "$(grep -c . "$plog" || true)" != "$before" ]]; then
+    fail "judge-artifact (D15): $name wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "$pat" "$logf"; then
+    fail "judge-artifact (D15): $name was refused but not via the expected message (/$pat/) — see $logf"
+    cat "$logf" >&2 || true
+  else
+    ok "run-log refuses $name (exit 2, nothing written)"
+  fi
+}
+# (61) B1: a scored COPY of the genuine round-1 line with pageSha
+# swapped to page2's hash. Its citation verifies (same artifact), so
+# only the page binding can refuse it: the copy must not anchor a
+# feedback regrade of page2, and runlog-check must fail the log on
+# the pageSha cross-check.
+r3p="$work/r3-b1"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/r3-t61-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B1 setup graded record failed — case (61) will cascade; see $work/r3-t61-setup.log"
+r3_page2_sha="$(sha256sum "$r3p/design/page2.html" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r3_page2_sha" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+g=[o for o in lines if o.get('kind')=='round' and o.get('round')==1][0]
+poison=dict(g); poison['pageSha']=sys.argv[2]; poison['at']="2026-11-11T12:11:00.000Z"
+open(sys.argv[1],"a").write(json.dumps(poison)+"\n")
+EOF
+node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind regrade --grader other-model --brief-type landing --mode full --page design/page2.html >"$work/r3-prep-1-regrade-p2.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B1 wrong-page regrade prepare failed — case (61) will cascade; see $work/r3-prep-1-regrade-p2.log"
+jr_fill_scores "$r3p/design/judge/round-1-regrade.md" 5 5 5 5
+r3_reject "feedback regrade of page2 anchored by a scored poison line (pageSha swapped)" "$work/r3-t61a.log" "page whose hash differs" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" feedback --from "user: darker ink" --change "--color-ink: #000" --round 1 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-1-regrade.md
+if node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t61b.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check passed a log carrying a scored line whose pageSha names a different page than its artifact binds (B1)"
+elif ! grep -q "pageSha" "$work/r3-t61b.log"; then
+  fail "judge-artifact (D15): runlog-check failed the B1 log but not via the pageSha cross-check — see $work/r3-t61b.log"
+  cat "$work/r3-t61b.log" >&2 || true
+else
+  ok "runlog-check fails a scored line whose pageSha does not match its cited artifact's page binding (B1)"
+fi
+# (62) B1b: a scored line citing the GATE LEG as its "judge artifact"
+# (true hash — the citation's hash verifies; the file is not a judge
+# report). It must anchor nothing and satisfy no land precondition.
+r3p="$work/r3-b1b"; r3_mkproj "$r3p"
+r3_leg1_sha="$(sha256sum "$r3p/design/gate-leg1.log" | cut -d' ' -f1)"
+r3_page2_sha="$(sha256sum "$r3p/design/page2.html" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r3_leg1_sha" "$r3_page2_sha" <<'EOF'
+import json,sys
+legsha,pagesha=sys.argv[2],sys.argv[3]
+line={"kind":"round","round":1,"grader":"judge-subagent","independenceBasis":"fresh context, no production history","scores":{"type":4,"layout":4,"colour":4,"space":4},"grade":"A","evidence":"x","gate":"pass","gateLeg1":"design/gate-leg1.log","gateLeg2":"design/gate-leg2.log","gateLeg1Sha":legsha,"gateLeg2Sha":legsha,"gateFindings":None,"variant":None,"tokensHash":None,"fixClass":None,"outcome":"stopped","page":None,"trigger":None,"pairwise":None,"pairwiseAgrees":None,"jury":None,"juryMode":None,"juryVotes":None,"notRegraded":None,"expertMotion":None,"expertMotionEvidence":None,"expertUx":None,"expertUxEvidence":None,"judgeReport":"design/gate-leg1.log","judgeReportSha":legsha,"pageSha":pagesha,"pairwiseReports":None,"pairwiseReportShas":None,"juryReportShas":None,"expertMotionReport":None,"expertMotionReportSha":None,"expertUxReport":None,"expertUxReportSha":None,"notes":None,"at":"2026-11-11T12:06:00.000Z"}
+open(sys.argv[1],"a").write(json.dumps(line)+"\n")
+EOF
+r3_reject "land whose only round record cites the gate leg as its judge artifact" "$work/r3-t62a.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind regrade --grader other-model --brief-type landing --mode full --page design/page2.html >"$work/r3-prep-1-regrade-b1b.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B1b regrade prepare failed — case (62) will cascade; see $work/r3-prep-1-regrade-b1b.log"
+jr_fill_scores "$r3p/design/judge/round-1-regrade.md" 5 5 5 5
+r3_reject "feedback regrade anchored by a line citing the gate leg as its judge artifact" "$work/r3-t62b.log" "never anchors" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" feedback --from "user: darker ink" --change "--color-ink: #000" --round 1 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-1-regrade.md
+# (63) B2: the jury-median edit — a genuine jury round (jurors
+# 2/3/2, median 2,2,2,2) whose LINE jury + juryVotes are edited to
+# 5,5,5,5, juror artifacts untouched. best must skip the edited line
+# (it crowns nothing — the round was the only one), and
+# runlog-check must fail the log on the jury verification.
+r3p="$work/r3-b2"; r3_mkproj "$r3p"
+r3_prep "$r3p" 2 absolute
+r3_prep "$r3p" 2 jury --index 1 --family fam1
+r3_prep "$r3p" 2 jury --index 2 --family fam2
+r3_prep "$r3p" 2 jury --index 3 --family fam3
+jr_fill_scores "$r3p/design/judge/round-2.md" 3 3 3 3
+jr_fill_scores "$r3p/design/judge/round-2-jury-1.md" 2 2 2 2
+jr_fill_scores "$r3p/design/judge/round-2-jury-2.md" 3 3 3 3
+jr_fill_scores "$r3p/design/judge/round-2-jury-3.md" 2 2 2 2
+node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $r3_legs --outcome stopped --jury 2,2,2,2 --jury-mode disjoint-3 --jury-votes "2,2,2,2;3,3,3,3;2,2,2,2" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/r3-t63-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B2 setup jury record failed — case (63) will cascade; see $work/r3-t63-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r3-t63a.log" 2>&1
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round' and o.get('round')==2:
+        o['jury']={"type":5,"layout":5,"colour":5,"space":5}
+        o['juryVotes']=[{"type":5,"layout":5,"colour":5,"space":5}]*3
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r3-t63b.log" 2>&1
+if ! grep -q "best: round 2" "$work/r3-t63a.log" || ! grep -q "T2/L2/C2/S2" "$work/r3-t63a.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine jury round at its honest median before the B2 edit — see $work/r3-t63a.log"
+  cat "$work/r3-t63a.log" >&2 || true
+elif ! grep -q "no graded rounds" "$work/r3-t63b.log"; then
+  fail "judge-artifact (D15): best crowned a jury round whose line jury/juryVotes were edited to 5,5,5,5 (B2) — see $work/r3-t63b.log"
+  cat "$work/r3-t63b.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t63c.log" 2>&1 || ! grep -q "jury" "$work/r3-t63c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the jury-edited log on the jury verification (B2) — see $work/r3-t63c.log"
+  cat "$work/r3-t63c.log" >&2 || true
+else
+  ok "best skips a jury round whose recorded median was edited (the juror artifacts derive 2,2,2,2, not the edited 5,5,5,5) and runlog-check fails it on the jury verification (B2)"
+fi
+# (64) B3: a hand-written no-grade line in the FULL writer shape —
+# gate pass, both leg citations present — but the leg paths never
+# existed and the leg shas are invented. land must refuse: the
+# no-grade half of the precondition now verifies the cited legs on
+# disk against the stored shas.
+r3p="$work/r3-b3"; r3_mkproj "$r3p"
+r3_hx="$(printf 'x' | sha256sum | cut -d' ' -f1)"
+r3_hy="$(printf 'y' | sha256sum | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r3_hx" "$r3_hy" <<'EOF'
+import json,sys
+hx,hy=sys.argv[2],sys.argv[3]
+line={"kind":"round","round":2,"grader":None,"independenceBasis":None,"scores":None,"grade":"gate green, vision not available","evidence":None,"gate":"pass","gateLeg1":"design/never-ran-1.log","gateLeg2":"design/never-ran-2.log","gateLeg1Sha":hx,"gateLeg2Sha":hy,"gateFindings":None,"variant":None,"tokensHash":None,"fixClass":None,"outcome":None,"page":None,"trigger":None,"pairwise":None,"pairwiseAgrees":None,"jury":None,"juryMode":None,"juryVotes":None,"notRegraded":None,"expertMotion":None,"expertMotionEvidence":None,"expertUx":None,"expertUxEvidence":None,"judgeReport":None,"judgeReportSha":None,"pageSha":None,"pairwiseReports":None,"pairwiseReportShas":None,"juryReportShas":None,"expertMotionReport":None,"expertMotionReportSha":None,"expertUxReport":None,"expertUxReportSha":None,"notes":None,"at":"2026-11-11T12:04:00.000Z"}
+open(sys.argv[1],"a").write(json.dumps(line)+"\n")
+EOF
+r3_reject "land whose only round record is a full-shape no-grade line citing legs that never existed" "$work/r3-t64.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 2 --gate pass $r3_legs
+# (65) B4: the runlog-check fallback is GONE — a copy of the checker
+# without its judge-report.mjs sibling (or with an unparseable one)
+# must FAIL a genuine scored log with "judge-report parser
+# unavailable" (fail closed), while the full tree passes it.
+r3p="$work/r3-b4"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r3-t65-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B4 setup graded record failed — case (65) will cascade; see $work/r3-t65-setup.log"
+r3_gate_dir="$(dirname "$runlog_check_mjs")"
+mkdir -p "$work/r3-notree/gate" "$work/r3-brokentree/gate"
+cp "$r3_gate_dir/runlog-check.mjs" "$r3_gate_dir/json-dup-keys.mjs" "$work/r3-notree/gate/"
+cp "$r3_gate_dir/runlog-check.mjs" "$r3_gate_dir/json-dup-keys.mjs" "$work/r3-brokentree/gate/"
+cp "$(dirname "$judge_report_mjs")/judge-report.mjs" "$work/r3-brokentree/judge-report.mjs"
+printf '\n@@@ this is not javascript @@@\n' >> "$work/r3-brokentree/judge-report.mjs"
+if ! node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t65a.log" 2>&1; then
+  fail "judge-artifact (D15): the full-tree runlog-check failed a genuine scored log (B4 control) — see $work/r3-t65a.log"
+  cat "$work/r3-t65a.log" >&2 || true
+elif node "$work/r3-notree/gate/runlog-check.mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t65b.log" 2>&1 || ! grep -q "judge-report parser unavailable" "$work/r3-t65b.log"; then
+  fail "judge-artifact (D15): a runlog-check copy WITHOUT its judge-report.mjs sibling did not fail a scored log as unverifiable (B4 fallback) — see $work/r3-t65b.log"
+  cat "$work/r3-t65b.log" >&2 || true
+elif node "$work/r3-brokentree/gate/runlog-check.mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t65c.log" 2>&1 || ! grep -q "judge-report parser unavailable" "$work/r3-t65c.log"; then
+  fail "judge-artifact (D15): a runlog-check copy with an UNPARSEABLE judge-report.mjs sibling did not fail a scored log as unverifiable (B4 fallback) — see $work/r3-t65c.log"
+  cat "$work/r3-t65c.log" >&2 || true
+else
+  ok "runlog-check fails closed when its judge-report parser sibling is absent or unparseable — no fallback parser (B4)"
+fi
+# (66) B5: the genuine round-1 line's grader field edited to
+# muse-manager (the artifact still names judge-subagent). best must
+# skip the line rather than print the misattributed grader, and
+# runlog-check must fail the log on the grader cross-check.
+r3p="$work/r3-b5"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r3-t66-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B5 setup graded record failed — case (66) will cascade; see $work/r3-t66-setup.log"
+sed -i 's/"grader":"judge-subagent"/"grader":"muse-manager"/' "$r3p/design/run-log.jsonl"
+node "$run_log_mjs" --project "$r3p" best >"$work/r3-t66a.log" 2>&1
+if grep -q "muse-manager" "$work/r3-t66a.log" || ! grep -q "no graded rounds" "$work/r3-t66a.log"; then
+  fail "judge-artifact (D15): best crowned a line whose grader field was edited away from its artifact's grader (B5) — see $work/r3-t66a.log"
+  cat "$work/r3-t66a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t66b.log" 2>&1 || ! grep -q "misattributes" "$work/r3-t66b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the grader-edited log on the grader cross-check (B5) — see $work/r3-t66b.log"
+  cat "$work/r3-t66b.log" >&2 || true
+else
+  ok "best skips a line whose grader field was edited (the artifact's grader governs) and runlog-check fails it on the grader cross-check (B5)"
+fi
+# (67) B6: the page edited to a new version AND the line's pageSha
+# edited to the new version's hash — the artifact still binds the
+# judged version. best must not crown the transferred grade, and
+# runlog-check must fail the log on the pageSha cross-check.
+r3p="$work/r3-b6"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r3-t67-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B6 setup graded record failed — case (67) will cascade; see $work/r3-t67-setup.log"
+printf '<html><body><main id="main"><h1>Totally different page</h1></main></body></html>\n' > "$r3p/design/page.html"
+touch -d '2026-11-11 12:03' "$r3p/design/page.html"
+r3_v2_sha="$(sha256sum "$r3p/design/page.html" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r3_v2_sha" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['pageSha']=sys.argv[2]
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r3-t67a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r3-t67a.log"; then
+  fail "judge-artifact (D15): best crowned a grade whose pageSha was edited to a page version the artifact never bound (B6) — see $work/r3-t67a.log"
+  cat "$work/r3-t67a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t67b.log" 2>&1 || ! grep -q "pageSha" "$work/r3-t67b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the pageSha-edited log on the pageSha cross-check (B6) — see $work/r3-t67b.log"
+  cat "$work/r3-t67b.log" >&2 || true
+else
+  ok "best does not crown a grade transferred to an unjudged page version and runlog-check fails it on the pageSha cross-check (B6)"
+fi
+# (68) B7: the citation rewritten to a SYMLINK naming the genuine
+# artifact (hash verifies through the link). best and runlog-check
+# must AGREE: both reject — round 2's asymmetry (the checker
+# refused, best crowned) is closed by the shared lstat rule.
+r3p="$work/r3-b7"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r3-t68-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-3 B7 setup graded record failed — case (68) will cascade; see $work/r3-t68-setup.log"
+ln -s round-1.md "$r3p/design/judge/link.md"
+sed -i 's#"judgeReport":"design/judge/round-1.md"#"judgeReport":"design/judge/link.md"#' "$r3p/design/run-log.jsonl"
+node "$run_log_mjs" --project "$r3p" best >"$work/r3-t68a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r3-t68a.log"; then
+  fail "judge-artifact (D15): best crowned a round citing its judge artifact through a symlink (B7) — see $work/r3-t68a.log"
+  cat "$work/r3-t68a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r3-t68b.log" 2>&1 || ! grep -q "is a symlink" "$work/r3-t68b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the symlink-citation log on the lstat rule (B7) — see $work/r3-t68b.log"
+  cat "$work/r3-t68b.log" >&2 || true
+else
+  ok "best and runlog-check agree on a symlink citation: both reject it (B7)"
+fi
+
+# --- Red-team-round-4 cases (69)–(78): the shared-verifier parity
+# round. Round 3 unified the read verifier inside run-log.mjs but
+# left runlog-check.mjs holding private re-implementations of it;
+# round 4 proved the drift (F1 the checker's parse half skipped the
+# basis independence check and the body Round line agreement, F2
+# juror device+inode distinctness checked by neither copy, F3 juror
+# bases unchecked on read, F4 the checker verified a jury only when
+# jury/juryVotes were present, F5 the line's independenceBasis /
+# tokensHash transcription fields compared by nobody, F6 citation
+# containment differed — project root vs design/, F7 expert
+# citations opened by no read path). The fix relocated the
+# verifiers into judge-report.mjs, SHARED by run-log.mjs and
+# runlog-check.mjs (the copies are deleted), and added the missing
+# halves to the one verifier. Each case below runs BOTH consumers
+# on the same adversarial log: the checker and a run-log read path
+# must agree.
+r4_bad_basis="graded by the builder in the same context after building it"
+# (69) F1a: the cited artifact's OWN basis confesses self-grading
+# (header + body edited after a genuine record; the line's
+# judgeReportSha updated to match). Record time refuses such an
+# artifact; on read, the shared verifier's basis half must refuse
+# it in BOTH consumers — round 3's checker parse half never applied
+# the basis check and passed this log.
+r3p="$work/r4-f1a"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t69-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F1a setup graded record failed — case (69) will cascade; see $work/r4-t69-setup.log"
+sed -i "s/fresh context, no production history/$r4_bad_basis/g" "$r3p/design/judge/round-1.md"
+r4_new_sha="$(sha256sum "$r3p/design/judge/round-1.md" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r4_new_sha" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['judgeReportSha']=sys.argv[2]
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t69a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t69a.log"; then
+  fail "judge-artifact (D15): best crowned a round whose judge artifact's basis confesses self-grading (F1) — see $work/r4-t69a.log"
+  cat "$work/r4-t69a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t69b.log" 2>&1 || ! grep -q "independence basis" "$work/r4-t69b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the self-confessed-basis log on the basis independence check (F1) — see $work/r4-t69b.log"
+  cat "$work/r4-t69b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a judge artifact whose basis confesses self-grading (F1)"
+fi
+# (70) F1b: the artifact's BODY Round line names a different grader
+# than its header (header untouched; the line's judgeReportSha
+# updated). The shared verifier compares the body line against the
+# header; round 3's checker parse half never looked at the body.
+r3p="$work/r4-f1b"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t70-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F1b setup graded record failed — case (70) will cascade; see $work/r4-t70-setup.log"
+sed -i 's/^Round 1 — grader: judge-subagent /Round 1 — grader: muse-manager /' "$r3p/design/judge/round-1.md"
+r4_new_sha="$(sha256sum "$r3p/design/judge/round-1.md" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r4_new_sha" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['judgeReportSha']=sys.argv[2]
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t70a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t70a.log"; then
+  fail "judge-artifact (D15): best crowned a round whose artifact body Round line names a different grader than its header (F1) — see $work/r4-t70a.log"
+  cat "$work/r4-t70a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t70b.log" 2>&1 || ! grep -q "body Round line" "$work/r4-t70b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the body/header grader mismatch on the body Round line check (F1) — see $work/r4-t70b.log"
+  cat "$work/r4-t70b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse an artifact whose body Round line disagrees with its header (F1)"
+fi
+# (71) F2: juror-2 HARDLINKED to juror-1 under single-family (one
+# opinion counted as two jurors; the line's votes, median and
+# juryReportShas edited to match the duplicated file, so hash,
+# votes, median and family checks all pass). Only the shared
+# verifier's new device+inode distinctness half can refuse it.
+r3p="$work/r4-f2"; r3_mkproj "$r3p"
+r3_prep "$r3p" 2 absolute
+r3_prep "$r3p" 2 jury --index 1 --family famX
+r3_prep "$r3p" 2 jury --index 2 --family famX
+r3_prep "$r3p" 2 jury --index 3 --family famX
+jr_fill_scores "$r3p/design/judge/round-2.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-1.md" 5 5 5 5
+jr_fill_scores "$r3p/design/judge/round-2-jury-2.md" 3 3 3 3
+jr_fill_scores "$r3p/design/judge/round-2-jury-3.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-2.md --gate pass $r3_legs --outcome stopped --jury 4,4,4,4 --jury-mode single-family --jury-votes "5,5,5,5;3,3,3,3;4,4,4,4" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/r4-t71-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F2 setup jury record failed — case (71) will cascade; see $work/r4-t71-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t71a.log" 2>&1
+rm "$r3p/design/judge/round-2-jury-2.md"
+ln "$r3p/design/judge/round-2-jury-1.md" "$r3p/design/judge/round-2-jury-2.md"
+r4_s1="$(sha256sum "$r3p/design/judge/round-2-jury-1.md" | cut -d' ' -f1)"
+r4_s3="$(sha256sum "$r3p/design/judge/round-2-jury-3.md" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r4_s1" "$r4_s3" <<'EOF'
+import json,sys
+s1,s3=sys.argv[2],sys.argv[3]
+v=lambda n: {"type":n,"layout":n,"colour":n,"space":n}
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round':
+        o['juryVotes']=[v(5),v(5),v(4)]; o['jury']=v(5); o['juryReportShas']=";".join([s1,s1,s3])
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t71b.log" 2>&1
+if ! grep -q "best: round 2" "$work/r4-t71a.log" || ! grep -q "no graded rounds" "$work/r4-t71b.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine single-family jury before the hardlink, or crowned it after juror-2 was hardlinked to juror-1 (F2) — see $work/r4-t71a.log / $work/r4-t71b.log"
+  cat "$work/r4-t71a.log" "$work/r4-t71b.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t71c.log" 2>&1 || ! grep -q "same file" "$work/r4-t71c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the hardlinked-juror log on the distinctness check (F2) — see $work/r4-t71c.log"
+  cat "$work/r4-t71c.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a jury whose juror slot is a hardlink to another juror (F2 distinctness)"
+fi
+r3_reject "land on the hardlinked-juror log" "$work/r4-t71d.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 2 --gate pass $r3_legs
+# (72) F3: juror-1's basis edited to confess self-grading (its
+# juryReportShas entry updated; votes and scores untouched). Record
+# time independence-checks every juror's basis; the shared verifier
+# now does it on read in both consumers.
+r3p="$work/r4-f3"; r3_mkproj "$r3p"
+r3_prep "$r3p" 2 absolute
+r3_prep "$r3p" 2 jury --index 1 --family fam1
+r3_prep "$r3p" 2 jury --index 2 --family fam2
+r3_prep "$r3p" 2 jury --index 3 --family fam3
+jr_fill_scores "$r3p/design/judge/round-2.md" 3 3 3 3
+jr_fill_scores "$r3p/design/judge/round-2-jury-1.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-2.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-3.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $r3_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "4,4,4,4;4,4,4,4;4,4,4,4" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/r4-t72-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F3 setup jury record failed — case (72) will cascade; see $work/r4-t72-setup.log"
+sed -i "s/fresh context, no production history/$r4_bad_basis/g" "$r3p/design/judge/round-2-jury-1.md"
+r4_ns="$(sha256sum "$r3p/design/judge/round-2-jury-1.md" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r4_ns" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round':
+        parts=o['juryReportShas'].split(';'); parts[0]=sys.argv[2]; o['juryReportShas']=";".join(parts)
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t72a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t72a.log"; then
+  fail "judge-artifact (D15): best crowned a jury round whose juror's basis confesses self-grading (F3) — see $work/r4-t72a.log"
+  cat "$work/r4-t72a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t72b.log" 2>&1 || ! grep -q "independence basis" "$work/r4-t72b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the juror-basis log on the basis independence check (F3) — see $work/r4-t72b.log"
+  cat "$work/r4-t72b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a jury whose juror's basis confesses self-grading (F3)"
+fi
+# (73) F4: a genuine absolute line edited to carry juryReportShas
+# ONLY (jury / juryVotes stay null; the three shas are well-formed
+# but invented, and no juror files exist). The ONE shared jury-line
+# definition (any of jury / juryVotes / juryReportShas present and
+# non-null) makes the jury half verify in every consumer — round
+# 3's checker triggered jury verification on jury/juryVotes only
+# and passed this line.
+r3p="$work/r4-f4"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t73-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F4 setup graded record failed — case (73) will cascade; see $work/r4-t73-setup.log"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys,hashlib
+h=lambda s: hashlib.sha256(s.encode()).hexdigest()
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['juryReportShas']=";".join([h("a"),h("b"),h("c")])
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t73a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t73a.log"; then
+  fail "judge-artifact (D15): best crowned a juryReportShas-only line whose jury does not verify (F4) — see $work/r4-t73a.log"
+  cat "$work/r4-t73a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t73b.log" 2>&1 || ! grep -q "jury" "$work/r4-t73b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the juryReportShas-only line on the jury verification (F4) — see $work/r4-t73b.log"
+  cat "$work/r4-t73b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a juryReportShas-only line (F4: one jury-line definition)"
+fi
+r3_reject "land on the juryReportShas-only log" "$work/r4-t73c.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+# (74) F5a: the LINE's independenceBasis edited to confess
+# self-grading — the artifact is untouched and genuine, and its
+# hash, scores and page binding all verify. Only the shared
+# verifier's new line-vs-header transcription equality refuses it.
+r3p="$work/r4-f5a"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t74-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F5a setup graded record failed — case (74) will cascade; see $work/r4-t74-setup.log"
+python3 - "$r3p/design/run-log.jsonl" "$r4_bad_basis" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['independenceBasis']=sys.argv[2]
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t74a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t74a.log"; then
+  fail "judge-artifact (D15): best crowned a line whose independenceBasis field was edited away from its artifact's basis (F5) — see $work/r4-t74a.log"
+  cat "$work/r4-t74a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t74b.log" 2>&1 || ! grep -q "independenceBasis" "$work/r4-t74b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the basis-edited line on the independenceBasis transcription check (F5) — see $work/r4-t74b.log"
+  cat "$work/r4-t74b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a line whose independenceBasis does not transcribe its artifact (F5)"
+fi
+# (75) F5b: the LINE's tokensHash edited to another valid 64-hex
+# value (page2's hash) — the artifact still binds the real tokens.
+# Only the tokensHash transcription equality refuses it.
+r3p="$work/r4-f5b"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t75-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F5b setup graded record failed — case (75) will cascade; see $work/r4-t75-setup.log"
+r4_p2_sha="$(sha256sum "$r3p/design/page2.html" | cut -d' ' -f1)"
+python3 - "$r3p/design/run-log.jsonl" "$r4_p2_sha" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['tokensHash']=sys.argv[2]
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t75a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t75a.log"; then
+  fail "judge-artifact (D15): best crowned a line whose tokensHash was edited away from its artifact's tokens binding (F5) — see $work/r4-t75a.log"
+  cat "$work/r4-t75a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t75b.log" 2>&1 || ! grep -q "tokensHash" "$work/r4-t75b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the tokensHash-edited line on the tokensHash transcription check (F5) — see $work/r4-t75b.log"
+  cat "$work/r4-t75b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a line whose tokensHash does not transcribe its artifact (F5)"
+fi
+# (76) F6: the citation rewritten to a copy of the artifact at the
+# PROJECT ROOT (report.md — same bytes, same hash, outside
+# design/). Containment is design/ in every consumer (the shared
+# verifier); round 3's checker resolved against the project root
+# and passed it.
+r3p="$work/r4-f6"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t76-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F6 setup graded record failed — case (76) will cascade; see $work/r4-t76-setup.log"
+cp "$r3p/design/judge/round-1.md" "$r3p/report.md"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['judgeReport']="report.md"
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t76a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r4-t76a.log"; then
+  fail "judge-artifact (D15): best crowned a round citing its artifact at the project root, outside design/ (F6) — see $work/r4-t76a.log"
+  cat "$work/r4-t76a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t76b.log" 2>&1 || ! grep -q "outside <project>/design/" "$work/r4-t76b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the root-level citation on the design/ containment check (F6) — see $work/r4-t76b.log"
+  cat "$work/r4-t76b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a citation outside design/ (F6: containment is design/ everywhere)"
+fi
+# (77) F7: fabricated expert scores — an appended copy of a genuine
+# line carrying expertMotion 5 / expertUx 5 whose citations name
+# files that do not exist (invented shas). Before round 4 NO read
+# path opened an expert citation. The checker must fail the log;
+# and when the fake-expert copy is the ONLY round line, it must
+# count for nothing (land refuses).
+r3p="$work/r4-f7"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t77-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F7 setup graded record failed — case (77) will cascade; see $work/r4-t77-setup.log"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys,hashlib
+fake=hashlib.sha256(b"no such expert report").hexdigest()
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+g=[o for o in lines if o.get('kind')=='round'][0]
+c=dict(g); c['expertMotion']=5; c['expertMotionEvidence']="scroll reveal measured 420ms ease-out"
+c['expertMotionReport']="design/judge/round-1-expert-motion.md"; c['expertMotionReportSha']=fake
+c['expertUx']=5; c['expertUxEvidence']="tap targets measured 48px"
+c['expertUxReport']="design/judge/round-1-expert-ux.md"; c['expertUxReportSha']=fake
+c['at']="2026-11-11T12:10:00.000Z"
+open(sys.argv[1],"a").write(json.dumps(c)+"\n")
+EOF
+if node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t77a.log" 2>&1 || ! grep -q "expert" "$work/r4-t77a.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the fabricated-expert log on the expert citation verification (F7) — see $work/r4-t77a.log"
+  cat "$work/r4-t77a.log" >&2 || true
+else
+  ok "runlog-check fails a line carrying fabricated expert scores with nonexistent citations (F7)"
+fi
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+fake=[o for o in lines if o.get('kind')=='round' and o.get('expertMotion')==5]
+others=[o for o in lines if o.get('kind')!='round']
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in others+fake)+"\n")
+EOF
+r3_reject "land whose only round record carries fabricated expert citations" "$work/r4-t77b.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+# (78) F7 POSITIVE CONTROL: a genuine graded round carrying genuine
+# expert-motion + expert-ux artifacts verifies on every read path —
+# best crowns it and runlog-check passes the log.
+r3p="$work/r4-f7pos"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+if ! node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind expert-motion --brief-type landing --mode full --page design/page.html >"$work/r4-prep-1-expert-motion.log" 2>&1; then
+  fail "judge-artifact (D15): round-4 F7 positive expert-motion prepare failed — case (78) will cascade; see $work/r4-prep-1-expert-motion.log"
+  cat "$work/r4-prep-1-expert-motion.log" >&2 || true
+fi
+jr_fill_expert "$r3p/design/judge/round-1-expert-motion.md" Motion motion-expert 5 "scroll reveal measured 420ms ease-out"
+if ! node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind expert-ux --brief-type landing --mode full --page design/page.html >"$work/r4-prep-1-expert-ux.log" 2>&1; then
+  fail "judge-artifact (D15): round-4 F7 positive expert-ux prepare failed — case (78) will cascade; see $work/r4-prep-1-expert-ux.log"
+  cat "$work/r4-prep-1-expert-ux.log" >&2 || true
+fi
+jr_fill_expert "$r3p/design/judge/round-1-expert-ux.md" UX ux-expert 4 "tap targets measured 48px"
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs --expert-motion 5 --expert-motion-evidence "scroll reveal measured 420ms ease-out" --expert-motion-report design/judge/round-1-expert-motion.md --expert-ux 4 --expert-ux-evidence "tap targets measured 48px" --expert-ux-report design/judge/round-1-expert-ux.md >"$work/r4-t78-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-4 F7 positive graded record with experts failed — case (78) will cascade; see $work/r4-t78-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r4-t78a.log" 2>&1
+if ! grep -q "best: round 1" "$work/r4-t78a.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine expert-carrying round (F7 positive control) — see $work/r4-t78a.log"
+  cat "$work/r4-t78a.log" >&2 || true
+elif ! node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r4-t78b.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check failed a genuine expert-carrying log (F7 positive control) — see $work/r4-t78b.log"
+  cat "$work/r4-t78b.log" >&2 || true
+else
+  ok "best crowns and runlog-check passes a genuine expert-carrying round (F7 positive control)"
+fi
+
+# --- Red-team-round-5 cases (79)–(86): the field-coverage round.
+# Round 5 found no new mechanism — every break was a FIELD of the
+# stored line the shared verifier never compared: the line's gate
+# (N1), its evidence (N2), the jurors' page binding (N3), its
+# expert evidence (N6), and its whole pairwise transcription (N5),
+# which no read path opened at all. The fixes complete the field
+# coverage inside the ONE shared verifier (verifyGradedLine now
+# requires gate exactly "pass" and the derived evidence, and calls
+# verifyPairwiseLine; verifyJuryLine binds jurors to the round's
+# page; verifyExpertCitations compares expert evidence), plus the
+# line-local pairwiseReportShas shape rule in runlog-check (N5b).
+# (N4 — a juror artifact naming a different grader than the line —
+# was observed and is NOT a break: record time does not compare a
+# juror's grader either; write/read parity already holds.)
+# (79) N1: a genuine graded line flipped to gate "fail" after the
+# fact (scores, citation, artifacts all genuine). The writer never
+# writes scores behind a failed gate: the line must verify
+# NOWHERE — checker fails it, best crowns nothing, land's
+# precondition and feedback's anchor both refuse it.
+r3p="$work/r5-n1"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r5-t79-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N1 setup graded record failed — case (79) will cascade; see $work/r5-t79-setup.log"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['gate']='fail'
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t79a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r5-t79a.log"; then
+  fail "judge-artifact (D15): best crowned a graded line flipped to gate fail (N1) — see $work/r5-t79a.log"
+  cat "$work/r5-t79a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t79b.log" 2>&1 || ! grep -q 'not "pass"' "$work/r5-t79b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the gate-flipped line on the gate requirement (N1) — see $work/r5-t79b.log"
+  cat "$work/r5-t79b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a graded line flipped to gate fail (N1: the shared shape requires gate exactly pass)"
+fi
+r3_reject "land whose only round record is a gate-flipped graded line" "$work/r5-t79c.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind regrade --grader other-model --brief-type landing --mode full --page design/page.html >"$work/r5-prep-1-regrade.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N1 regrade prepare failed — case (79) feedback half will cascade; see $work/r5-prep-1-regrade.log"
+jr_fill_scores "$r3p/design/judge/round-1-regrade.md" 5 5 5 5
+r3_reject "feedback regrade anchored by a gate-flipped graded line" "$work/r5-t79d.log" "never anchors" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" feedback --from "user: darker ink" --change "--color-ink: #000" --round 1 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-1-regrade.md
+# (80) N2: a genuine graded line whose stored EVIDENCE was edited
+# after the fact (artifact untouched; scores, hash, basis all
+# genuine). The record's evidence is DERIVED from the artifact's
+# cells — an edited evidence field is not a transcription.
+r3p="$work/r5-n2"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r5-t80-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N2 setup graded record failed — case (80) will cascade; see $work/r5-t80-setup.log"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['evidence']='invented evidence naming nothing at all whatsoever'
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t80a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r5-t80a.log"; then
+  fail "judge-artifact (D15): best crowned a line whose stored evidence was edited away from its artifact's cells (N2) — see $work/r5-t80a.log"
+  cat "$work/r5-t80a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t80b.log" 2>&1 || ! grep -q "evidence" "$work/r5-t80b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the evidence-edited line on the evidence transcription check (N2) — see $work/r5-t80b.log"
+  cat "$work/r5-t80b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a line whose evidence does not transcribe its artifact's evidence cells (N2)"
+fi
+# (81) N3: a genuine jury round whose three juror slots are
+# replaced by GENUINE juror artifacts of a DIFFERENT page (page2 —
+# prepared and filled normally, votes/median/families unchanged,
+# juryReportShas updated to the new files). Only the jurors' page
+# binding can refuse it: record time binds jurors to the record's
+# page, and the shared verifier now does it on read too.
+r3p="$work/r5-n3"; r3_mkproj "$r3p"
+r3_prep "$r3p" 2 absolute
+r3_prep "$r3p" 2 jury --index 1 --family fam1
+r3_prep "$r3p" 2 jury --index 2 --family fam2
+r3_prep "$r3p" 2 jury --index 3 --family fam3
+jr_fill_scores "$r3p/design/judge/round-2.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-1.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-2.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-3.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-2.md --gate pass $r3_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "4,4,4,4;4,4,4,4;4,4,4,4" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/r5-t81-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N3 setup jury record failed — case (81) will cascade; see $work/r5-t81-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t81a.log" 2>&1
+for k in 1 2 3; do
+  node "$judge_report_mjs" --project "$r3p" prepare --round 2 --kind jury --index $k --family fam$k --grader judge-subagent --brief-type landing --mode full --page design/page2.html --out "design/judge/alt-jury-$k.md" >"$work/r5-prep-alt-jury-$k.log" 2>&1 \
+    || fail "judge-artifact (D15): round-5 N3 page2 juror prepare $k failed — case (81) will cascade; see $work/r5-prep-alt-jury-$k.log"
+  jr_fill_scores "$r3p/design/judge/alt-jury-$k.md" 4 4 4 4
+  cp "$r3p/design/judge/alt-jury-$k.md" "$r3p/design/judge/round-2-jury-$k.md"
+done
+python3 - "$r3p/design/run-log.jsonl" "$r3p" <<'EOF'
+import json,sys,hashlib,os
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round':
+        o['juryReportShas']=";".join(hashlib.sha256(open(os.path.join(sys.argv[2],"design/judge",f"round-2-jury-{k}.md"),"rb").read()).hexdigest() for k in (1,2,3))
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t81b.log" 2>&1
+if ! grep -q "best: round 2" "$work/r5-t81a.log" || ! grep -q "no graded rounds" "$work/r5-t81b.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine jury before the juror swap, or crowned it after its jurors were replaced by another page's jurors (N3) — see $work/r5-t81a.log / $work/r5-t81b.log"
+  cat "$work/r5-t81a.log" "$work/r5-t81b.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t81c.log" 2>&1 || ! grep -q "pageSha" "$work/r5-t81c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the wrong-page-juror log on the juror page binding (N3) — see $work/r5-t81c.log"
+  cat "$work/r5-t81c.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a jury whose jurors graded a different page than the round (N3)"
+fi
+r3_reject "land on the wrong-page-juror log" "$work/r5-t81d.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 2 --gate pass $r3_legs
+# (82) N6: a genuine expert-carrying round whose stored
+# expertMotionEvidence was edited after the fact (the expert
+# artifact untouched). Record time equality-checks the evidence
+# flag against the artifact before storing it; the shared
+# verifier now compares it on read too.
+r3p="$work/r5-n6"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind expert-motion --brief-type landing --mode full --page design/page.html >"$work/r5-prep-1-expert-motion.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N6 expert-motion prepare failed — case (82) will cascade; see $work/r5-prep-1-expert-motion.log"
+jr_fill_expert "$r3p/design/judge/round-1-expert-motion.md" Motion motion-expert 5 "scroll reveal measured 420ms ease-out"
+node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind expert-ux --brief-type landing --mode full --page design/page.html >"$work/r5-prep-1-expert-ux.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N6 expert-ux prepare failed — case (82) will cascade; see $work/r5-prep-1-expert-ux.log"
+jr_fill_expert "$r3p/design/judge/round-1-expert-ux.md" UX ux-expert 4 "tap targets measured 48px"
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs --expert-motion 5 --expert-motion-evidence "scroll reveal measured 420ms ease-out" --expert-motion-report design/judge/round-1-expert-motion.md --expert-ux 4 --expert-ux-evidence "tap targets measured 48px" --expert-ux-report design/judge/round-1-expert-ux.md >"$work/r5-t82-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N6 setup expert record failed — case (82) will cascade; see $work/r5-t82-setup.log"
+r5_n6_control=0
+node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t82a.log" 2>&1 || r5_n6_control=$?
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['expertMotionEvidence']='scroll reveal measured 999ms ease-out'
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t82b.log" 2>&1
+r5_n6_attack=0
+node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t82c.log" 2>&1 || r5_n6_attack=$?
+if [ "$r5_n6_control" -ne 0 ]; then
+  fail "judge-artifact (D15): round-5 N6 control failed — runlog-check failed the genuine expert log before the evidence edit; see $work/r5-t82a.log"
+  cat "$work/r5-t82a.log" >&2 || true
+elif ! grep -q "no graded rounds" "$work/r5-t82b.log"; then
+  fail "judge-artifact (D15): best crowned a line whose expertMotionEvidence was edited away from its expert artifact (N6) — see $work/r5-t82b.log"
+  cat "$work/r5-t82b.log" >&2 || true
+elif [ "$r5_n6_attack" -eq 0 ] || ! grep -q "expertMotionEvidence" "$work/r5-t82c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the expert-evidence-edited log on the expert evidence transcription check (N6) — see $work/r5-t82c.log"
+  cat "$work/r5-t82c.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a line whose expert evidence does not transcribe its expert artifact (N6)"
+fi
+# (83) N5 POSITIVE CONTROL: a genuine pairwise-carrying round
+# (two swapped pairwise artifacts deriving keep-challenger, the
+# verdict recorded from them) verifies on EVERY read path — best
+# crowns it, runlog-check passes the log, land records.
+r3p="$work/r5-n5"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+r3_prep "$r3p" 1 pairwise --index 1 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
+r3_prep "$r3p" 1 pairwise --index 2 --shots-a design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png --shots-b design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png
+jr_fill_pairwise "$r3p/design/judge/round-1-pairwise-1.md" A
+jr_fill_pairwise "$r3p/design/judge/round-1-pairwise-2.md" B
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs --pairwise keep-challenger --pairwise-agrees yes --pairwise-reports design/judge/round-1-pairwise-1.md,design/judge/round-1-pairwise-2.md >"$work/r5-t83-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N5 setup pairwise record failed — cases (83)/(84) will cascade; see $work/r5-t83-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t83a.log" 2>&1
+if ! grep -q "best: round 1" "$work/r5-t83a.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine pairwise-carrying round (N5 positive control) — see $work/r5-t83a.log"
+  cat "$work/r5-t83a.log" >&2 || true
+elif ! node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t83b.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check failed a genuine pairwise-carrying log (N5 positive control) — see $work/r5-t83b.log"
+  cat "$work/r5-t83b.log" >&2 || true
+elif ! node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs >"$work/r5-t83c.log" 2>&1; then
+  fail "judge-artifact (D15): land refused a genuine pairwise-carrying round (N5 positive control) — see $work/r5-t83c.log"
+  cat "$work/r5-t83c.log" >&2 || true
+else
+  ok "a genuine pairwise-carrying round verifies on every read path — best crowns it, runlog-check passes it, land records (N5 positive control)"
+fi
+# (84) N5: the same round's stored pairwise VERDICT flipped to
+# keep-incumbent (artifacts untouched — they derive
+# keep-challenger). Before round 5 no read path re-derived the
+# verdict; the line verified on its absolute citation alone.
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['pairwise']='keep-incumbent'
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t84a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r5-t84a.log"; then
+  fail "judge-artifact (D15): best crowned a round whose pairwise verdict was flipped against its artifacts (N5) — see $work/r5-t84a.log"
+  cat "$work/r5-t84a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t84b.log" 2>&1 || ! grep -q "derive" "$work/r5-t84b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the verdict-flipped log on the pairwise re-derivation (N5) — see $work/r5-t84b.log"
+  cat "$work/r5-t84b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a round whose pairwise verdict does not re-derive from its artifacts (N5)"
+fi
+# (85) N5: FAKE pairwise fields on an otherwise genuine
+# absolute-only round — invented pairwiseReports (files that do
+# not exist) and well-formed invented pairwiseReportShas. The
+# line must verify NOWHERE: its pairwise transcription cannot
+# re-derive, so nothing trusts the line at all.
+r3p="$work/r5-n5b"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r5-t85-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-5 N5-fake setup graded record failed — case (85) will cascade; see $work/r5-t85-setup.log"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys,hashlib
+h=lambda s: hashlib.sha256(s.encode()).hexdigest()
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round':
+        o['pairwise']='keep-challenger'; o['pairwiseAgrees']=True
+        o['pairwiseReports']='design/judge/round-1-pairwise-1.md;design/judge/round-1-pairwise-2.md'
+        o['pairwiseReportShas']=";".join([h("pairwise one"),h("pairwise two")])
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r5-t85a.log" 2>&1
+if ! grep -q "no graded rounds" "$work/r5-t85a.log"; then
+  fail "judge-artifact (D15): best crowned a round carrying fabricated pairwise fields (N5) — see $work/r5-t85a.log"
+  cat "$work/r5-t85a.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r5-t85b.log" 2>&1 || ! grep -q "pairwise" "$work/r5-t85b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the fabricated-pairwise log on the pairwise verification (N5) — see $work/r5-t85b.log"
+  cat "$work/r5-t85b.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a round carrying fabricated pairwise fields (N5)"
+fi
+r3_reject "land whose only round record carries fabricated pairwise fields" "$work/r5-t85c.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+# (86) N5b: the line-LOCAL shape rule — checkRunLogLine WITHOUT a
+# project root (a pure line-local caller) must flag a
+# pairwiseReportShas that is not exactly two 64-hex values, the
+# NA2 jury shape rule applied to the pairwise citation set; and
+# must return no problem for the genuine pairwise line of case
+# (83)'s project (read before its verdict flip — the shape the
+# writer writes).
+cat > "$work/r5-noroot.mjs" <<'EOF'
+import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
+const m = await import(pathToFileURL(process.argv[2]).href);
+const lines = readFileSync(process.argv[3], 'utf8').split('\n').filter((l) => l.trim());
+for (const l of lines) console.log(m.checkRunLogLine(l) ?? 'NULL');
+EOF
+python3 - "$work/r5-fake-shas.jsonl" <<'EOF'
+import json,sys
+line={"kind":"round","round":1,"grader":"judge-subagent","scores":{"type":4,"layout":4,"colour":4,"space":4},"judgeReport":"design/judge/round-1.md","judgeReportSha":"a"*64,"pairwise":"keep-challenger","pairwiseReportShas":"nothex;nothex"}
+open(sys.argv[1],"w").write(json.dumps(line)+"\n")
+EOF
+grep '"kind": *"round"' "$work/r5-n5/design/run-log.jsonl" | head -n 1 > "$work/r5-genuine-line.jsonl" || true
+if ! node "$work/r5-noroot.mjs" "$runlog_check_mjs" "$work/r5-fake-shas.jsonl" >"$work/r5-t86a.log" 2>&1 || ! grep -q "pairwiseReportShas" "$work/r5-t86a.log"; then
+  fail "judge-artifact (D15): line-local checkRunLogLine did not flag a malformed pairwiseReportShas (N5b) — see $work/r5-t86a.log"
+  cat "$work/r5-t86a.log" >&2 || true
+elif ! node "$work/r5-noroot.mjs" "$runlog_check_mjs" "$work/r5-genuine-line.jsonl" >"$work/r5-t86b.log" 2>&1 || ! grep -q "^NULL$" "$work/r5-t86b.log"; then
+  fail "judge-artifact (D15): line-local checkRunLogLine flagged the genuine pairwise line's shape (N5b control) — see $work/r5-t86b.log"
+  cat "$work/r5-t86b.log" >&2 || true
+else
+  ok "line-local checkRunLogLine flags a malformed pairwiseReportShas and passes a genuine pairwise line's shape (N5b)"
+fi
+
 
 # --- 6. Playwright eyes ------------------------------------------------------
 # Skip-awareness (W-FIX-SKIP 2026-11-10): install.sh records --skip-eyes
