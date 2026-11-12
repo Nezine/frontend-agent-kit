@@ -219,3 +219,12 @@ progress note) and that push renews the lease.
 - **Optimus urgent-channel check 2026-11-12 ~16:36 UTC:** read the group (new
   messages only). No new @migga direction; the group confirms M2 merged
   (a17a862) and M3 started. No reply posted (coordinator posts milestones).
+- **RULE CHANGE 2026-11-12 16:47 UTC (user, Hoàng Anh — overrides the handoff):**
+  when Migga finishes something, Migga posts a SHORT milestone update in the
+  Optimus Messenger group itself (2–3 lines, Vietnamese, casual — e.g. MIG-1
+  done + PR link, MIG-2 done, blocked items). No agent-to-agent coordination
+  chatter, no raw logs, no internal detail. No need to ask the user first for
+  this category — approved in advance. The handoff's "Migga never posts in
+  the group / Muse posts human-facing milestones only" rule is superseded by
+  this user instruction for milestone updates only; coordination still lives
+  in the repo. Recorded here so the coordinator sees it.
