@@ -34,6 +34,30 @@ table that lists a grader of `builder`, `self`, or no grader at all must be
 thrown out and re-graded by an allowed judge. The run-log script
 (`skills/frontend-kit/scripts/run-log.mjs`) rejects log entries whose grader is the builder.
 
+**The judge-artifact rule (D15, GAP-13 — beside the grader rule, same
+force).** A label alone is an assertion; since D15 every score that
+enters the run log must be a verified transcription of a **judge
+report**: a file under `design/judge/` that the orchestrator prepared
+before spawning the judge (`judge-report.mjs prepare` — it stamps the
+page / tokens / screenshot sha256 and derives the gate + cross-check
+bits from the project's own artifacts) and that the judge filled in
+on disk (basis, evidence cells, scores, fix order). The run-log
+record cites it (`--judge-report`) and is refused (exit 2) when the
+flag scores / grader / basis differ from the artifact's, when the
+artifact's hashes no longer match the files on disk, or when the
+artifact was already cited by an earlier grade. The recorded
+evidence is derived from the artifact's evidence cells — there is
+no caller-asserted evidence on a graded record. The same rule binds
+pairwise verdicts (two artifacts), jury votes (three), expert scores
+(their expert artifacts), and feedback re-grades (a regrade
+artifact). A grader that cannot write files in the project —
+chat-only routes, incl. the Muse app — cannot grade; the round
+records as "gate green, vision not available". Stated residual: a
+builder can still author a judge-shaped artifact from scratch; the
+mechanism makes self-grading require deliberate, on-disk,
+internally-consistent forgery that a QC re-grade or an audit of
+`design/judge/` can contradict. See `decisions.md` D15.
+
 **The executable grader is `skills/frontend-judge/`** — a complete judge
 skill (SKILL.md + `references/invocation.md` with the fresh-sub-agent
 invocation pattern). The orchestrator dispatches step 4 to it by name, as

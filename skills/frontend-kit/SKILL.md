@@ -866,7 +866,14 @@ tip at stop / the best version), before the human-gate packet is prepared
    <security-expert|crosscheck-subagent|crosscheck-team> --basis "<fresh
    context, no production history>"` — BEFORE any land is recorded. A land
    entry without a prior clear cross-check verdict is rejected by the
-   run-log script (exit 2, nothing written).
+   run-log script (exit 2, nothing written). **The report file must
+   exist (D15):** the run log validates `--report` like every other
+   artifact — relative, inside `design/`, a real non-symlink non-empty
+   file. Write the report BEFORE recording its verdict; a verdict
+   citing a report that was never written is refused (exit 2). A land
+   also requires at least one round record for the land's round
+   (graded, or an explicit no-grade record) — a loop with no recorded
+   round does not land (D15).
 4. **Land requires gate green AND cross-check clear.** Per-branch green is
    not green, and a gate-green build with a SEVERE cross-check finding does
    not land, does not grade, and does not ship. The land record carries
@@ -998,6 +1005,36 @@ reworked P3 (council decision D7, `references/decisions.md`): a
    With `--gate pass`, add `--gate-leg1 design/gate-leg1.log --gate-leg2
    design/gate-leg2.log` (D13 — the run log refuses a pass without both
    gate-leg artifacts); `--gate fail` needs no artifact.
+6. **The judge artifact (D15 — every score is a transcription).** A
+   graded record is accepted ONLY as a verified transcription of a
+   judge report the orchestrator prepared and an independent judge
+   filled in on disk. Before spawning the judge, run
+   `skills/frontend-kit/scripts/judge-report.mjs --project <dir>
+   prepare --round N --kind absolute --grader <label> --brief-type
+   <type> --mode <full|cheap> --page <built.html>` — it stamps
+   `design/judge/round-<n>.md` with the page/tokens/screenshot hashes
+   and the derived gate + cross-check bits, and refuses when it
+   cannot verify them. The judge fills the skeleton IN THE FILE
+   (basis, evidence cells, scores, fix order) and returns the same
+   body as its reply; the orchestrator NEVER transcribes a chat reply
+   into the file. Record with `--judge-report
+   design/judge/round-<n>.md`: the script checks the artifact's
+   scores / grader / basis against the flags axis-by-axis, derives
+   the recorded evidence from the artifact's cells (`--evidence` is
+   not accepted on a graded record), and binds the grade to the
+   current page/tokens/screenshot hashes — a page edited after
+   judging, or an artifact already cited by an earlier grade, is
+   refused (exit 2). The same rule covers every other score:
+   pairwise verdicts cite `--pairwise-reports` (two files, A/B
+   swapped), jury votes cite `--judge-reports` (three files),
+   expert scores cite `--expert-motion-report` /
+   `--expert-ux-report` (also on no-grade records), and a feedback
+   `--score-after` cites a `--kind regrade` artifact. Scores on a
+   failed gate, and an allowed grader with `--scores none`, are
+   refused outright. A grader that cannot write files in the project
+   (chat-only routes, incl. the Muse app) cannot grade — record the
+   round on the no-grade path instead. Full pattern:
+   `skills/frontend-judge/references/invocation.md`.
 
 ## Step 5 — Fix top 2, as token diffs
 
@@ -1054,6 +1091,12 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    converge-green.
 
 ## Step 6 — Stop + human gate
+
+   The stop decision reads only artifact-backed grades (D15): a round
+   whose scores carry no judge artifact is not a grade and cannot
+   trigger the stop — `run-log.mjs best` likewise excludes gate-fail
+   and artifact-less rounds, so best-version-kept never crowns an
+   ungraded or self-asserted version.
 
 1. **Converge check (before the human gate — BLOCKING).** Before the
    human gate is presented, the build must converge against the plan:

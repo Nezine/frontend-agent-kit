@@ -447,6 +447,17 @@ human instructions to the step-5 fix list, never judge inputs.
   `skills/frontend-judge/`, dispatched by name as a fresh sub-agent
   (fallback order: fresh judge sub-agent → `other-model` judge →
   `muse-manager` judge → no grade, "gate green, vision not available").
+  **Judge artifact (D15):** before spawning the judge, the orchestrator
+  prepares the round's report file (`judge-report.mjs prepare` →
+  `design/judge/round-<n>.md`, stamped with the page/tokens/screenshot
+  hashes and the derived gate + cross-check bits); the judge fills it
+  in the file itself, and the run-log record transcribes it
+  (`--judge-report`) — scores, evidence, pairwise/jury verdicts and
+  expert scores with no artifact, or differing from their artifact,
+  are refused (exit 2). The orchestrator never transcribes a chat
+  reply into the file. Full pattern:
+  `skills/frontend-judge/references/invocation.md`; rule:
+  `references/grader-rubric.md` (judge-artifact rule).
   **Specialist second opinion (expert pack):** the judge or the
   orchestrator may spawn a matching expert from
   `references/expert-pack.md` / `experts/<domain>.md` as a fresh sub-agent
@@ -536,7 +547,9 @@ human instructions to the step-5 fix list, never judge inputs.
   presented as done: the human gate does not open, and the round goes
   back to step 5 with the failing section or state named. There is no
   advisory mode. The converge result is recorded in the run log.
-- **6.2 Stop when:** ≥4 on every axis AND gate green AND cross-check clear — or a P6 trigger
+- **6.2 Stop when:** ≥4 on every axis AND gate green AND cross-check clear — counting only
+  artifact-backed grades (D15: a score with no judge artifact is not a grade and cannot
+  trigger the stop; `run-log.mjs best` excludes gate-fail and artifact-less rounds) — or a P6 trigger
   ends work on the direction (step 5 decision tree) — or after 3 rounds per direction,
   whichever comes first. A build that cannot reach ≥4 in 3 rounds is a direction problem
   (wrong reference, wrong tokens) — re-pick a variant (step 2a),

@@ -306,9 +306,11 @@ shipping even when your 4 axes are ≥4: say so in your output.
   own scores. If the orchestrator sends the page back after fixes, that is
   a NEW round with a NEW judge invocation — and you must not carry scores
   or reasoning from the earlier round into it.
-- You edit nothing: no tokens, no HTML, no screenshots. Your output is the
-  score table + fix order (below). The builder applies fixes; you never
-  touch the build.
+- You edit nothing in the build: no tokens, no HTML, no screenshots.
+  The ONE file you write is your judge report (see "Output format") —
+  you fill the prepared skeleton under `design/judge/` and nothing
+  else. Your output is the score table + fix order (below). The
+  builder applies fixes; you never touch the build.
 - The loop stops at ≥4 on every axis AND gate green AND cross-check clear, or after 3 rounds per
   direction (max 2 re-picks, 9 rounds total across all directions). That
   cap is the orchestrator's, not yours — but if you are asked to grade a
@@ -351,6 +353,27 @@ scores. Results live in `research/judge-calibration.md`.
 
 ## Output format (return exactly this, nothing else)
 
+**The judge report file (D15).** Before you were spawned, the
+orchestrator ran `judge-report.mjs prepare` and gave you the path of
+ONE report file under `design/judge/` — a skeleton whose header is
+already stamped with the page / tokens / screenshot hashes and the
+gate + cross-check bits. Your output is written **into that file, by
+you**: fill the `basis:` header line, the four evidence cells, the
+four score cells, and the Fix order line, replacing the `?`
+placeholders, and return the same body as your reply text. The
+record in the run log is a verified transcription of that file —
+scores that exist only in a chat reply are not recordable, and the
+orchestrator must never transcribe your reply into the file for you.
+Your grader label and basis must be identical in the header, in the
+body's Round line, and (via the orchestrator's flags) in the record.
+Evidence cells contain NO `|` character and no newline — a cell that
+breaks the table breaks the transcription. One judge call fills one
+file: a pairwise call fills its own pairwise file, each juror fills
+their own jury file, an expert fills their own expert file. If you
+cannot write files in your host, give no scores and say plainly that
+you cannot write the report file: a grader without project write
+access cannot grade under D15 (the round records as no-grade).
+
 ```
 Round N — grader: judge-subagent (fresh context, no production history)
 | Axis   | Evidence (one line, observable, citing the reference)      | Score |
@@ -360,6 +383,7 @@ Round N — grader: judge-subagent (fresh context, no production history)
 | Colour | Accent #d97757 used twice (CTA + footer mark) vs ref 1; body text 12.6:1 | 4     |
 | Space  | Section gaps 96px throughout vs ref 1; card padding 32px per tokens | 5     |
 Gate: green
+Cross-check: clear
 Fix order: Layout (pricing peek — cheapest precise fix), then Type.
 ```
 
@@ -436,3 +460,11 @@ Fix order: Layout (pricing peek — cheapest precise fix), then Type.
   gate result ("gate green") as a design grade.
 - Never invent a version number, a file, or a measurement you did not read
   or see. If a source cannot be read, mark it CHƯA ĐỌC and say so.
+- Never let your grade exist only as reply text (D15): if the report
+  file was not prepared for you, or you cannot write to it, give no
+  scores. Never ask the orchestrator to write the file from your
+  reply — a transcribed reply is indistinguishable from a fabricated
+  one, and the run log refuses it.
+- Never fill, edit, or re-use another round's, another call's, or
+  another juror's report file. One call, one file; a report already
+  cited by a record can never back a second grade.
