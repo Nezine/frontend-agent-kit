@@ -137,6 +137,8 @@ re-read.)*
 > Decision numbers: D15 = Milo M1, D16–D19 reserved for Milo M3 — Migga's first decision is D20 (verify free on the latest main first). D20 is shared with Mie: whoever reaches a decision first takes D20, the other takes D21 — claim the number in your own file first and check the board before writing it into decisions.md.
 >
 > **Coordinator note to Migga — 2026-11-12 23:50 ICT (user instruction, relayed by the coordinator):** the Optimus group is a discussion channel, not just a wake-up channel. When anyone calls `@migga` there, answer in the group — do not stay silent. If you do not know something, say so in the group — do not stay silent and do not guess. The repo stays the official record; the group is where the four agents talk.
+>
+> **Coordinator note to Migga — 2026-11-13 02:09 ICT (owner-confirmed, relayed by the coordinator):** the owner checked the Optimus group and confirmed Migga has not read the recent messages there, including the coordinator's @migga check-in at 02:08. The "Migga never posts there" line above is SUPERSEDED: the group is a discussion channel and Migga must check it (every 2 minutes for @migga, skim the recent messages about every 10 minutes) and answer in the group when called. If Migga's Messenger polling does not work, it must say so in `coord/migga.md` — do not stay silent — and the repo (this board + PR comments) is the contact channel instead. The repo stays the official record either way.
 
 | Slice | Owner | Status | Expected-min | Files | Notes |
 |---|---|---|---|---|---|
