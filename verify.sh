@@ -4289,6 +4289,231 @@ else
   ok "line-local checkRunLogLine flags a malformed pairwiseReportShas and passes a genuine pairwise line's shape (N5b)"
 fi
 
+# --- Red-team-round-6 cases (87)–(92): the crosscheck channel (X1)
+# and the last unbound fields (X2–X5). Round 6 found the crosscheck
+# channel verified by NOBODY on read: land trusted the latest stored
+# verdict, prepare derived its cross-check bit from it, and
+# runlog-check never looked at crosscheck lines — one hand-appended
+# "clear" line over a genuine blocked verdict overrode the block in
+# all three consumers. The fix is one shared verifyCrosscheckLine
+# (verdict re-derived from the line's own counts, checker allowlist,
+# independence basis, cited report on disk) called by all three,
+# plus the graded line's own gate legs verified on read (X2), the
+# juror/expert tokens binding (X3/X4), and the not-regraded
+# transcription (X5) inside the shared verifier.
+# (87) X1: a genuine graded round + genuine clear cross-check land
+# and prepare cleanly (setup controls); a genuine BLOCKED
+# cross-check then refuses land (latest-wins); a hand-appended
+# self-contradictory "clear" line (verdict clear over severe 3,
+# checker not on the allowlist) over it must refuse land AND
+# prepare AND fail runlog-check — with no fallback to the earlier
+# genuine lines.
+r3p="$work/r6-x1"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r6-t87-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X1 setup graded record failed — case (87) will cascade; see $work/r6-t87-setup.log"
+node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs >"$work/r6-t87-pos-land.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X1 POSITIVE control failed — land behind a genuine clear cross-check + genuine graded record was refused; see $work/r6-t87-pos-land.log"
+node "$judge_report_mjs" --project "$r3p" prepare --round 2 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r6-t87-pos-prep.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X1 POSITIVE control failed — prepare behind a genuine clear cross-check was refused; see $work/r6-t87-pos-prep.log"
+node "$run_log_mjs" --project "$r3p" crosscheck --slice r3 --round 1 --severe 1 --warning 0 --report design/crosscheck/round-1.md --checker security-expert --basis "$jr_basis" >"$work/r6-t87-blocked.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X1 setup blocked cross-check record failed — case (87) will cascade; see $work/r6-t87-blocked.log"
+r3_reject "land behind a genuine BLOCKED cross-check (latest-wins control)" "$work/r6-t87a.log" "is BLOCKED" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+for rnd in (1,2):
+    fake={"kind":"crosscheck","slice":"r3","round":rnd,"severe":3,"warning":2,"waived":0,"verdict":"clear","report":"design/crosscheck/round-1.md","checker":"other-model","independenceBasis":"fresh context, no production history","notes":None,"at":"2026-11-11T12:08:00.000Z"}
+    open(sys.argv[1],"a").write(json.dumps(fake)+"\n")
+EOF
+r3_reject "land behind an appended self-contradictory clear cross-check line" "$work/r6-t87b.log" "does not verify" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+if node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t87c.log" 2>&1 || ! grep -q "contradicts its own counts" "$work/r6-t87c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the log carrying a self-contradictory crosscheck line on the verdict re-derivation (X1) — see $work/r6-t87c.log"
+  cat "$work/r6-t87c.log" >&2 || true
+elif node "$judge_report_mjs" --project "$r3p" prepare --round 2 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r6-t87d.log" 2>&1 || ! grep -q "does not verify" "$work/r6-t87d.log"; then
+  fail "judge-artifact (D15): prepare derived its cross-check bit from an appended self-contradictory clear line instead of refusing (X1) — see $work/r6-t87d.log"
+  cat "$work/r6-t87d.log" >&2 || true
+else
+  ok "runlog-check and prepare both refuse an appended self-contradictory clear cross-check line (X1: the verdict re-derives from the counts in every consumer)"
+fi
+# (88) X1, consistent-counts variant: the appended clear line's
+# counts DO derive clear and its checker/basis are genuine — only
+# its cited report does not exist. Record time never writes a
+# verdict behind a missing report, so all three consumers refuse.
+r3p="$work/r6-x1b"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r6-t88-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X1-variant setup graded record failed — case (88) will cascade; see $work/r6-t88-setup.log"
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+for rnd in (1,2):
+    fake={"kind":"crosscheck","slice":"r3","round":rnd,"severe":0,"warning":0,"waived":0,"verdict":"clear","report":"design/crosscheck/round-99.md","checker":"security-expert","independenceBasis":"fresh context, no production history","notes":None,"at":"2026-11-11T12:09:00.000Z"}
+    open(sys.argv[1],"a").write(json.dumps(fake)+"\n")
+EOF
+r3_reject "land behind an appended clear cross-check line whose report does not exist" "$work/r6-t88a.log" "does not verify" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+if node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t88b.log" 2>&1 || ! grep -q "does not exist" "$work/r6-t88b.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail a crosscheck line whose cited report does not exist (X1 variant) — see $work/r6-t88b.log"
+  cat "$work/r6-t88b.log" >&2 || true
+elif node "$judge_report_mjs" --project "$r3p" prepare --round 2 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r6-t88c.log" 2>&1 || ! grep -q "does not exist" "$work/r6-t88c.log"; then
+  fail "judge-artifact (D15): prepare derived its cross-check bit from a clear line whose report does not exist (X1 variant) — see $work/r6-t88c.log"
+  cat "$work/r6-t88c.log" >&2 || true
+else
+  ok "runlog-check and prepare both refuse a consistent-counts clear cross-check line whose report does not exist (X1 variant)"
+fi
+# (89) X2: a genuine graded line whose stored gateLeg1Sha /
+# gateLeg2Sha were edited to garbage after the fact (legs, citation
+# and scores all genuine). Record stored those shas from the
+# artifacts it validated; a graded line's legs now verify on read
+# exactly as a no-grade line's have since round 3.
+r3p="$work/r6-x2"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r6-t89-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X2 setup graded record failed — case (89) will cascade; see $work/r6-t89-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r6-t89a.log" 2>&1
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round':
+        o['gateLeg1Sha']='f'*64; o['gateLeg2Sha']='f'*64
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r6-t89b.log" 2>&1
+if ! grep -q "best: round 1" "$work/r6-t89a.log" || ! grep -q "no graded rounds" "$work/r6-t89b.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine graded round, or crowned it after its stored leg shas were edited (X2) — see $work/r6-t89a.log / $work/r6-t89b.log"
+  cat "$work/r6-t89a.log" "$work/r6-t89b.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t89c.log" 2>&1 || ! grep -q "gate leg" "$work/r6-t89c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the leg-sha-edited graded line on its gate-leg verification (X2) — see $work/r6-t89c.log"
+  cat "$work/r6-t89c.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a graded line whose stored gate-leg shas were edited (X2)"
+fi
+r3_reject "land whose only round record has edited gate-leg shas" "$work/r6-t89d.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
+# (90) X3: a genuine jury round whose three juror slots are replaced
+# by GENUINE juror artifacts prepared against a DIFFERENT tokens.css
+# (votes/median/shas re-cited consistently at 5,5,5,5). Record time
+# binds jurors to the record's tokensHash; the shared verifier now
+# compares the juror headers' tokens-sha256 on read too.
+r3p="$work/r6-x3"; r3_mkproj "$r3p"
+r3_prep "$r3p" 2 absolute
+r3_prep "$r3p" 2 jury --index 1 --family fam1
+r3_prep "$r3p" 2 jury --index 2 --family fam2
+r3_prep "$r3p" 2 jury --index 3 --family fam3
+jr_fill_scores "$r3p/design/judge/round-2.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-1.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-2.md" 4 4 4 4
+jr_fill_scores "$r3p/design/judge/round-2-jury-3.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-2.md --gate pass $r3_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "4,4,4,4;4,4,4,4;4,4,4,4" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/r6-t90-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X3 setup jury record failed — case (90) will cascade; see $work/r6-t90-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r6-t90a.log" 2>&1
+cp -r "$r3p" "$work/r6-x3v2"
+printf ':root { --bg: #000000; --ink: #ffffff; --space: 99px; }\nbody { background: var(--bg); color: var(--ink); }\n' > "$work/r6-x3v2/design/tokens.css"
+touch -d '2026-11-11 12:00' "$work/r6-x3v2/design/tokens.css"
+for k in 1 2 3; do
+  node "$judge_report_mjs" --project "$work/r6-x3v2" prepare --round 2 --kind jury --index $k --family fam$k --grader judge-subagent --brief-type landing --mode full --page design/page.html --out "design/judge/alt-jury-$k.md" >"$work/r6-prep-alt-jury-$k.log" 2>&1 \
+    || fail "judge-artifact (D15): round-6 X3 tokens-v2 juror prepare $k failed — case (90) will cascade; see $work/r6-prep-alt-jury-$k.log"
+  jr_fill_scores "$work/r6-x3v2/design/judge/alt-jury-$k.md" 5 5 5 5
+  cp "$work/r6-x3v2/design/judge/alt-jury-$k.md" "$r3p/design/judge/round-2-jury-$k.md"
+done
+python3 - "$r3p/design/run-log.jsonl" "$r3p" <<'EOF'
+import json,sys,hashlib,os
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round':
+        o['juryReportShas']=";".join(hashlib.sha256(open(os.path.join(sys.argv[2],"design/judge",f"round-2-jury-{k}.md"),"rb").read()).hexdigest() for k in (1,2,3))
+        o['jury']={"type":5,"layout":5,"colour":5,"space":5}
+        o['juryVotes']=[{"type":5,"layout":5,"colour":5,"space":5}]*3
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r6-t90b.log" 2>&1
+if ! grep -q "best: round 2" "$work/r6-t90a.log" || ! grep -q "no graded rounds" "$work/r6-t90b.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine jury, or crowned it after its jurors were replaced by another tokens version's jurors (X3) — see $work/r6-t90a.log / $work/r6-t90b.log"
+  cat "$work/r6-t90a.log" "$work/r6-t90b.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t90c.log" 2>&1 || ! grep -q "tokens-sha256" "$work/r6-t90c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the wrong-tokens-juror log on the juror tokens binding (X3) — see $work/r6-t90c.log"
+  cat "$work/r6-t90c.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a jury whose jurors graded a different tokens version than the round (X3)"
+fi
+r3_reject "land on the wrong-tokens-juror log" "$work/r6-t90d.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 2 --gate pass $r3_legs
+# (91) X4: a genuine expert-carrying round whose expert-motion
+# artifact is replaced by a GENUINE expert artifact prepared
+# against a different tokens.css (score 4 -> 5, sha re-cited).
+# Record time validates expert artifacts with no tokens
+# expectation, so the read-side tokens binding is the only check
+# that can refuse it — and genuine same-build expert artifacts
+# carry the build's tokens hash, so genuine lines still verify.
+r3p="$work/r6-x4"; r3_mkproj "$r3p"
+r3_prep "$r3p" 2 absolute
+jr_fill_scores "$r3p/design/judge/round-2.md" 4 4 4 4
+node "$judge_report_mjs" --project "$r3p" prepare --round 2 --kind expert-motion --brief-type landing --mode full --page design/page.html >"$work/r6-prep-2-expert-motion.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X4 expert-motion prepare failed — case (91) will cascade; see $work/r6-prep-2-expert-motion.log"
+jr_fill_expert "$r3p/design/judge/round-2-expert-motion.md" Motion motion-expert 4 "hero reveal travels 24px in 220ms"
+node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-2.md --gate pass $r3_legs --expert-motion 4 --expert-motion-evidence "hero reveal travels 24px in 220ms" --expert-motion-report design/judge/round-2-expert-motion.md >"$work/r6-t91-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X4 setup expert record failed — case (91) will cascade; see $work/r6-t91-setup.log"
+node "$run_log_mjs" --project "$r3p" land --slice r3 --round 2 --gate pass $r3_legs >"$work/r6-t91-pos.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X4 POSITIVE control failed — land on the genuine expert-carrying round was refused; see $work/r6-t91-pos.log"
+cp -r "$r3p" "$work/r6-x4v2"
+printf ':root { --bg: #000000; --ink: #ffffff; --space: 99px; }\nbody { background: var(--bg); color: var(--ink); }\n' > "$work/r6-x4v2/design/tokens.css"
+touch -d '2026-11-11 12:00' "$work/r6-x4v2/design/tokens.css"
+node "$judge_report_mjs" --project "$work/r6-x4v2" prepare --round 2 --kind expert-motion --brief-type landing --mode full --page design/page.html --out design/judge/alt-expert-motion.md >"$work/r6-prep-alt-expert.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X4 tokens-v2 expert prepare failed — case (91) will cascade; see $work/r6-prep-alt-expert.log"
+jr_fill_expert "$work/r6-x4v2/design/judge/alt-expert-motion.md" Motion motion-expert 5 "hero reveal travels 24px in 220ms"
+cp "$work/r6-x4v2/design/judge/alt-expert-motion.md" "$r3p/design/judge/round-2-expert-motion.md"
+python3 - "$r3p/design/run-log.jsonl" "$r3p" <<'EOF'
+import json,sys,hashlib,os
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+sha=hashlib.sha256(open(os.path.join(sys.argv[2],"design/judge/round-2-expert-motion.md"),"rb").read()).hexdigest()
+for o in lines:
+    if o.get('kind')=='round':
+        o['expertMotion']=5; o['expertMotionReportSha']=sha
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+if node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t91a.log" 2>&1 || ! grep -q "tokens-sha256" "$work/r6-t91a.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the wrong-tokens-expert log on the expert tokens binding (X4) — see $work/r6-t91a.log"
+  cat "$work/r6-t91a.log" >&2 || true
+else
+  ok "runlog-check refuses an expert artifact that binds a different tokens version than the round (X4)"
+fi
+r3_reject "land on the wrong-tokens-expert log" "$work/r6-t91b.log" "has no round record" "$r3p/design/run-log.jsonl" \
+  node "$run_log_mjs" --project "$r3p" land --slice r3 --round 2 --gate pass $r3_legs
+# (92) X5: a genuine cheap record made with --not-regraded
+# "#hero,#footer" whose LINE notRegraded is edited to [] after the
+# fact (artifact untouched). Record validates the header's
+# not-regraded set against the record's set for either kind; the
+# shared verifier now compares the stored field on read.
+r3p="$work/r6-x5"; r3_mkproj "$r3p"
+node "$judge_report_mjs" --project "$r3p" prepare --round 3 --kind cheap --grader judge-subagent --brief-type landing --mode cheap --page design/page.html --shots design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --not-regraded "#hero,#footer" >"$work/r6-prep-3-cheap.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X5 cheap prepare failed — case (92) will cascade; see $work/r6-prep-3-cheap.log"
+jr_fill_scores "$r3p/design/judge/round-3-cheap.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 3 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-3-cheap.md --gate pass $r3_legs --not-regraded "#hero,#footer" >"$work/r6-t92-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): round-6 X5 setup cheap record failed — case (92) will cascade; see $work/r6-t92-setup.log"
+node "$run_log_mjs" --project "$r3p" best >"$work/r6-t92a.log" 2>&1
+python3 - "$r3p/design/run-log.jsonl" <<'EOF'
+import json,sys
+lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for o in lines:
+    if o.get('kind')=='round': o['notRegraded']=[]
+open(sys.argv[1],"w").write("\n".join(json.dumps(o) for o in lines)+"\n")
+EOF
+node "$run_log_mjs" --project "$r3p" best >"$work/r6-t92b.log" 2>&1
+if ! grep -q "best: round 3" "$work/r6-t92a.log" || ! grep -q "no graded rounds" "$work/r6-t92b.log"; then
+  fail "judge-artifact (D15): best did not crown the genuine cheap round, or crowned it after its notRegraded was edited to [] (X5) — see $work/r6-t92a.log / $work/r6-t92b.log"
+  cat "$work/r6-t92a.log" "$work/r6-t92b.log" >&2 || true
+elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t92c.log" 2>&1 || ! grep -q "not-regraded" "$work/r6-t92c.log"; then
+  fail "judge-artifact (D15): runlog-check did not fail the notRegraded-edited line on the not-regraded transcription check (X5) — see $work/r6-t92c.log"
+  cat "$work/r6-t92c.log" >&2 || true
+else
+  ok "best and runlog-check both refuse a cheap line whose notRegraded does not transcribe its artifact's not-regraded set (X5)"
+fi
+
 
 # --- 6. Playwright eyes ------------------------------------------------------
 # Skip-awareness (W-FIX-SKIP 2026-11-10): install.sh records --skip-eyes
