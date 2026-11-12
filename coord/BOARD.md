@@ -99,3 +99,17 @@ re-read.)*
 ## Carry-over
 
 - Nothing carried over yet. When a slice is not finished, its carry-over is written here — nothing left as a silent open thread.
+
+## Milo handoff — ongoing development (from 2026-11-12)
+
+> Coordination channel DECIDED by dang 2026-11-12 10:13: repo/git, buffet-mode pattern. This section is the handoff board; the buffet-run sections above still govern the 14/11 buffet run only. Buffet-run rules (BUFFET-MODE.md §5 leases, 15-min poll, deputy succession) do NOT apply to the handoff — the handoff is milestone-driven (report at each milestone, no timed polls, no leases, no deputy).
+> `coord/` is on main since the buffet-v2 landing (3c45950) — the "lives on the buffet branch" open item above is superseded; the directory now serves the buffet run AND this handoff.
+> Milo works fork + PR (§9 FALLBACK — no push access yet; shared-repo branches primary only if/when Thịnh's GitHub username is known and access is granted). Muse is the coordinator and the ONLY merger; BOARD.md is Muse-owned (no other agent edits it — ever).
+> Milo's status lives in `coord/milo.md` (append-only, one entry per milestone; Milo never rewrites existing lines). Discussion lives in PR comments on Milo's PRs. Muse transcribes Milo's milestone entries into `coord/run-log.jsonl` at merge time. Human-facing milestones go to the Optimus Messenger group, posted by the coordinator only — Milo never posts there.
+> Claim rule for NEW items: Milo proposes in `coord/milo.md`; the coordinator awards it here (new row) before Milo implements. The M1–M3 rows below are pre-assigned to Milo by dang — no claim needed.
+
+| Slice | Owner | Status | Expected-min | Files | Notes |
+|---|---|---|---|---|---|
+| M1 — Self-grading escape hardening | Milo | submitted | 480 | `skills/frontend-kit/**` (mechanism TBD by council), `references/decisions.md` (D15) | Highest priority. Mechanism (not just skill text) so a round cannot close on self-graded scores. Council → implement → QC → red team → live proof (Brief 1, escape attempt must be blocked). Handoff prompt delivered by dang 2026-11-12 (outside the repo). |
+| M2 — O4: verify.sh §5 fixture + browser discovery | Milo | submitted | 240 | `verify.sh` | Council-decide fix (conforming fixture / scope leg 2 out / fix discovery). Prove with fresh install + verify.sh (0 failures except host-state; §5b still 98). |
+| M3 — Deferred design decisions (S1, H3, H5, moment-none) | Milo | submitted | 480 | `skills/frontend-kit/references/scroll-motion.md`, `scripts/gate/consistency.mjs`, `gate.mjs`, `references/decisions.md` (D16+) | Council-decide each with file:line evidence; implement; QC + red team; prove with gate runs. |
