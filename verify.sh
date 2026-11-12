@@ -504,6 +504,15 @@ fi
 # the D13 error string (`Re-run ./install.sh`). A stale installed gate
 # FAILs §2e instead of passing silently and failing the next real gate
 # run on its own output.
+# Anchoring limits (D28, 2026-11-13): the two greps below are pinned
+# to the current spelling of the find line and the error call by
+# design — whitespace inside the line is tolerated, but a find split
+# across lines, a reworded error message, or a swapped exclusion order
+# FAILs §2e loudly (fail-closed) until the greps are updated with the
+# refactor. A comment quoting the whole find line still passes, and so
+# would a decoy find line replicating the full invocation: that is
+# deliberate fabrication, out of scope per D13, not accidental
+# staleness.
 gate_files=(
   gate.sh gate.mjs detect.mjs converge-check.mjs copy-lint.mjs
   consistency.mjs anti-cliche.mjs lint-tokens.mjs runlog-check.mjs
@@ -521,8 +530,8 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
     [[ -f "$gdir/$gf" ]] || fail "installed gate file missing: $gdir/$gf (D13 — the installed skill cannot run the gate)"
   done
   [[ -x "$gdir/gate.sh" ]] || fail "installed gate.sh is not executable: $gdir/gate.sh (D13 — re-run ./install.sh)"
-  grep -qE 'find .*-not -path .?\*/design/gate-leg1\.log.?' "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion on the find line: $gdir/gate.sh (D13 — re-run ./install.sh)"
-  grep -qE "console\.error\(.*Re-run \./install\.sh" "$gdir/gate.mjs" 2>/dev/null || fail "installed gate.mjs is stale (pre-D13): missing the 'Re-run ./install.sh' error string: $gdir/gate.mjs (D13 — re-run ./install.sh)"
+  grep -qE "find[[:space:]]+\"\\\$project_dir\"[[:space:]]+-type[[:space:]]+f.*-not[[:space:]]+-path[[:space:]]+.?\*/design/gate-leg1\.log.?.*-not[[:space:]]+-path[[:space:]]+.?\*/design/gate-leg2\.log.?" "$gdir/gate.sh" 2>/dev/null || fail "installed gate.sh is stale (pre-D13): missing the §6 1.1 gate-leg-log exclusion on the find line: $gdir/gate.sh (D13 — re-run ./install.sh)"
+  grep -qE "console\.error\('gate: vendored checkers missing.*Re-run \./install\.sh" "$gdir/gate.mjs" 2>/dev/null || fail "installed gate.mjs is stale (pre-D13): missing the 'Re-run ./install.sh' error string: $gdir/gate.mjs (D13 — re-run ./install.sh)"
 done < <(all_skills_dirs)
 [[ "$checked_2e" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D13 §2e cannot check gate presence)"
 [[ "$checked_2e" != 0 && "$fails" == "$fails_2e_before" ]] && ok "installed gate present in $checked_2e frontend-kit copy/copies (all 16 files, gate.sh executable, D13 content anchors present)"
@@ -571,15 +580,22 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
     [[ -f "$sd/frontend-kit/$tf" ]] || fail "installed template file missing: $sd/frontend-kit/$tf (D14 — the installed skill cannot perform Step 0)"
   done
   [[ -n "$(find "$tdir/references/motion" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]] || fail "installed template motion refs missing: no PNG under $tdir/references/motion (D14 — re-run ./install.sh)"
-  grep -qE '^## Section inventory([[:space:]]|$)' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  # Fence-aware (D29): a heading inside a fenced code block does not count.
+  awk '/^```/{fence=!fence; next} !fence && /^## Section inventory([[:space:]]|$)/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): missing the '## Section inventory' heading: $tdir/PLAN.md (D14 — re-run ./install.sh)"
   # The heading alone proves nothing: require at least one inventory ROW
   # below it — a table line whose first cell is a real section id (not
   # the `id` header, not the `---` separator). The converge check reads
   # the first column as the section id, so a PLAN.md with no rows makes
-  # converge-check a no-op — exactly the D14 defect.
-  awk '/^## Section inventory/{f=1; next} f && /^[|][^|]+[|]/ && $0 !~ /^[|][[:space:]]*(id|[-:]+)[[:space:]]*[|]/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): '## Section inventory' has no inventory row (the converge check reads the first column as the section id): $tdir/PLAN.md (D14 — re-run ./install.sh)"
+  # converge-check a no-op — exactly the D14 defect. The row anchor is
+  # scoped to the `## Section inventory` section (it resets at the next
+  # heading), requires a non-space character in the first cell, and
+  # ignores a heading inside a fenced code block — a table under a later
+  # heading, a whitespace-only first cell, or a fenced heading does not
+  # count (D29).
+  awk 'BEGIN{fence=0; f=0; found=0} /^[[:space:]]*(```|~~~)/{fence=!fence; next} /^#+[[:space:]]/{if(!fence && $0 ~ /^## Section inventory([[:space:]]|$)/)f=1; else f=0; next} f && /^[|][[:space:]]*[^|[:space:]][^|]*[|]/ && $0 !~ /^[|][[:space:]]*(id|[-:]+)[[:space:]]*[|]/{found=1; exit} END{exit !found}' "$tdir/PLAN.md" 2>/dev/null || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): '## Section inventory' has no inventory row (the converge check reads the first column as the section id): $tdir/PLAN.md (D14 — re-run ./install.sh)"
   [[ "$(wc -c < "$tdir/PLAN.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed PLAN.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/PLAN.md (D14 — re-run ./install.sh)"
-  grep -qF '## Intent (one paragraph)' "$tdir/TASTE.md" 2>/dev/null || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): missing the '## Intent (one paragraph)' heading: $tdir/TASTE.md (D14 — re-run ./install.sh)"
+  # Fence-aware (D29): a heading inside a fenced code block does not count.
+  awk '/^```/{fence=!fence; next} !fence && /^## Intent \(one paragraph\)([[:space:]]|$)/{found=1; exit} END{exit !found}' "$tdir/TASTE.md" 2>/dev/null || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): missing the '## Intent (one paragraph)' heading: $tdir/TASTE.md (D14 — re-run ./install.sh)"
   [[ "$(wc -c < "$tdir/TASTE.md" 2>/dev/null || echo 0)" -ge 1024 ]] || fail "installed TASTE.md template is a stub (pre-D14 or agent-written): smaller than 1KB: $tdir/TASTE.md (D14 — re-run ./install.sh)"
 done < <(all_skills_dirs)
 [[ "$checked_2f" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D14 §2f cannot check template presence)"
@@ -6160,18 +6176,65 @@ chrome_path_bad=0
 # first and expands one `*` segment, newest match first): an explicit
 # CHROME_PATH is the browser the gate actually uses, so a set,
 # executable CHROME_PATH satisfies this check even with no system
-# Chrome. Try it literally, then glob-expanded, newest first. A
+# Chrome. Try it literally, then single-segment-glob-expanded, newest first. A
 # set-but-invalid CHROME_PATH blocks the leg even when system Chrome
 # exists (findChrome throws on it before trying anything else), so it
 # gets its own WARN and wins over the system-Chrome OK below.
 if [[ -n "${CHROME_PATH:-}" ]]; then
   if [[ -f "$CHROME_PATH" && -x "$CHROME_PATH" ]]; then chrome_bin="$CHROME_PATH"; chrome_via_env=1;
-  else
-    _chrome_cands=($CHROME_PATH)
+  elif [[ "$CHROME_PATH" == *\** ]]; then
+    # Mirror consistency.mjs expandGlob exactly: expand only the FIRST
+    # `*`-containing segment (every `*` inside that one segment is a
+    # wildcard); later segments stay literal, the parent is the literal
+    # prefix before that segment, and nothing is word-split. The parent
+    # and the suffix after the star segment are quoted; the glob word
+    # itself is expanded with IFS empty so spaces in the pattern
+    # survive, and `?`/`[`/`]`/`\` in the literal parts of the star
+    # segment are backslash-escaped so they stay literal, as
+    # expandGlob's regex escapes them (shell glob would otherwise
+    # expand them). One expandGlob subtlety is preserved, not
+    # papered over: when the star is in the FIRST segment, expandGlob
+    # reads the parent directory as `/` but rebuilds candidates with
+    # an empty prefix, so the candidates are CWD-relative names
+    # (`"init"`, not `"/init"`); the glob below therefore lists `/`
+    # and strips the one leading slash from each candidate before
+    # testing it, so a bare `*` OKs only on a CWD file whose name is
+    # also a `/` entry — exactly as findChrome does.
+    _cp_pre="${CHROME_PATH%%\**}"
+    _cp_post="${CHROME_PATH#*\*}"
+    _cp_seg_pre="${_cp_pre##*/}"
+    _cp_seg_post="${_cp_post%%/*}"
+    _cp_strip=0
+    case "$_cp_pre" in
+      */*) _cp_parent="${_cp_pre%/*}" ;;
+      *)   _cp_parent="/"; _cp_strip=1 ;;
+    esac
+    _cp_dir="${_cp_parent%/}"
+    case "$_cp_post" in
+      */*) _cp_rest="/${_cp_post#*/}" ;;
+      *)   _cp_rest="" ;;
+    esac
+    _cp_seg_pre="${_cp_seg_pre//\\/\\\\}"
+    _cp_seg_pre="${_cp_seg_pre//\?/\\\?}"
+    _cp_seg_pre="${_cp_seg_pre//\[/\\[}"
+    _cp_seg_pre="${_cp_seg_pre//\]/\\]}"
+    _cp_seg_post="${_cp_seg_post//\\/\\\\}"
+    _cp_seg_post="${_cp_seg_post//\?/\\\?}"
+    _cp_seg_post="${_cp_seg_post//\[/\\[}"
+    _cp_seg_post="${_cp_seg_post//\]/\\]}"
+    _chrome_cands=()
+    _cp_old_ifs="$IFS"; IFS=""
+    for _cp_cand in "$_cp_dir"/$_cp_seg_pre*$_cp_seg_post"$_cp_rest"; do
+      if [[ "$_cp_strip" == 1 ]]; then _cp_cand="${_cp_cand#/}"; fi
+      _chrome_cands+=("$_cp_cand")
+    done
+    IFS="$_cp_old_ifs"
     for (( _ci=${#_chrome_cands[@]}-1; _ci>=0; _ci-- )); do
       if [[ -f "${_chrome_cands[$_ci]}" && -x "${_chrome_cands[$_ci]}" ]]; then chrome_bin="${_chrome_cands[$_ci]}"; chrome_via_env=1; break; fi
     done
     [[ "$chrome_via_env" == 0 ]] && chrome_path_bad=1
+  else
+    chrome_path_bad=1
   fi
 fi
 for _cb in google-chrome google-chrome-stable chromium chromium-browser; do
