@@ -335,7 +335,7 @@ export function parseJudgeReport(text) {
 // the field coverage still missed: a graded line's own cited gate
 // legs verify on disk (X2 — round 8 moved that leg-currency check
 // OUT of the universal grade verification into
-// verifyLegCitationsCurrent, required only by the live-epoch
+// verifyLegCitationsCurrent, required only by the live-operation
 // consumers; see its comment), juror and
 // expert artifacts bind the line's tokensHash (X3/X4), and a
 // graded line's notRegraded transcribes its artifact's
@@ -665,14 +665,24 @@ export function verifyGradedLine(project, r) {
 // grade. Consumers therefore split:
 //   - feedback's anchor and land's round precondition (a graded
 //     record counts only with leg currency too — live operations
-//     standing on the line NOW);
-//   - land's own precondition inside verifyLandLine for the
-//     LATEST land line (its round half follows land's rule), and
-//     isGenuineNoGradeRound (unchanged since round 3);
-//   - runlog-check, for the LATEST round line only (older round
-//     lines get leg-citation SHAPE checks there instead);
+//     standing on the line NOW), and isGenuineNoGradeRound
+//     (unchanged since round 3);
+//   - verifyLandLine's CURRENT reading (its round half follows
+//     land's rule) — kept for callers that omit the flag; the one
+//     production caller, runlog-check, no longer uses it (the
+//     deadlock, below);
 //   - NOT verifyGradedLine / `best`: a historical grade verifies
-//     through its judge artifact alone.
+//     through its judge artifact alone;
+//   - NOT runlog-check, for ANY stored line (live-proof round 2 —
+//     the deadlock adjudication): round 8 left the checker a
+//     latest-round-line currency check, but gate.sh §1.1 folds
+//     the checker's output into leg 1's verdict and every gate
+//     run rotates the canonical legs, so the still-latest round
+//     line failed currency inside the very gate run meant to
+//     supersede it — leg 1 failed, prepare refused, and no later
+//     round could ever record. Currency is a property of live
+//     operations, not of the log's standing state; the checker
+//     holds stored lines to shape + artifact binding only.
 export function verifyLegCitationsCurrent(project, r) {
   const reasons = [];
   const leg1 = verifyCitedLegOnRead(project, r, 'leg1');
@@ -1464,23 +1474,32 @@ function citedLegShapeProblem(project, ctx, r, leg) {
 // may be among them (it is not a round line, so it never counts
 // toward its own precondition).
 //
-// Round 8 (C4): WHICH leg standard applies is an epoch question,
-// selected by the caller's { current } flag (the checker passes
-// current: true only for the LATEST land line in the log). The
-// LATEST land line is the live epoch: its cited gate legs verify
+// Round 8 (C4) split WHICH leg standard applies by epoch,
+// selected by the caller's { current } flag (the checker then
+// passed current: true only for the LATEST land line in the
+// log). The CURRENT reading: the line's cited gate legs verify
 // on disk against their stored shas with a PASS verdict
 // (verifyCitedLegOnRead) as two distinct files, and its round
 // half follows the land command's live precondition — a graded
 // record counting only with leg currency
 // (isVerifiedGradedRound + verifyLegCitationsCurrent) or a
-// genuine no-grade record (isGenuineNoGradeRound). An OLDER land
-// line is rotated history: its legs are checked for existence +
-// shape only (citedLegShapeProblem — its stored shas named bytes
-// the next gate run legitimately overwrote), and its round half
-// accepts a graded record verifying through its judge ARTIFACT
+// genuine no-grade record (isGenuineNoGradeRound). The
+// NON-CURRENT reading treats the line as rotated history: its
+// legs are checked for existence + shape only
+// (citedLegShapeProblem — its stored shas named bytes the next
+// gate run legitimately overwrote), and its round half accepts
+// a graded record verifying through its judge ARTIFACT
 // (isVerifiedGradedRound) or a genuine-SHAPED no-grade line
-// (isNoGradeShape). Callers that omit the flag get the current
-// (stricter) reading — fail closed on an unknown epoch.
+// (isNoGradeShape) — no leg currency anywhere.
+// LIVE PROOF ROUND 2 (the deadlock adjudication): the checker
+// now passes current: false for EVERY land line — currency
+// belongs to the live operations (the land command enforces it
+// in its own precondition in run-log.mjs and never calls this
+// verifier), and a checker holding the still-latest land line
+// to currency deadlocks the loop through gate.sh §1.1's fold-in
+// of the checker (see the verifyLegCitationsCurrent comment).
+// The current reading remains the default for callers that omit
+// the flag — fail closed on an unknown epoch.
 export function verifyLandLine(project, rows, r, opts) {
   const reasons = [];
   const fail = (m) => { reasons.push(m); };

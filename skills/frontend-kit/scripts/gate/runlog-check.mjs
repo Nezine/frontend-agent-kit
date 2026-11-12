@@ -137,18 +137,25 @@
 //      land line's preconditions must verify (shared
 //      verifyLandLine — cited cross-check report inside design/,
 //      a round record for its round in the same log that counts
-//      toward land's precondition, and its cited gate legs: on
-//      disk with matching shas and PASS verdicts for the LATEST
-//      land line, existence + shape for older ones), because
+//      toward land's precondition, and its cited gate legs:
+//      existence + shape, for every land line), because
 //      `show` prints stored land lines as fact. Round 8 (C4) is
-//      the epoch rule that splits those leg standards: leg
-//      currency binds only the live epoch — the LATEST round line
+//      the epoch rule that split those leg standards: leg
+//      currency bound only the live epoch — the LATEST round line
 //      and the LATEST land line in the log — because the two
 //      canonical leg files are overwritten by every later gate
 //      run, so holding rotated history to currency failed fully
 //      genuine logs; older round lines get leg-citation SHAPE
 //      checks per line instead, and a historical grade verifies
-//      through its judge artifact alone. Purpose-fail lines get
+//      through its judge artifact alone. The live-proof round 2
+//      (the deadlock) narrowed that once more: gate.sh §1.1 folds
+//      this checker's output into leg 1, so even the latest-line
+//      currency remnant fired inside the gate run meant to
+//      supersede the still-latest round line and no later round
+//      could ever record — leg currency now binds only the live
+//      OPERATIONS (feedback's anchor, land's round precondition,
+//      record time), and this checker holds NO stored line to it.
+//      Purpose-fail lines get
 //      shape checks only: their fields are the human's own prose,
 //      display-only like a note (D15), with nothing on disk to
 //      verify against.
@@ -446,11 +453,14 @@ export function checkRunLogLine(line, ctx) {
       }
     }
   }
-  // Rule 6, gate-leg citation SHAPE (round 8, C4 — the epoch rule):
-  // a round line's leg citations are checked for currency (stored
-  // sha == current file) ONLY where the line is the log's latest
-  // round line — that check lives in the CLI's whole-log pass,
-  // which can see the whole log. Every round line, latest or
+  // Rule 6, gate-leg citation SHAPE (round 8, C4; live-proof
+  // round 2 — the deadlock): shape is ALL this checker checks in
+  // a round line's leg citations. Round 8 also held the log's
+  // latest round line to currency in the CLI's whole-log pass;
+  // the live proof showed that remnant deadlocks the loop through
+  // gate.sh §1.1's fold-in of this checker, so currency moved to
+  // the live operations only (feedback's anchor, land's round
+  // precondition, record time). Every round line, latest or
   // historical, gets the SHAPE half here, line-locally: the writer
   // stores both leg citations or neither; a cited leg is a
   // non-empty project-relative path resolving lexically inside
@@ -626,17 +636,24 @@ if (invokedDirectly) {
   // inside design/, and a round record for its round in this same
   // log that counts toward land's precondition) — before round 7
   // a hand-appended land line passed this checker while `show`
-  // printed it as a shipment that never happened. (3) Round 8's
-  // epoch rule for gate legs: leg CURRENCY (stored sha == current
-  // file) is checked only for the LATEST round line and the
-  // LATEST land line — the live epoch. Older land lines verify
-  // with existence + shape legs and an artifact-verified round
-  // (verifyLandLine's { current: false } reading); older round
-  // lines got their leg-citation shape checks in the per-line
-  // pass above. Before round 8 every graded and land line was
-  // held to currency, so a genuine second round — whose gate run
-  // overwrites the two canonical leg files by design — made this
-  // checker fail the genuine first round's lines (C4). Fail-closed
+  // printed it as a shipment that never happened. (3) Gate-leg
+  // CURRENCY (stored sha == current file) is checked by this
+  // checker for NO stored line. Round 8 confined it to the
+  // latest round line and the latest land line (before round 8
+  // every graded and land line was held to currency, so a genuine
+  // second round — whose gate run overwrites the two canonical
+  // leg files by design — made this checker fail the genuine
+  // first round's lines, C4); the live-proof round 2 then showed
+  // even the latest-line remnant deadlocks the loop, because
+  // gate.sh §1.1 folds this checker's output into leg 1 and the
+  // legs rotate inside the very run that must supersede the
+  // still-latest line. Currency now binds only the live
+  // OPERATIONS — feedback's anchor, land's round precondition,
+  // record time — which re-check it at action time. Land lines
+  // verify with existence + shape legs and an artifact-verified
+  // round (verifyLandLine's { current: false } reading, for every
+  // land line); round lines got their leg-citation shape checks
+  // in the per-line pass above. Fail-closed
   // like the citation halves: with no sibling module, lock and
   // land lines are unverifiable and are flagged, never passed.
   if (!judgeMod) {
@@ -659,30 +676,29 @@ if (invokedDirectly) {
         failed = true;
       }
     }
-    // Round 8 (C4): leg currency for the LATEST round line only,
-    // and only when the line cites both legs (a line citing neither
-    // has no citations to hold to currency — the per-line shape
-    // pass already flagged a line citing exactly one).
-    let latestRound = null;
-    for (const entry of rows) {
-      if (entry.obj && entry.obj.kind === 'round') latestRound = entry;
-    }
-    if (latestRound && typeof latestRound.obj.gateLeg1 === 'string' && latestRound.obj.gateLeg1
-      && typeof latestRound.obj.gateLeg2 === 'string' && latestRound.obj.gateLeg2) {
-      const lc = judgeMod.verifyLegCitationsCurrent(projectRoot, latestRound.obj);
-      if (!lc.ok) {
-        console.log(`${file}:${latestRound.at}: latest round line's cited gate legs do not verify: ${lc.reasons.join('; ')} (D15)`);
-        failed = true;
-      }
-    }
-    let latestLand = null;
-    for (const entry of rows) {
-      if (entry.obj && entry.obj.kind === 'land') latestLand = entry;
-    }
+    // LIVE PROOF ROUND 2 (the leg-currency deadlock): this checker
+    // holds NO stored line to leg currency — not even the latest.
+    // Round 8 confined the checker's currency to the latest round
+    // line and the latest land line, but gate.sh §1.1 folds this
+    // checker's output into leg 1's verdict, and every gate run
+    // overwrites the two canonical leg files — so the still-latest
+    // round line failed currency inside the very gate run that was
+    // supposed to supersede it, leg 1 failed, prepare refused, and
+    // no later round could ever record: the checker's tripwire
+    // deadlocked the loop it protects. Leg currency is a property
+    // of LIVE OPERATIONS, which re-check it themselves at action
+    // time — feedback's anchor and land's round precondition in
+    // run-log.mjs, and record-time validation — never of the log's
+    // standing state. Stored land lines therefore verify here
+    // under verifyLandLine's non-current reading for EVERY line:
+    // legs existence + shape, the cited cross-check report, and a
+    // round record verifying through its judge artifact (or a
+    // genuine-shaped no-grade line). Round lines got their
+    // leg-citation shape checks in the per-line pass above.
     for (const entry of rows) {
       const { at, obj } = entry;
       if (obj && obj.kind === 'land') {
-        const dv = judgeMod.verifyLandLine(projectRoot, all, obj, { current: entry === latestLand });
+        const dv = judgeMod.verifyLandLine(projectRoot, all, obj, { current: false });
         if (!dv.ok) {
           console.log(`${file}:${at}: land line does not verify: ${dv.reasons.join('; ')} (D15)`);
           failed = true;

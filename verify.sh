@@ -4364,18 +4364,29 @@ elif node "$judge_report_mjs" --project "$r3p" prepare --round 2 --kind absolute
 else
   ok "runlog-check and prepare both refuse a consistent-counts clear cross-check line whose report does not exist (X1 variant)"
 fi
-# (89) X2, as re-scoped by round 8 (C4 — the epoch rule): a genuine
-# graded line whose stored gateLeg1Sha / gateLeg2Sha were edited to
-# garbage after the fact (legs, citation and scores all genuine).
-# Round 6 held EVERY read consumer to leg currency, so `best`
-# refused the line; round 8 split the consumers — leg currency
-# binds only the live epoch. This log's round line is the LATEST
-# round line, so runlog-check still flags it, and land (a live
-# operation) still refuses it — but `best` now crowns the round
-# through its judge artifact alone: the grade is verified history,
-# and the edited leg shas are a live-epoch defect, not a defect of
-# the grade. (The pre-round-8 best expectation is superseded; see
-# the D15 round-8 addendum.)
+# (89) X2, as re-scoped by round 8 (C4 — the epoch rule) and by
+# the LIVE PROOF ROUND 2 adjudication (the leg-currency
+# deadlock): a genuine graded line whose stored gateLeg1Sha /
+# gateLeg2Sha were edited to garbage after the fact (legs,
+# citation and scores all genuine). Round 6 held EVERY read
+# consumer to leg currency, so `best` refused the line; round 8
+# split the consumers — leg currency bound the live epoch, and
+# this log's round line being the LATEST round line, runlog-check
+# still flagged it. THE CHECKER SUB-ASSERTION IS NOW SUPERSEDED:
+# gate.sh §1.1 folds runlog-check's output into leg 1's verdict,
+# so any currency check left in the checker fires inside the gate
+# run that must supersede the still-latest line and deadlocks
+# the loop (no later round can ever record — proven live on the
+# Brief 1 proof project). Leg currency is a property of LIVE
+# OPERATIONS only: runlog-check now holds NO stored line to
+# currency (shape + artifact binding only), so it PASSES this
+# edited line; land (a live operation) still refuses it below,
+# and `best` crowns the round through its judge artifact alone:
+# the grade is verified history, and the edited leg shas are a
+# defect the live operations catch, not a defect of the grade.
+# (The pre-round-8 best expectation was superseded at round 8;
+# the round-8 checker expectation is superseded here — see the
+# D15 live-proof-round-2 addendum.)
 r3p="$work/r6-x2"; r3_mkproj "$r3p"
 r3_prep "$r3p" 1 absolute
 jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
@@ -4394,11 +4405,11 @@ node "$run_log_mjs" --project "$r3p" best >"$work/r6-t89b.log" 2>&1
 if ! grep -q "best: round 1" "$work/r6-t89a.log" || ! grep -q "best: round 1" "$work/r6-t89b.log"; then
   fail "judge-artifact (D15): best did not crown the genuine graded round before the leg-sha edit, or stopped crowning it after (round-8 epoch rule: best verifies the grade through its judge artifact, not leg currency) — see $work/r6-t89a.log / $work/r6-t89b.log"
   cat "$work/r6-t89a.log" "$work/r6-t89b.log" >&2 || true
-elif node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t89c.log" 2>&1 || ! grep -q "gate leg" "$work/r6-t89c.log"; then
-  fail "judge-artifact (D15): runlog-check did not fail the leg-sha-edited graded line on its gate-leg verification (X2 — the line is the log's latest round line, so leg currency applies) — see $work/r6-t89c.log"
+elif ! node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r6-t89c.log" 2>&1; then
+  fail "judge-artifact (D15): runlog-check still fails the leg-sha-edited graded line — the checker's leg-currency tripwire was superseded by the LIVE PROOF ROUND 2 deadlock adjudication (currency binds live operations only; land below still refuses this line) — see $work/r6-t89c.log"
   cat "$work/r6-t89c.log" >&2 || true
 else
-  ok "runlog-check flags a graded line whose stored gate-leg shas were edited (X2, latest-line currency) while best crowns the same round through its judge artifact (round-8 epoch rule)"
+  ok "runlog-check passes a graded line whose stored gate-leg shas were edited (X2 — checker leg currency superseded by the live-proof-round-2 deadlock adjudication) while best crowns the same round through its judge artifact and land still refuses it (live-operation currency)"
 fi
 r3_reject "land whose only round record has edited gate-leg shas" "$work/r6-t89d.log" "has no round record" "$r3p/design/run-log.jsonl" \
   node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs
@@ -4852,6 +4863,69 @@ else
   else
     ok "a genuine judge report passes gate leg 1 §1.1 and a secret planted in judge prose still fails it via the built-in grep (live-proof case)"
   fi
+fi
+
+# --- Live-proof-round-2 case (105): the leg-currency DEADLOCK.
+# gate.sh §1.1 folds runlog-check's output into leg 1's verdict
+# (gate.sh §1.1: the checker's output joins the 1.1 hits), and
+# every gate run overwrites the two canonical leg files. Round 8
+# left runlog-check a latest-line leg-currency check — so the
+# genuine round-1 log below, the moment a round-2 gate run rotated
+# its legs, failed its own checker while round 1 was STILL the
+# latest round line: leg 1 failed on the fold-in, prepare
+# refused, and round 2 could never record (proven live on the
+# Brief 1 proof project, 2026-11-12: runlog-check exit 1 on the
+# fully genuine log). Adjudication: leg currency is a property of
+# LIVE OPERATIONS, not of the log's standing state — the checker
+# now holds NO stored line to currency (shape + artifact binding
+# only), while feedback's anchor and land's precondition keep
+# re-checking currency at action time. (Case (103) pins the
+# feedback half on a two-round log; case (89) pins the checker
+# half on an edited line; the case below pins all three halves on
+# the deadlocked single-round state itself.)
+# (105) Genuine round 1 graded + landed; both canonical legs then
+# rotated by a later gate run (round 1 is STILL the latest round
+# line, its land STILL the latest land line). runlog-check must
+# pass; a feedback regrade of round 1 must refuse (anchor
+# currency); a second land for round 1 must refuse (precondition
+# currency); neither refusal may write to the log.
+r3p="$work/r10-deadlock"; r3_mkproj "$r3p"
+r3_prep "$r3p" 1 absolute
+jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r10-t105-setup.log" 2>&1 \
+  || fail "judge-artifact (D15): live-proof-round-2 deadlock setup graded record failed — case (105) will cascade; see $work/r10-t105-setup.log"
+node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs >"$work/r10-t105-land1.log" 2>&1 \
+  || fail "judge-artifact (D15): live-proof-round-2 deadlock setup land round 1 failed — case (105) will cascade; see $work/r10-t105-land1.log"
+if ! node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r10-t105-check1.log" 2>&1; then
+  fail "judge-artifact (D15): live-proof-round-2 deadlock CONTROL failed — the genuine one-round landed log did not pass runlog-check before rotation — see $work/r10-t105-check1.log"
+  cat "$work/r10-t105-check1.log" >&2 || true
+fi
+printf 'GATE RESULT: PASS\n(round 2 gate run)\n' > "$r3p/design/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n(round 2 gate run)\n' > "$r3p/design/gate-leg2.log"
+touch -d '2026-11-11 12:03' "$r3p/design/gate-leg1.log" "$r3p/design/gate-leg2.log"
+node "$runlog_check_mjs" "$r3p/design/run-log.jsonl" >"$work/r10-t105-check2.log" 2>&1
+r10_check_rc=$?
+node "$judge_report_mjs" --project "$r3p" prepare --round 1 --kind regrade --grader other-model --brief-type landing --mode full --page design/page.html >"$work/r10-prep-1-regrade.log" 2>&1 \
+  || fail "judge-artifact (D15): live-proof-round-2 deadlock regrade prepare failed — case (105) will cascade; see $work/r10-prep-1-regrade.log"
+jr_fill_scores "$r3p/design/judge/round-1-regrade.md" 5 5 5 5
+r10_lines_before="$(grep -c . "$r3p/design/run-log.jsonl")"
+node "$run_log_mjs" --project "$r3p" feedback --from "user: darker ink" --change "--color-ink: #000" --round 1 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-1-regrade.md >"$work/r10-t105-feedback.log" 2>&1
+r10_fb_rc=$?
+node "$run_log_mjs" --project "$r3p" land --slice r3 --round 1 --gate pass $r3_legs >"$work/r10-t105-land2.log" 2>&1
+r10_land_rc=$?
+if [[ "$r10_check_rc" != 0 ]]; then
+  fail "judge-artifact (D15): runlog-check failed the genuine round-1 log after its legs rotated while round 1 is still the latest round line (the live-proof-round-2 deadlock — the checker must hold no stored line to leg currency) — see $work/r10-t105-check2.log"
+  cat "$work/r10-t105-check2.log" >&2 || true
+elif [[ "$r10_fb_rc" == 0 ]] || ! grep -q "never anchors a regrade" "$work/r10-t105-feedback.log"; then
+  fail "judge-artifact (D15): a feedback regrade of the rotated round 1 was not refused on anchor leg currency (live-proof round 2 — live operations keep currency) — see $work/r10-t105-feedback.log"
+  cat "$work/r10-t105-feedback.log" >&2 || true
+elif [[ "$r10_land_rc" == 0 ]] || ! grep -q "no round record" "$work/r10-t105-land2.log"; then
+  fail "judge-artifact (D15): a second land for the rotated round 1 was not refused on precondition leg currency (live-proof round 2 — live operations keep currency) — see $work/r10-t105-land2.log"
+  cat "$work/r10-t105-land2.log" >&2 || true
+elif [[ "$(grep -c . "$r3p/design/run-log.jsonl")" != "$r10_lines_before" ]]; then
+  fail "judge-artifact (D15): a refused live operation wrote to the run log in the deadlocked state (live-proof round 2) — see $work/r10-t105-feedback.log / $work/r10-t105-land2.log"
+else
+  ok "the deadlocked state is split: runlog-check passes the genuine round-1 log after leg rotation while feedback and land still refuse the rotated round on leg currency (live-proof round 2)"
 fi
 
 
