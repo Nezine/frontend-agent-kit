@@ -2093,7 +2093,7 @@ install_gitleaks() { # pinned tarball + published checksums, into ~/.local/bin
   if ! (cd "$tmpd" && grep "gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz$" checksums.txt | $_gl_sha_cmd -c - >/dev/null 2>&1); then
     printf 'gitleaks install: checksum verification FAILED — refusing to install.\n'; rm -rf -- "$tmpd"; return 1
   fi
-  if ! tar -xzf "$tmpd/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz" -C "$tmpd" gitleaks; then
+  if ! tar --no-same-owner -xzf "$tmpd/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz" -C "$tmpd" gitleaks; then
     printf 'gitleaks install: extraction failed.\n'; rm -rf -- "$tmpd"; return 1
   fi
   mkdir -p "$user_home/.local/bin"
@@ -2126,7 +2126,7 @@ elif install_gitleaks; then
     note_pending "gitleaks $GITLEAKS_VERSION is installed at ~/.local/bin/gitleaks but ~/.local/bin is not on PATH, so gate 1.1 still fails closed. Add it: export PATH=\"\$HOME/.local/bin:\$PATH\" (e.g. in $_gl_profile), then re-run ./verify.sh. Alternative scanners the gate also accepts: trufflehog (see https://github.com/trufflesecurity/trufflehog/releases)."
   fi
 else
-  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz$ gitleaks-checksums.txt | ${_gl_sha_cmd:-sha256sum} -c -) && tar -xzf /tmp/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
+  note_pending "Secret scanner not installed (gitleaks $GITLEAKS_VERSION install failed — see above; never fatal). Gate 1.1 fails closed without one. Install it manually: curl -fsSL -o /tmp/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz && curl -fsSL -o /tmp/gitleaks-checksums.txt https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION/gitleaks_${GITLEAKS_VERSION}_checksums.txt && (cd /tmp && grep gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz$ gitleaks-checksums.txt | ${_gl_sha_cmd:-sha256sum} -c -) && tar --no-same-owner -xzf /tmp/gitleaks_${GITLEAKS_VERSION}_${_gl_asset}.tar.gz -C /tmp gitleaks && mkdir -p ~/.local/bin && cp /tmp/gitleaks ~/.local/bin/gitleaks && chmod 755 ~/.local/bin/gitleaks (ensure ~/.local/bin is on PATH). Alternatives the gate also accepts: trufflehog; osv-scanner and go-licenses cover the Stage 1 dep/licence checks but do not satisfy 1.1."
 fi
 
 # Figma: human-gated by design (OAuth). Never attempted here.

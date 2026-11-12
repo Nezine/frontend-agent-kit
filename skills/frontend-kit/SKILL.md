@@ -996,7 +996,7 @@ reworked P3 (council decision D7, `references/decisions.md`): a
    (`--gate-findings`), fix class (`--fix-class`), outcome
    (`--outcome kept|discarded|re-pick|stopped|escalated|pending`), and
    the built page (`--page`) — the tokens hash is recorded automatically
-   from `design/tokens.css`. Motion/UX expert second opinions are recorded
+   from `design/tokens.css`. `--page` must resolve inside `<project>/design/` — a plain project-relative `.html` path (no `.`/`..` segments); the run log rejects anything else. Motion/UX expert second opinions are recorded
    on the same record (`--expert-motion <1-5>` +
    `--expert-motion-evidence "<observable>"`, `--expert-ux <1-5>` +
    `--expert-ux-evidence "<observable>"`) — advisory only, allowed on
