@@ -201,7 +201,14 @@ trap 'rm -rf "$state_dir" "$pw_cache_dir" "$derived_table" "$derived_dispatch"' 
 # (F-RT2 fix pass — the old fail-fast stub returned 1 before extraction,
 # so a typo'd `exe_rel` in install.sh passed silently). The zip is built
 # with python3 (already required by playwright_curl_one's extraction);
-# the entry stores mode 0755, as the real archives do.
+# the entry stores mode 0755, as the real archives do. F4-RT1 fix pass 4:
+# the stub mimics real curl's 416-on-resume — if the output file already
+# exists it is left untouched and the fetch still succeeds (exit 0), so
+# a case that pre-seeds a complete wrong file fails unless the code
+# never consults that path (before, the stub always overwrote the file,
+# so the P8 shape passed even on the pre-fix code). The fixture exe
+# prints STUB-GOOD so a placed binary can be told apart from a
+# pre-seeded ALT one.
 curl_calls=0
 curl() {
   local _o="" _u="" _prev="" _a _exp _exe
@@ -213,6 +220,10 @@ curl() {
     _u="$_a"
   done
   [[ -n "$_o" ]] || return 1
+  if [[ -s "$_o" ]]; then
+    printf 'stub-curl: existing file kept (416 resume — 0 bytes fetched)\n'
+    return 0
+  fi
   _exp="$(expected_for_url "$_u")"
   [[ -n "$_exp" ]] || { printf 'stub-curl: no fixture mapping for %s\n' "$_u"; return 1; }
   _exe="${_exp#*|}"
@@ -221,7 +232,7 @@ import os, zipfile
 z = zipfile.ZipFile(os.environ["FIXTURE_ZIP"], "w")
 info = zipfile.ZipInfo(os.environ["FIXTURE_EXE"])
 info.external_attr = 0o755 << 16
-z.writestr(info, "#!/bin/sh\nexit 0\n")
+z.writestr(info, "#!/bin/sh\necho STUB-GOOD\n")
 z.close()
 ' || return 1
   return 0
@@ -560,6 +571,54 @@ fallback_multi "W3-RT4 wrong-version HS in log does not suppress right-version d
   "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-headless-shell-linux64.zip" \
   "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-linux64.zip" \
   "https://cdn.playwright.dev/builds/cft/140.0.7339.186/linux64/chrome-headless-shell-linux64.zip"
+
+# --- F4-RT1 fix pass 4: a complete wrong-artifact file under the bare
+# filename must never be placed as the right revision (red-team round 3
+# P8). The stub curl above mimics real curl's 416-on-resume, so
+# pre-seeding the OLD bare-filename slot with a complete ALT zip fails
+# on the pre-fix code (it places the ALT binary) and passes now (the
+# keyed slot is fresh, so the good zip is fetched — or, if an earlier
+# case already populated this URL's keyed slot, the good zip is kept).
+# P9: running the same clean URL twice must still succeed — the 416
+# path is load-bearing for idempotent re-runs, so a fix that failed on
+# 416 would break this case. ---
+map_p8() {
+  local url="https://cdn.playwright.dev/builds/ffmpeg/1013/ffmpeg-linux.zip" out rc exe _got
+  mkdir -p "$state_dir/playwright-downloads"
+  ALT_ZIP="$state_dir/playwright-downloads/ffmpeg-linux.zip" python3 -c '
+import os, zipfile
+z = zipfile.ZipFile(os.environ["ALT_ZIP"], "w")
+info = zipfile.ZipInfo("ffmpeg-linux")
+info.external_attr = 0o755 << 16
+z.writestr(info, "#!/bin/sh\necho ALT-ffmpeg-1005-DIFFERENT-CONTENT-LONGER\n")
+z.close()
+'
+  out="$(playwright_curl_one "$url" 2>&1)"; rc=$?
+  exe="$pw_cache_dir/ffmpeg-1013/ffmpeg-linux"
+  _got="none"; [[ -x "$exe" ]] && _got="$("$exe")"
+  if [[ "$rc" == 0 && "$_got" == "STUB-GOOD" ]]; then
+    printf 'PASS: F4-RT1 complete wrong-artifact file under bare filename is not placed (good binary fetched instead)\n'; pass=$((pass + 1))
+  else
+    printf 'FAIL: F4-RT1 complete wrong-artifact file under bare filename — expected good binary placed, got rc=%s exe-output=%s out=%s\n' "$rc" "$_got" "$out"; fail=$((fail + 1))
+  fi
+}
+map_p9() {
+  local url="https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/1013/ffmpeg-linux.zip" out rc1 rc2 exe _got
+  out="$(playwright_curl_one "$url" 2>&1)"; rc1=$?
+  out="$(playwright_curl_one "$url" 2>&1)"; rc2=$?
+  exe="$pw_cache_dir/ffmpeg-1013/ffmpeg-linux"
+  _got="none"; [[ -x "$exe" ]] && _got="$("$exe")"
+  if [[ "$rc1" == 0 && "$rc2" == 0 && "$_got" == "STUB-GOOD" ]]; then
+    printf 'PASS: F4-RT1 complete-correct re-run still succeeds (416 resume is load-bearing)\n'; pass=$((pass + 1))
+  else
+    printf 'FAIL: F4-RT1 complete-correct re-run — expected rc1=0 rc2=0 good binary, got rc1=%s rc2=%s exe-output=%s out=%s\n' "$rc1" "$rc2" "$_got" "$out"; fail=$((fail + 1))
+  fi
+}
+# P9 runs before P8: on the pre-fix code both cases share the bare
+# filename slot, so a P8 failure would otherwise poison P9's dest too
+# and the negative control would show 2 failures for 1 bug.
+map_p9
+map_p8
 
 printf 'mapping test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]
