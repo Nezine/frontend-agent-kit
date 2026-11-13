@@ -594,6 +594,16 @@ progress note) and that push renews the lease.
   - **MIG-3 status: PARTIAL — council done, proposals recorded, no implementation, no QC, no red team.** This is the honest end state for the night: the two fixable-direction items both need Milo-owned files, and the spot-check needs human auth. No extension probe was started — a full loop cannot fit honestly in the remaining hour before 06:00.
 - **2026-11-13 04:5x ICT — Final PR #4 / group re-check before the 06:00 summary.** PR #4 still OPEN, MERGEABLE, UNSTABLE, **no CI checks reported** on `migga/mig-1` (D12 CI has still not started/reported; D32 closure still needs the PR's macOS CI run URL + macos-15/26 outcomes). No Muse review (only the Copilot bot quota no-op). Upstream main still cb3b89b. Optimus group re-checked: no new messages since the user's own 04:18 MIG-2/PR #4 post; no new @migga; no Muse PR #4 review in the group; no reply needed. Group milestone posted for the MIG-3 council outcome (short, Vietnamese).
 
+### FLEET-2 debate — Migga proposal (write-first, 19:00 ICT, Fri 2026-11-13)
+
+- Problem: Vietnamese users can't read small print on documents, signs and lecture notes — and today's app reads nothing offline: the AI reading step needs the network, so in airplane mode the demo shows only a stub.
+- User: Students and older people who photograph a document, note or sign and need the text read back or answered — tested on the OPPO A60.
+- AI role: Google ML Kit Text Recognition v2 (Latin) reads Vietnamese text from the photo fully on-device; only the OCR text (not the photo) goes to Gemini for summarise/answer (~200 tokens), or to local lookup offline.
+- Evidence: Google's official ML Kit languages page lists Tiếng Việt (vi, Latn) as supported; zero mentions of ML Kit/OCR anywhere in the repo (novel); $0.00, no key, no billing; ~4 MB APK + one npm package (@infinitered/react-native-mlkit-text-recognition).
+- Biggest risk: The package may pin the UNBUNDLED model artifact — then a fresh install in airplane mode downloads nothing and OCR silently returns nothing; Friday's test must check bundled vs unbundled first. Printed text only — handwriting is out of scope.
+- Confidence: 3/5. (3/5, not 4/5: the Mobile research council's verdict is that the ML Kit direction is on probation, NOT locked — the wrapper is unverified on SDK 58. Keep the honest number.)
+- Strongest reason it could fail: If the bundled-model check fails AND the demo runs on a fresh install with no Wi-Fi, the offline reading step silently produces nothing and the pitch's core claim collapses. Second: it needs a preview APK (native module, NOT Expo Go), so any EAS build-queue delay on Saturday morning kills it.
+
 ## Migga handoff — overnight summary (06:00 ICT, Fri 2026-11-14 — final leg ended ~05:00 ICT)
 
 **What got done tonight (all three coordinators, 23:25–~05:00 ICT):**
