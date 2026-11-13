@@ -1254,7 +1254,15 @@ function templateHeadingPresent(text, title) {
 }
 
 function hasPlaceholderBracket(text) {
-  return /\[[^\]\n]{1,200}\](?!\()/.test(stripHtmlComments(text));
+  // Strip standard Markdown shapes that are not template placeholders
+  // before looking for a leftover "[...]" slot (red-team R2). Inline
+  // links "[text](url)" stay exempt via the (?!\() lookahead below.
+  let t = stripHtmlComments(text);
+  t = t.replace(/^\s*[-*+]\s+\[[ xX]\]/gm, ''); // task items: "- [ ]" / "- [x]"
+  t = t.replace(/\[\^[^\]\n]+\]/g, ''); // footnote references "[^1]" (definitions lose their bracket the same way; the ": ..." tail left behind is harmless)
+  t = t.replace(/\[[^\]\n]{1,200}\]\[[^\]\n]{1,200}\]/g, ''); // reference-style links "[text][ref]"
+  t = t.replace(/^\s*\[[^\]\n]{1,200}\]:/gm, ''); // reference definitions "[ref]: url"
+  return /\[[^\]\n]{1,200}\](?!\()/.test(t);
 }
 
 function normaliseDemo(text) {
@@ -1405,7 +1413,13 @@ function validateTemplateIntegrity(project, args) {
   if (missing.length) {
     const section = amendmentsSection(files['PLAN.md']);
     if (section === null) reject('design/PLAN.md has no ## Amendments section — dropped token names must be recorded there before locking with --allow-dropped-tokens.');
-    const absent = missing.filter((n) => !section.includes(n));
+    // Token names match on boundaries, not substrings: mentioning
+    // "--color-accent-strong" must not satisfy "--color-accent"
+    // (red-team R3). A name counts only when the character before it
+    // is the start or a non-token character, and the character after
+    // it is a non-token character or the end.
+    const tokenMentioned = (name) => new RegExp(`(^|[^A-Za-z0-9-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9-]|$)`).test(section);
+    const absent = missing.filter((n) => !tokenMentioned(n));
     if (absent.length) reject(`dropped token name(s) ${absent.join(', ')} do not appear in PLAN.md § Amendments — record each dropped name there before locking (the lock verifies, never writes).`);
   }
   return allowed;
@@ -2133,6 +2147,16 @@ if (cmd === 'record') {
   // required even in a git repo (a git commit without this entry is not a
   // taste lock by the workflow's definition).
   if (!args.tokens || !args.refs) usage('lock needs --tokens <path> and --refs "<locked direction>"');
+  // MIE-5 red-team R1: --tokens must name design/tokens.css. The
+  // validator below always checks the fixed design/tokens.css, but the
+  // lock records args.tokens and its hash — a --tokens pointing
+  // elsewhere would stand the lock on a file the validator never
+  // checked. Reject anything that does not resolve to
+  // <project>/design/tokens.css (path.resolve normalises ./, ../ and
+  // duplicate separators, so spelling variants of the same file pass).
+  if (path.resolve(args.project, args.tokens) !== path.resolve(args.project, 'design', 'tokens.css')) {
+    reject(`--tokens must name design/tokens.css (got ${args.tokens}) — the lock's token file is the one the template-integrity check validates; any other file would stand the lock on unvalidated tokens.`);
+  }
   // P7 lock version (LOOP-1 follow-up — SKILL.md step 1.8 used to say
   // "record the version number in the run log's notes by hand"): the
   // version is a script field now. Default is (existing lock count + 1);
