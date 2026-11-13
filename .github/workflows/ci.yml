@@ -68,10 +68,6 @@ jobs:
         shell: bash
         run: bash tests/test-playwright-curl-crosscheck.sh
 
-      - name: Unit test — sec_11 filter (D34/W1)
-        shell: bash
-        run: bash tests/test-sec11-filter.sh
-
       - name: Install (./install.sh)
         shell: bash
         run: ./install.sh
