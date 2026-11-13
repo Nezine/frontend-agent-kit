@@ -627,6 +627,44 @@ while IFS= read -r sd || [[ -n "$sd" ]]; do
 done < <(all_skills_dirs)
 [[ "$checked_2f" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D14 §2f cannot check template presence)"
 [[ "$checked_2f" != 0 && "$fails" == "$fails_2f_before" ]] && ok "installed templates present in $checked_2f frontend-kit copy/copies (15 files + motion refs, D14 content anchors present)"
+
+# --- 2g. installed-copy gate byte-identity vs repo gate tree (D39, MIE-8) --------------
+# The installed gate tree must be byte-identical to the repo gate tree:
+# install.sh copies skills/ wholesale (install_dir: cp -a, cp -R fallback)
+# with no gate-specific copy, exclusion or transform (zero occurrences of
+# `scripts/gate` in install.sh), so any difference between an installed
+# copy and the repo tree is a copy defect or a drifted tree, never a
+# designed difference — and the MIE-8 investigation proved the negative by
+# diff -r (installed == repo, 16 files incl. hidden .gitleaks.toml,
+# identical per-file sha256 and modes, on a fresh Linux install and a
+# fresh macOS install). FAIL per differing copy, in the §2b every-copy
+# pattern, so a silent drift in either direction fails loudly instead of
+# re-opening MIE-8. PLUS an explicit absence assertion:
+# `scripts/assets/moments/index.json` must be absent in BOTH trees — the
+# moments data lives in the taste tree
+# ($refs_dir/taste/skills/taste-skill/assets/moments/, 18 moments,
+# installed by install.sh:528-531), and the checker's `..`-relative reads
+# resolve there but in neither kit location (consistency.mjs:396,
+# :9607-9608, :10998); if either tree ever gains that file, the checker's
+# behaviour changes silently, and §2g must catch it. Dissent recorded, not
+# silently resolved: Experts A/B held that no coverage was needed for a
+# proven negative; Expert C's §2g was adopted instead, because a future
+# drift would otherwise re-open MIE-8 silently.
+checked_2g=0
+fails_2g_before="$fails"
+while IFS= read -r sd || [[ -n "$sd" ]]; do
+  gdir="$sd/frontend-kit/scripts/gate"
+  [[ -f "$sd/frontend-kit/SKILL.md" ]] || continue
+  checked_2g=$((checked_2g+1))
+  if ! diff -r "$gdir" "$root/skills/frontend-kit/scripts/gate" >/dev/null 2>&1; then
+    fail "installed gate tree differs from the repo gate tree: $gdir vs $root/skills/frontend-kit/scripts/gate (D39 — re-run ./install.sh; a difference here is a copy defect or a drifted tree, never a designed difference)"
+  fi
+  [[ -e "$sd/frontend-kit/scripts/assets/moments/index.json" ]] && fail "moments data present in the installed skill tree: $sd/frontend-kit/scripts/assets/moments/index.json (D39 — the checker must keep reading ENOENT here; the data lives in the taste tree)"
+done < <(all_skills_dirs)
+[[ -e "$root/skills/frontend-kit/scripts/assets/moments/index.json" ]] && fail "moments data present in the repo skill tree: $root/skills/frontend-kit/scripts/assets/moments/index.json (D39 — the checker must keep reading ENOENT here; the data lives in the taste tree)"
+[[ "$checked_2g" == 0 ]] && fail "no installed frontend-kit copy found in any skills dir (D39 §2g cannot check gate byte-identity)"
+[[ "$checked_2g" != 0 && "$fails" == "$fails_2g_before" ]] && ok "installed gate byte-identical to the repo gate tree in $checked_2g frontend-kit copy/copies (diff -r, D39) and moments index absent in both trees"
+
 # --- 3. Impeccable engine lockstep (A10) — FAIL LOUDLY on mismatch --------
 # The expected engine comes from the REPO pin, not from the installed
 # tree (F4/QC F8): installed-vs-installed lockstep passes a jointly

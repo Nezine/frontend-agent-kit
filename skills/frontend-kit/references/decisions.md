@@ -732,3 +732,257 @@ Council (3 members — A, B, C — chairman synthesis binding; 2026-11-13). **Th
 ## D38 — Q4: round-budget enforcement in `record` + `prepare` (MIE-7, 2026-11-13)
 
 Council (3 experts, coordinator-reconciled synthesis binding — the implementer brief is the record; the council's own verdicts are held by the coordinator). **The defect (probe 4):** the loop's stop rules (3 rounds per direction, max 2 re-picks, 9 rounds total) were prose only — no entry point enforced them, so a 4th round in a direction recorded cleanly. **Caps:** 3 distinct round numbers per direction, 9 distinct rounds in total; a new distinct round past either cap is REFUSED (exit 2, nothing written) in both `run-log.mjs record` and `judge-report.mjs prepare`. **Counting — CORRECTS the board's literal wording:** a direction is a taste-lock EPOCH. Per-direction cap 3 = distinct `round` numbers among kind:"round" lines AFTER the latest taste-lock line in file order. Total cap 9 = count of distinct (epoch, round-number) PAIRS across the whole log (equivalently the sum over epochs of distinct round numbers per epoch). Rationale: round numbers RESTART at 1 per direction (round-brief.mjs:365 "Re-pick restart: round 1 of the new direction"), so the board's literal "distinct numbers in the whole log" can never exceed 3 and cap 9 could never fire. The pair rule is correct under BOTH numbering schemes (with global numbering each epoch's numbers are already distinct, so pairs == numbers) — verified by reading round-brief.mjs:365 + judge-report.mjs canonicalOut (per-kind paths keyed by round number alone); no evidence of global numbering was found. **Epoch boundaries:** only VERIFIED taste-lock lines start a new epoch, via the shared verifyLockLine (judge-report.mjs:1350, wrapped in run-log.mjs:1111-1113, already used for version occupation at run-log.mjs:1860). A hand-appended fake lock line must NOT reset the per-direction count; if the latest lock does not verify it starts no new epoch and rounds after it count against the previous direction. No taste-lock yet in the log → the whole log is the current direction. **What counts:** EVERY parsed kind:"round" line with an integer round ≥ 1, regardless of grader / scores / verification (fail-closed over-counting). Normalised with Number(r.round); non-integers ignored (a raw Set over r.round would count "2" and 2 as two rounds). kind:"feedback", "crosscheck", "land", "lock", "purpose-fail" never count. Only a NEW distinct round/pair is checked — re-recording an already-recorded number passes the budget check (all other validations still apply). **--grader none SETTLED (all three experts agree):** a no-grade round CONSUMES budget — a no-grade record IS a kind:"round" line (run-log.mjs:1524); exempting it would let an agent evade the cap by re-labelling rounds. Gate-fail rounds count too. feedback --score-after needs NO budget check (regrade of an existing round). **Shared helper (mandatory, all three agree):** the budget predicate lives ONCE, exported from judge-report.mjs (the import-safe module, next to verifyLockLine: ROUND_BUDGET_PER_DIRECTION = 3, ROUND_BUDGET_TOTAL = 9 at judge-report.mjs:1443, roundBudgetStatus + checkRoundBudget at judge-report.mjs:1537) and imported by run-log.mjs (which already imports judge-report.mjs at run-log.mjs:1014; the reverse is circular, judge-report.mjs:1760). NO duplicated counting code — the D15 round-4 lesson (two copies drifted, F1–F7). With no judge-report module (a partial install) record fails closed with the missing-parser message. **Placement:** `record` — immediately after the --round integer validation (run-log.mjs:1421-1423), before grader/basis/gate/judge-artifact validation and before any appendLog. `prepare` — CHECK FIRST (Expert C): after round/kind/grader/index validation, before page validation, gate/cross-check derivation, and the writeFileSync at judge-report.mjs:2075 — so a refused prepare writes no skeleton and creates no directories. Applies to ALL kinds in prepare under the same "new distinct round" rule. **Dissent recorded:** Expert B wanted the prepare check after the gate + cross-check derivations so a missing gate is still reported as a missing gate; not adopted — check-first keeps the refused prepare side-effect-free, and a missing gate is still reported on the next (in-budget) prepare. **Refusal:** via existing reject() (run-log.mjs:475-478) / refuse() (judge-report.mjs:1722-1725), exit 2, nothing written. Message contains `round budget`, `re-pick`, and `human gate` (stable grep target), names WHICH cap fired and the counts ("per-direction budget exhausted: 3 distinct rounds since taste-lock vN" / "total budget exhausted: 9 distinct rounds"), states explicitly that retrying the same round number will refuse identically, and names the ONLY next actions (re-pick a new direction / present the best version at the human gate) — never "fix and retry". With the total budget spent a re-pick starts a new direction but does not reopen recording, and the message says so. Per-direction is checked first, then total. **No override:** NO --allow-4th-round flag (Expert C; no documented override exists; any human override is a future council amendment, never a silent CLI escape). **No doc changes:** NO SKILL.md / workflow.md / gate.sh / runlog-check.mjs changes (caps already stated in the docs; MIE-4 concurrently owns SKILL.md + workflow.md — a MIE-7 doc edit invites a merge conflict for zero new information). This D38 entry is the record. **Read-log robustness:** run-log.mjs readLog (568-572) has no try/catch (a corrupt line crashes) while prepare's log reader catches parse errors and refuses (judge-report.mjs:1835) — the shared helper handles parse errors deterministically: a corrupt line refuses (exit 2) in BOTH entry points, never a crash in record and never a silent pass in prepare. **verify.sh:** new section §5f (NOT §5d — §5e is MIE-5's; the MIE-7 experts' §5d label is superseded by the §5e/§5f ordering), after §5c ends (~verify.sh:5313, post-rebase onto main 0d92f91) and before §6, cases numbered (129)+ continuing §5e's numbering (§5e occupies (107)–(128)), never renumbering existing cases. Fresh scratch project (NOT §5c's jr_proj — budget counting reads the whole log, so §5c's existing round records would pollute every count). Helpers reuse §5c's shapes with an r7_ prefix. SEQUENCING: MIE-7 lands AFTER MIE-5 (coordinator orders the verify.sh merges). **DoD proof (measured 2026-11-13, standalone §5f harness + direct rig runs, this branch): §5f 15 ok / 0 fail** — (129) round 3 records exit 0; (130) 4th distinct round refuses in record (exit 2, per-direction cap named, line count unchanged); (131) prepare for round 4 refuses (exit 2, no design/judge/round-4.md); (132) re-record of round 3 passes; (133) prepare for recorded round 3 passes; (134) best crowns round 2 (5,5,5,5) over round 1 (4,4,4,4); (135) runlog-check passes the proof log; (136) a hand-appended fake taste-lock (v99, zeroed tokensHash) does NOT reset the count — round 4 still refuses against taste-lock v1; (137) round 1 after a re-pick records exit 0; (138) the 9th distinct round overall records exit 0; (139) the 10th refuses in record after lock v4 (exit 2, total cap named) — ISOLATION required a 4th lock version, a 3rd re-pick beyond the "max 2 re-picks" prose; lock enforces no re-pick count, and this is a test fixture, NOT a legal run — no lock-side max-re-picks enforcement was added; (140) prepare for the 10th refuses (exit 2, no skeleton); (141) a gate-fail round consumes budget (round 1 --gate fail + rounds 2–3 gate-pass, round 4 refuses); (142) a corrupt run-log line refuses record and prepare (exit 2, nothing written). (143) a scalar run-log line (`null`) refuses record and prepare (exit 2, nothing written, no crash) — red-team MEDIUM-1 fix, 2026-11-13. The graded-counts control is inside (129)–(130): graded rounds 1–2 plus no-grade round 3 reach the cap of 3, so the round-4 refusal proves graded and no-grade rounds share one budget. **§5b+§5c regression (measured 2026-11-13, standalone harness, repo scripts): 229 ok / 0 fail / 1 unverified** — identical to the pristine-HEAD baseline (229/0/1; the 1 unverified is case (104)'s gitleaks half, no gitleaks on this machine, pre-existing). **Fixture adjudication (D15 §5b-adjudication pattern — fix fixtures, never weaken the rule, never renumber a case, never change an assertion):** the first branch run showed 48 fails, all genuine budget refusals against §5c's fixtures — jr_proj recorded 10 distinct rounds (1–7, 9, 10, 11) in ONE no-lock direction, so prepare round 4 refused and cascaded, and rp_proj case (60) (prepare round 12 regrade, after fake kind:"round" lines rounds 3, 5, 6) likewise. Fixed the fixtures: taste-lock v1 at the §5c setup (rounds 1–3), v2 before round 4 (rounds 4–6), v3 before round 7 (rounds 7, 9) — total pairs in jr_proj 8 < 9; cases (43)–(46) moved to a NEW project jr2_proj ($work/judge-proj2, own lock v1, own crosschecks) because 10 distinct rounds cannot fit one log under the total cap of 9; rp_proj taste-lock v1 before case (60). **Harness note:** the standalone §5b+§5c runner resolves run-log.mjs via the installed skills dirs first, and this machine held a STALE another-branch install (~/.agents/skills/frontend-kit, whose run-log.mjs requires design/TASTE.md at lock time and whose judge-report.mjs has no budget code) — a run against it is meaningless for this branch, so the runner pins all_skills_dirs() empty and the repo-tree fallback is used; the full-verify attempt installs from this branch first. Full ./verify.sh (measured 2026-11-13, fresh install from this branch into a scratch HOME, then ./verify.sh): 259 ok / 3 fail / 2 unverified — all 3 fails are the gate's fail-closed secret scan (SECURITY 1.1: no gitleaks/trufflehog installed on this machine), reproduced directly (installed gate.sh --self-test exit 2, same message); §5b/§5c/§5f have ZERO fails in the full run. An earlier full attempt during a transient VM write-EPERM episode (03:40–03:56 UTC, node appendFileSync failing EPERM while shell writes worked; cleared on its own) showed 485 fails and is discarded as environment-invalid, not code evidence. CI green remains the merge gate (QC + red team next, per the implementer brief). **HONEST CAVEAT:** this would NOT have fired in probe 4 — the probe agent never called record, so no log line existed for any counter to count. The budget enforces the recorded loop only; it does not compel logging. **Red-team follow-up (2026-11-13, MEDIUM-1 fix):** the red team found a scalar JSON line (`null` / `5` / `"x"`) in design/run-log.jsonl passed the budget check (budgetLogRows skipped non-objects) then crashed both entry points with an uncaught TypeError — record at run-log.mjs:1024 (collectUsedJudgeShas) and prepare at judge-report.mjs:1837 (crosscheck filter). Fixed on this branch: budgetLogRows now treats a scalar line as corrupt (exit 2, `cannot be checked`, nothing written in either entry point); collectUsedJudgeShas and deriveCrosscheckClear's filter guard non-object rows as defence in depth; §5f case (143) pins the behaviour (null line refuses record + prepare, exit 2, nothing written, no TypeError). MINOR-1 fixed in the same commit: the stale-lock refusal wording is now `no verified taste-lock` (was `no taste-lock recorded yet`, which was wrong when a lock exists but is stale). **Open council item (NOT changed — MEDIUM-2):** a no-op re-pick (re-locking the same direction) resets the per-direction budget; the red team flags it as a budget evasion, but the D38 council wording counts by taste-lock epoch, so changing it silently would contradict the council record — it needs a council amendment, not a code change. **§5b+§5c regression re-measured after the fix (2026-11-13, standalone harness, repo scripts): 229 ok / 0 fail / 1 unverified** — identical to the pre-fix baseline; the 1 unverified is case (104)'s gitleaks half, pre-existing.
+
+## D39 — MIE-8: installed-copy runtime-data investigation — PROVEN NEGATIVE (no install.sh fix)
+
+Council (3/3 experts, UNANIMOUS — synthesis relayed by the coordinator; the
+implementer re-ran every proof below independently and does not cite the
+council's runs as its own). **Verdict: PROVEN NEGATIVE.** The installed gate
+tree is byte-identical to the nested-clone (repo) gate tree. There is NO
+install.sh fix — there is nothing to fix. install.sh contains ZERO
+occurrences of `scripts/gate` (verified: `grep -c "scripts/gate" install.sh`
+= 0) — no gate-specific copy, exclusion, or transform; `install_dir` is
+plain `cp -a` (cp -R fallback, install.sh:400-430), a wholesale skill copy
+with no filtering. On the VM the install took the fallback path, not
+`cp -a`: both VM install logs record it — `scratch/vm/install.log` holds
+35 `WARNING: cp -a failed … falling back to cp -R` lines, and the
+installer's own `copy-fallbacks.log` holds 35 matching entries (the VM
+filesystem rejects ownership preservation). D39's "plain cp -a" describes
+the code's first attempt, not the executed path; the conclusion is
+unaffected — modes were verified matching, and GNU `cp -R` preserves
+modes. The board row (MIE-8, D39) asked for the investigation
+first and a fix only if one was proven; the investigation proves the
+negative, so MIE-8 lands the record + the §2g coverage below and no
+install.sh change.
+
+**Proof 1 — the two `diff -r` IDENTICAL results.** Fresh install on each
+machine with a scratch HOME (never the real HOME), then `diff -r` of every
+installed gate tree against the repo gate tree
+(`skills/frontend-kit/scripts/gate/` at base main 907aeaa, verified by
+`git ls-remote` before cloning).
+(1) Linux VM, 2026-11-13. Scratch HOME on the main disk —
+`HOME=/home/hatch/workspace/mie-track/mie-8/scratch/vm/home`
+(`TMPDIR` likewise on the main disk; see Caveat 1 — the brief's
+`/tmp/mie8-*/home` form was NOT used here because /tmp on this VM is a
+512MB tmpfs): `HOME=<scratch> TMPDIR=<scratch-tmp> ./install.sh --no-warm
+--skip-hooks --skip-mcp --skip-eyes`. Two installed frontend-kit copies
+(`.agents/skills`, `.codex/skills`); both `diff -r` runs IDENTICAL (no
+output, exit 0). Per-file check (16 files incl. hidden `.gitleaks.toml`):
+all 16 sha256 MATCH and all 16 modes MATCH in both copies (660, `gate.sh`
+770). (2) MacBook (arm64, macOS 27.2.1; 29Gi free per the MIE-3 inventory,
+coord/mie.md commit 4b425ec — "28-29Gi free" — not measured in the
+install log), 2026-11-13. Scratch HOME `/tmp/mie8-mac/home` (/tmp on the
+MacBook is on /, as briefed):
+`HOME=/tmp/mie8-mac/home ./install.sh --no-warm --skip-hooks --skip-mcp
+--skip-eyes` (clone at /tmp/mie8-mac/repo, HEAD 907aeaa). Nine installed
+frontend-kit copies (`.agents`, `.claude`, `.codex`, `.commandcode`,
+`.config/opencode`, `.copilot`, `.gemini`, `.hermes` skills dirs plus
+`workspace/custom-skills`); all nine `diff -r` runs IDENTICAL. Per-file
+check: all 16 files sha256 + modes MATCH in all nine copies (0 mismatches).
+Fix-round re-run (M1, 2026-11-13): the same 9-copy diff/sha proof was
+re-run from a fresh scratch HOME (`~/mie-8-fix-20261113/home`, clone at
+`~/mie-8-fix-20261113/repo`) with full output saved to
+`scratch/mac-probe-fix.log` (734 lines) — all nine `diff -r` IDENTICAL
+again, 144/144 per-file sha256+mode MATCH (16 files × 9 copies,
+0 mismatches), installed taste 1,645 files with the moments index hash
+`db86d14c…fd` matching the repo. The re-run log records the clone HEAD
+explicitly (`git rev-parse`: 907aeaa3a2ccb4833115773ad2f2650be8f445e8);
+the original run's clone HEAD was asserted, not logged
+(`mac-install.log` contains 0 occurrences of 907aeaa). install.sh exited
+1 again on the embedded verify (post-verify epilogue "Files are
+installed" present) — the copy phase succeeded. Two environmental notes
+from the re-run: node was on PATH this time (`/usr/local/bin/node`,
+exported for the session), so the original run's 109× "node: command not
+found" did not recur (0 occurrences); and the embedded verify's leg-2
+fixture gate (`gate.mjs` on a fixture) hung with ~0 CPU for 5+ minutes
+and was killed to let the run proceed, after which verify.sh completed
+the run-log checks and aborted at the same `grader_args[@]` unbound
+variable (verify.sh:2959 on the 907aeaa tree) with 23 `^FAIL:` lines and
+no summary line — a macOS verify/gate hang, MIE-2 territory, not MIE-8
+evidence either way.
+Note on the MacBook run: the SSH session that launched it dropped
+mid-install (`client_loop: send disconnect: Broken pipe`); the remote
+install.sh survived the disconnect and ran to completion — the log ends
+with install.sh's own post-verify epilogue ("Files are installed"), i.e.
+the run completed and exited 1 on the embedded verify failure (see below);
+the numeric exit code itself was not captured because the session was
+already dead. On the VM the same command exited 1 likewise, for the
+embedded verify's §1.1 no-scanner gate (see below) — the copy phase
+succeeded on both machines; the exit-1s are verify failures, not copy
+failures.
+
+**Proof 2 — the moments-read probe table.** `consistency.mjs` reads the
+moments/effects data through `..`-relative paths from its own location
+(`join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', ...)`).
+Probed at each location (moments = `assets/moments/index.json` count,
+effects = `assets/effects/*/meta.json` count):
+
+| Location of the checker | moments index.json | effects meta.json |
+|---|---|---|
+| Installed copy (VM, both copies; MacBook, `.agents` copy) | ENOENT | ENOENT |
+| Repo clone (`skills/frontend-kit/scripts/gate/`) | ENOENT | ENOENT |
+| Taste tree (`vendor/taste/skills/taste-skill/scripts/`) | 18 moments | 25 |
+
+The taste tree resolves because its checker sits one level shallower
+(`scripts/consistency.mjs`, so `..` = the taste-skill root, which HAS
+`assets/`); the kit checker sits at `scripts/gate/consistency.mjs`, so
+`..` = `scripts/`, which has no `assets/` in either kit location. The
+kit's `consistency.mjs:396` is line-identical to the taste tree's
+`consistency.mjs:396` — the same read, different resolution, by directory
+shape alone. Fix-round note (M2): the implementer's `probe.sh` taste row
+originally probed `vendor/taste/skills/taste-skill/scripts/gate` — a
+directory that does not exist — so its ENOENT | ENOENT row proved
+nothing; corrected in the fix round to probe `scripts/` (the taste
+checker's real location), which reports 18 moments / 25 effects, and the
+corrected probe was re-run on the VM (`scratch/vm/probe-fix.log`). The
+table above needed no change: it correctly cites `scripts/` with 18/25,
+numbers that came from the probe's direct asset reads.
+
+**Proof 3 — the installed taste data sha256 match (install.sh:528-531 did
+its job).** install.sh:528-531 copies the taste pipeline wholesale into
+`$refs_dir/taste/` (`skills/`, `assets/`, `SOURCE.txt`). On BOTH machines
+the installed taste tree is byte-identical to the repo vendored tree over
+the files install.sh copies: 1,645 installed files, zero sha256
+mismatches over those 1,645 common files. The remaining 19 files in
+`vendor/taste/` are deliberately NOT installed — install.sh:528-531
+copies only `skills/`, `assets/` and `SOURCE.txt`, so the top-level docs
+(`CHANGELOG.md`, `LICENSE`, `README.md`, `install.sh`, `.gitattributes`,
+`.gitignore`), the `.github/` workflows, the plugin manifests (`.agents/`,
+`.claude-plugin/`, `.codex-plugin/`), `examples/v2/` and `tests/` stay out
+by design (see also install.sh:525-527). "Byte-identical" here means the
+installed subtree, not the whole vendored tree. The moments index
+itself hashes identically everywhere:
+`db86d14cfb013db307ce95c0a42467987b52e5004c56d40ac41e69a8ac8170fd`
+(VM installed, MacBook installed, repo vendored — same hash). The
+installed taste tree even resolves the probe: from
+`$refs_dir/taste/skills/taste-skill/scripts/` the reads find 18 moments
+and 25 effects meta.json. The data IS installed; the gate just never
+looks there.
+
+**CHƯA ĐỌC — the r2 claim.** NO file in the repo states what the r2 agent
+believed. The only in-repo mentions of that agent are the board rows
+themselves: BOARD.md MIE-8 ("find what \"runtime data\" the r2 agent
+believed the installed copy lacked for leg 2") and MIE-10 ("the two r2
+harness rules"). There is no r2 report, log, or quote anywhere in the
+repo to check the belief against. The misdiagnosis anatomy below is
+therefore a RECONSTRUCTION from the code (the reads that fail + the data
+that exists elsewhere), NOT the agent's words — the next agent must not
+treat it as a quotation of what the r2 agent said.
+
+**Misdiagnosis anatomy (reconstruction, not a quotation).** The
+`..`-relative reads look like they should resolve next to the checker —
+and they do, in the taste tree — but in neither kit location:
+`consistency.mjs:396` (MOMENT_PAGES from `../assets/moments/index.json`),
+`:9607-9608` (FAMILIES from `../assets/effects/*/meta.json`),
+`:10998` (statement-moment ids from the same moments index). Each read
+is wrapped in `try/catch` with an empty catch, so the ENOENT fails
+silently and the checker runs with empty maps. install.sh:528-531 already
+installs the data at `$refs_dir/taste/…` — the gate just never looks
+there, because nothing in the kit tree points the checker at the refs
+dir. The r2 agent's believed-missing "runtime data" was therefore never
+missing from the install; it was missing from the checker's address
+space, identically in the installed copy and in the repo clone — which is
+why no install.sh change can fix it, and why the installed-vs-repo
+comparison is the decisive test.
+
+**D13 residual, confirmed (not newly discovered).** decisions.md D13
+already recorded it: "`consistency.mjs`'s `../assets/moments` reads
+change meaning under the move… both absent today, behaviour unchanged".
+The gate README says the same at scripts/gate/README.md:60-62: the reads
+"fail silently and the checker runs without the moments data" — "upstream
+behaviour, not a kit patch". MIE-8 confirms both statements still hold
+verbatim on the 907aeaa tree.
+
+**The moments/effects gap is REAL, clone-identical, and
+verdict-affecting for moment-bearing pages — and it is NOT fixed here.**
+With both reads ENOENT, `MOMENT_PAGES={}` and `FAMILIES={}`, so
+`momentFits()` is always false. Consequence, by code trace
+(consistency.mjs:1185-1188, :1212): a correctly-dealt moment FAILs the
+`moment` check (it is "not dealt to a <kind> page"), on effect kinds and
+on no-effect (place/shop/service) pages alike; a page with no moment gets
+only the `moment-none` WARN (:1201). **Interim position (c), adopted:**
+accept silent-empty as designed and document it here. The (a)/(b) fix —
+(a) vendor the data into the skill tree, or (b) pass the taste path via a
+flag — is a SEPARATE decision, proposed as a GAP-16 candidate in
+`coord/mie.md` for the coordinator to award; it is NOT implemented in
+MIE-8. **GAP-16 wording check (fix round, QC item 14).** The GAP-16
+proposal in `coord/mie.md:154-160` was compared line-by-line against the
+council synthesis text for (a)/(b) (coordinator's record in
+`coord/mie.md`, "MIE-8 COUNCIL SYNTHESIS — (a)/(b) FIX OPTIONS").
+Result: the operative (a)/(b) wording matches — "(a) vendor the
+moments/effects data into the skill tree" / "(b) pass the taste path via
+a flag" — and the interim position (c) ("accept silent-empty as
+designed") and the NOT-implemented-in-MIE-8 status match too. NOT
+verbatim: the proposal abbreviates the council's explanatory clauses —
+it omits the file list (`assets/moments/index.json`,
+`assets/effects/*/meta.json`), the resolution clauses ("so
+consistency.mjs's `../assets` reads resolve from the installed copy" /
+"instead of relative to the gate script"), and the "SEPARATE decision …
+for Muse to award" phrasing. Those are elided detail, not a substantive
+difference: the same two fix options, the same interim position, the
+same status. The proposal was therefore left unchanged. **MIE-10 constraint (binding on D41):** the MIE-10 probe build
+must avoid dealing taste moments (or accept the false FAIL honestly if
+one is dealt) — a dealt moment will fail the gate through no fault of
+the build, and the probe record must say so rather than treat it as a
+build defect.
+
+**Supporting change — verify.sh §2g (adopt Expert C over Experts A/B).**
+Experts A/B held that a proven negative needs no coverage; Expert C's
+§2g was adopted instead, and the dissent is recorded here rather than
+silently resolved: without a check, a future silent drift in either
+direction (a stale installed copy, or a repo tree that gains the data)
+would re-open MIE-8 with no tripwire. §2g, placed after §2f (~line 574),
+asserts in the §2b every-copy pattern that each installed gate tree is
+byte-identical to the repo gate tree (`diff -r`), PLUS an explicit
+assertion that `scripts/assets/moments/index.json` is absent in BOTH
+trees — so a future drift in either direction fails loudly. §2g is small
+and additive: it compares trees, it does not execute the gate. Negative
+control: the §2g halves were proven to trip independently —
+`scratch/verify-negative-setup.md` records the tamper (a 1-line drift in
+the `.agents` copy's `gate.sh`; a moments index planted in the `.codex`
+copy) and the expected exactly-2-FAILs result, both observed in
+`scratch/vm/verify-negative.log`.
+
+**Caveats, stated openly. (1) /tmp on this VM is a 512MB tmpfs and hit
+100% full during Expert C's run — that verify run is NOT usable as MIE-8
+evidence.** The implementer's own runs used main-disk scratch instead
+(VM HOME and TMPDIR under `~/workspace/mie-track/mie-8/scratch/vm/`).
+**MIE-10's scratch HOME must live on the main disk, not /tmp.** (2) The
+D15 §5b/§5c judge-artifact FAILs are OUT OF SCOPE for MIE-8 and are NOT
+chased here; they are an open item for the coordinator. What the
+implementer itself observed: on the VM, the embedded verify run showed
+ZERO §5b/§5c FAILs (171 `OK: run-log` lines, 0 FAILs in that area) — the
+reported failures did not reproduce there. On the MacBook, the embedded
+verify run showed 113 `^FAIL:` lines (66 run-log refusal + 43
+judge-artifact + 2 gate-on-fixture + 1 self-test + 1 leg-2-on-fixture),
+but with an environmental cause on its face: `node: command not found`
+109 times (node is not on PATH in non-interactive SSH on that machine),
+BSD sed `invalid command code` twice, and the run aborting before any
+summary line on `grader_args[@]: unbound variable` (bash 3.2 + `set -u`,
+verify.sh:2959 on the 907aeaa base tree — 2997 on the 30ba029 HEAD; 3002 on the current HEAD,
+after the +38-line §2g shift and the +5-line §2g comment) — so the MacBook FAILs are the known macOS verify.sh
+defects (MIE-2 territory), not D15 evidence either way. The
+coordinator-relayed count discrepancy from Expert A's run (summary "21
+failures" vs 7 `^FAIL:` lines) was reproduced by NEITHER of the
+implementer's runs (VM: summary 3 failures, 3 `^FAIL:` lines —
+consistent; MacBook: 113 `^FAIL:` lines, no summary line — aborted
+mid-run). The MIE-5/6/7 implementers' `./verify.sh` runs will confirm or
+clear the D15 question. (3) The browser leg of leg 2 was never live-run
+(no Chrome on this VM; the VM run records it UNVERIFIED); the
+moments/effects verdict consequence above is a code trace, not a live
+observation — say so, and do not present it as observed gate output.
+
+**Sequencing.** MIE-8's fix (none) lands before MIE-10, as the board
+requires. The §2g verify.sh addition is small and additive; merge order
+is the coordinator's call (MIE-6 first, then MIE-5, MIE-7, MIE-9 last;
+MIE-8's §2g can land with the MIE-9 batch or separately).
+
+**Operative form.** `skills/frontend-kit/references/decisions.md` (this
+entry) + `verify.sh` (§2g) + `coord/mie.md` (milestone entry + GAP-16
+candidate proposal). No change to `install.sh`, no change to any gate
+script, no change to `coord/BOARD.md` (coordinator-owned). **Landing
+note:** D39 follows D15 in this file; D39 is MIE-8's board-awarded
+number (BOARD.md: "Mie's next decisions: D22, D36–D41", MIE-8 row D39) —
+decisions.md on main holds D1–D15 only, so D39 is free. Do NOT renumber
+D1–D15, and do NOT assume D40/D41 are free (D40 = MIE-9, D41 = MIE-10,
+both awarded).
