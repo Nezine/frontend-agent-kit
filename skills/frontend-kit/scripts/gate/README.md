@@ -253,7 +253,7 @@ guessed. A finding about a whole file (no single line) prints as
   `sec_11_fixture_lit` definition through the function's closing brace).
   Report file:line locations only, never hit content. Expected result:
   exactly one surviving line — the §5c case-(104) fixture in
-  `verify.sh:5140`, which is exempted only under a nested clone (D34
+  `verify.sh:5168`, which is exempted only under a nested clone (D34
   (c1)) and is the reason the §6 reduced clone exists. Any other
   surviving line is a new false positive: fix it before it ships (reword
   the line so it no longer quotes a secret shape, as was done for the

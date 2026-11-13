@@ -852,7 +852,7 @@ sec_11_text_assign_unq=""
 # function so the re-test agrees with the -i grep calls (RR3-06): an
 # uppercased secret on an example-literal line must still be kept.
 # D34 (c1) — clone-scoped exemption of the §5c case-(104) fixture literal
-# (verify.sh:5140): that line plants a synthetic project key into a
+# (verify.sh:5168): that line plants a synthetic project key into a
 # scratch judge report, so the gate MUST fail 1.1 on it — but the same
 # literal ships in verify.sh source, so a project with a nested kit
 # clone would fail 1.1 on the kit's own test fixture. The exemption is
