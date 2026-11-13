@@ -5649,12 +5649,12 @@ fi
 
 # (108) Whitespace-only demo.html difference (one extra space) refuses.
 m5p="$work/m5-ws"; m5_mkproj "$m5p"
-sed -i 's|<main class="demo-wrap">|<main  class="demo-wrap">|' "$m5p/design/demo.html"
+sedi 's|<main class="demo-wrap">|<main  class="demo-wrap">|' "$m5p/design/demo.html"
 m5_lock_reject "a whitespace-only demo.html difference" "$work/m5-t108.log" "demo.html differs" "$m5p"
 
 # (109) Comment-only demo.html difference (one word in a comment) refuses.
 m5p="$work/m5-comment"; m5_mkproj "$m5p"
-sed -i 's|taste-lock demo|taste-lock DEMO|' "$m5p/design/demo.html"
+sedi 's|taste-lock demo|taste-lock DEMO|' "$m5p/design/demo.html"
 m5_lock_reject "a comment-only demo.html difference" "$work/m5-t109.log" "demo.html differs" "$m5p"
 
 # (110) Stub TASTE alone (pristine demo.html) refuses.
@@ -5669,7 +5669,7 @@ m5_lock_reject "a 1-byte-diff demo.html alone" "$work/m5-t111.log" "demo.html di
 
 # (112) Class B: deleting one token name refuses.
 m5p="$work/m5-drop1"; m5_mkproj "$m5p"
-sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+sedi '/^  --color-accent:/d' "$m5p/design/tokens.css"
 m5_lock_reject "a dropped token name (--color-accent)" "$work/m5-t112.log" "dropped without the flag: --color-accent" "$m5p"
 
 # (113) Class B: deleting a token no rule references still refuses —
@@ -5677,12 +5677,12 @@ m5_lock_reject "a dropped token name (--color-accent)" "$work/m5-t112.log" "drop
 # (only tokens.css and a style recipe name it). The check is a
 # name-set check, not a reference check.
 m5p="$work/m5-drop-unref"; m5_mkproj "$m5p"
-sed -i '/--motion-clip-inset-b:/d' "$m5p/design/tokens.css"
+sedi '/--motion-clip-inset-b:/d' "$m5p/design/tokens.css"
 m5_lock_reject "a dropped token no rule references (--motion-clip-inset-b)" "$work/m5-t113.log" "dropped without the flag: --motion-clip-inset-b" "$m5p"
 
 # (114) Value-only positive: changing a token VALUE (not a name) locks.
 m5p="$work/m5-value"; m5_mkproj "$m5p"
-sed -i 's|--color-ink: var(--primitive-neutral-1000);|--color-ink: #000000;|' "$m5p/design/tokens.css"
+sedi 's|--color-ink: var(--primitive-neutral-1000);|--color-ink: #000000;|' "$m5p/design/tokens.css"
 m5_lock_ok "a value-only token change" "$work/m5-t114.log" "$m5p"
 
 # (115) Positive control: the pristine filled fixture locks.
@@ -5699,7 +5699,7 @@ m5_lock_ok "a CRLF demo.html (normalisation positive)" "$work/m5-t116.log" "$m5p
 # exactly, appears in PLAN.md § Amendments, and lands verbatim in the
 # lock entry's notes field.
 m5p="$work/m5-flag-ok"; m5_mkproj "$m5p"
-sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+sedi '/^  --color-accent:/d' "$m5p/design/tokens.css"
 python3 -c "p='$m5p/design/PLAN.md'; s=open(p).read().replace('- None yet.', '- None yet.\n- Dropped --color-accent at the taste lock: the direction uses no separate accent; ink carries the accent role.'); open(p,'w').write(s)"
 m5_lock_ok "the --allow-dropped-tokens positive" "$work/m5-t117.log" "$m5p" --allow-dropped-tokens "--color-accent"
 if ! grep -q "dropped tokens: --color-accent" "$m5p/design/run-log.jsonl"; then
@@ -5712,20 +5712,20 @@ fi
 
 # (118) The flag listing a name that is NOT actually missing refuses.
 m5p="$work/m5-flag-extra"; m5_mkproj "$m5p"
-sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+sedi '/^  --color-accent:/d' "$m5p/design/tokens.css"
 python3 -c "p='$m5p/design/PLAN.md'; s=open(p).read().replace('- None yet.', '- None yet.\n- Dropped --color-accent at the taste lock.'); open(p,'w').write(s)"
 m5_lock_reject "a flag listing a name that is not missing" "$work/m5-t118.log" "listed but not actually missing: --space-9" "$m5p" --allow-dropped-tokens "--color-accent,--space-9"
 
 # (119) The flag NOT listing a missing name refuses.
 m5p="$work/m5-flag-unlisted"; m5_mkproj "$m5p"
-sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
-sed -i '/^  --space-9:/d' "$m5p/design/tokens.css"
+sedi '/^  --color-accent:/d' "$m5p/design/tokens.css"
+sedi '/^  --space-9:/d' "$m5p/design/tokens.css"
 python3 -c "p='$m5p/design/PLAN.md'; s=open(p).read().replace('- None yet.', '- None yet.\n- Dropped --color-accent at the taste lock.'); open(p,'w').write(s)"
 m5_lock_reject "a flag not listing a missing name" "$work/m5-t119.log" "dropped without the flag: --space-9" "$m5p" --allow-dropped-tokens "--color-accent"
 
 # (120) The flag with the name missing from PLAN.md § Amendments refuses.
 m5p="$work/m5-flag-noamend"; m5_mkproj "$m5p"
-sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+sedi '/^  --color-accent:/d' "$m5p/design/tokens.css"
 m5_lock_reject "a flag whose name is not in PLAN.md § Amendments" "$work/m5-t120.log" "do not appear in PLAN.md" "$m5p" --allow-dropped-tokens "--color-accent"
 
 # (121) A missing design/tokens.css refuses.
@@ -5767,7 +5767,7 @@ p=sys.argv[1]; s=open(p).read()
 s=re.sub(r'  --primitive-neutral-[0-9]+: [^;]+;\n', '', s)
 open(p,'w').write(s)
 EOF
-sed -i 's|#ffffff|#fefefe|' "$m5p/design/primitives.css"
+sedi 's|#ffffff|#fefefe|' "$m5p/design/primitives.css"
 m5_lock_ok "a primitives.css value-only change" "$work/m5-t125.log" "$m5p"
 
 # (126) Primitives missing name: dropping a primitive from the split file refuses.
@@ -5779,7 +5779,7 @@ p=sys.argv[1]; s=open(p).read()
 s=re.sub(r'  --primitive-neutral-[0-9]+: [^;]+;\n', '', s)
 open(p,'w').write(s)
 EOF
-sed -i '/--primitive-neutral-500:/d' "$m5p/design/primitives.css"
+sedi '/--primitive-neutral-500:/d' "$m5p/design/primitives.css"
 m5_lock_reject "a dropped primitive name" "$work/m5-t126.log" "primitives.css dropped without the flag: --primitive-neutral-500" "$m5p"
 
 # (127) Symlink discipline: a symlinked design file refuses.
