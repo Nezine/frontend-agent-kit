@@ -14,8 +14,8 @@
 #
 # Stubs: curl logs the call and builds a fixture zip containing exactly
 # the expected executable for that URL shape (expected_for_url below —
-# derived at test time from the pinned bundle's EXECUTABLE_PATHS, see
-# the F2-RT2 block; never hand-copied in this file), then succeeds;
+# derived at test time from the pinned bundle's EXECUTABLE_PATHS +
+# DOWNLOAD_PATHS, see the F2-RT2/F3-RT1 block; never hand-copied in this file), then succeeds;
 # registry values match the CLI 0.1.24 bundle's browsers.json (chromium /
 # chromium-headless-shell rev 1254, browserVersion 158.0.8127.18; ffmpeg
 # rev 1013). playwright_core_dir returns empty, so the .links step only
@@ -56,27 +56,41 @@ playwright_revision() {
 }
 playwright_core_dir() { return 1; }
 
-# --- F2-RT2 fix pass 2 (2026-11-13): the expected table is DERIVED
-# from the bundle at test time, not hand-copied in this file. The fix
-# pass 1 table was hand-copied, so mutating install.sh's `exe_rel` AND
-# the table together passed 53/53 — the test judged the code against
-# itself. Now the source of truth is
+# --- F2-RT2 fix pass 2 (2026-11-13) + F3-RT1 fix pass 3: the expected
+# table AND the filename→(browser, platform) dispatch are DERIVED from
+# the bundle at test time, not hand-copied in this file. The fix pass 1
+# table was hand-copied, so mutating install.sh's `exe_rel` AND the
+# table together passed 53/53 — the test judged the code against
+# itself. Fix pass 2 moved the VALUES into the fixture but left the
+# dispatch hand-written in expected_for_url, so swapping two dispatch
+# keys AND the code's `exe_rel` for those arches still passed 70/70
+# (F3-RT1, red team round 2) — the bundle judged the values but never
+# the keys. Now the source of truth is
 # tests/fixtures/playwright-core-executable-paths.txt, the verbatim
-# EXECUTABLE_PATHS block from the pinned @playwright/cli@0.1.24 bundle
-# (coreBundle.js:34565–34614), guarded by a pinned sha256:
-# EXPECTED_FIXTURE_SHA256 below. Any edit to the fixture without
-# updating the hash fails this test LOUDLY before any case runs, so a
-# joint mutation of code + fixture is caught by the checksum, a
+# EXECUTABLE_PATHS (coreBundle.js:34565–34614) + DOWNLOAD_PATHS
+# (coreBundle.js:34615–34861) blocks from the pinned
+# playwright-core@1.66.0-alpha-1794252756000 bundle, guarded by a
+# pinned sha256: EXPECTED_FIXTURE_SHA256 below. Any edit to the fixture
+# without updating the hash fails this test LOUDLY before any case runs,
+# so a joint mutation of code + fixture is caught by the checksum, a
 # code-only mutation is caught because the stub builds the fixture zip
 # from the bundle-derived exe_rel while the code gates on its own
 # (wrong) one, and a fixture-only mutation is caught by the checksum
 # (and would also fail the placement, since the stub and the code would
-# then disagree). The python3 parser below extracts exactly 12 rows
+# then disagree). The python3 parser below extracts exactly 12 exe rows
 # (chromium / chromium-headless-shell / ffmpeg × linux-x64, linux-arm64,
-# mac-x64, mac-arm64) and refuses to continue on any other count.
-# The filename alone selects the browser + platform in expected_for_url
-# (the filename literally names both); the exe_rel itself ALWAYS comes
-# from the fixture, never from this file.
+# mac-x64, mac-arm64) and exactly 12 dispatch rows (filename → browser,
+# platform) from DOWNLOAD_PATHS, and refuses to continue on any other
+# count. DOWNLOAD_PATHS is keyed by distro (ubuntu22.04-x64, mac14-arm64,
+# win64, ...), so the parser maps each distro key to a generic platform
+# MECHANICALLY — arch is arm64 iff the key ends in -arm64, else x64;
+# family is mac iff the key starts with "mac", win iff it starts with
+# "win", linux iff it starts with "ubuntu"/"debian", and any other family
+# fails loudly — and asserts the dispatch keys cover exactly the 12
+# EXECUTABLE_PATHS rows, with no filename mapping to two keys. There is
+# no hand-written filename→key table left in this file: the dispatch
+# comes from the bundle, the exe_rel comes from the bundle, never from
+# this file.
 # Tradeoff, stated plainly: the fixture is PINNED, not fetched — the
 # test must work in CI with no network, so a CLI re-pin needs a manual
 # re-derivation (procedure in the fixture header) plus a hash update.
@@ -84,7 +98,7 @@ playwright_core_dir() { return 1; }
 # would still pass; that requires editing the test's own tripwire, not
 # just the code and its expectation, and is the documented residual.
 fixture="$root/tests/fixtures/playwright-core-executable-paths.txt"
-EXPECTED_FIXTURE_SHA256="05f0147430dee68460e16ad90fba01c9c8647735b13bf2339554a9baf60d09c0"
+EXPECTED_FIXTURE_SHA256="40ef24419276e3cc9b87e96a06088eab8f5f44ac9b6a1da98ed6c3612d5210f5"
 [[ -f "$fixture" ]] || { printf 'FAIL: bundle fixture not found at %s\n' "$fixture"; exit 1; }
 if command -v sha256sum >/dev/null 2>&1; then
   _fixture_sha="$(sha256sum "$fixture" | awk '{print $1}')"
@@ -96,7 +110,8 @@ if [[ "$_fixture_sha" != "$EXPECTED_FIXTURE_SHA256" ]]; then
   exit 1
 fi
 derived_table="$(mktemp)"
-FIXTURE="$fixture" DERIVED="$derived_table" python3 -c '
+derived_dispatch="$(mktemp)"
+FIXTURE="$fixture" DERIVED="$derived_table" DISPATCH="$derived_dispatch" python3 -c '
 import os, re, sys
 text = open(os.environ["FIXTURE"]).read()
 rows = []
@@ -111,31 +126,65 @@ for name in ("chromium", "chromium-headless-shell", "ffmpeg"):
         rows.append("%s|%s|%s" % (name, plat, "/".join(parts)))
 if len(rows) != 12:
     sys.exit("expected 12 derived rows, got %d" % len(rows))
+# F3-RT1 fix pass 3: the filename dispatch comes from DOWNLOAD_PATHS
+# too, so the bundle judges the keys as well as the values. The block
+# is keyed by distro (ubuntu22.04-x64, mac14-arm64, win64, ...); each
+# key maps to a generic platform mechanically (see the header comment):
+# arm64 iff the key ends in -arm64, else x64; mac/win/linux by prefix.
+# Only the same 4 platforms as above are kept; a filename mapping to
+# two different keys, a dispatch count other than 12, or a key set
+# other than exactly the EXECUTABLE_PATHS rows all fail loudly.
+dl = re.search(r"DOWNLOAD_PATHS = \{(.*?)\n    \};", text, re.S)
+if not dl:
+    sys.exit("no DOWNLOAD_PATHS block in fixture")
+platforms = ("linux-x64", "linux-arm64", "mac-x64", "mac-arm64")
+dispatch = {}
+for name in ("chromium", "chromium-headless-shell", "ffmpeg"):
+    m = re.search(r"\"%s\":\s*\{(.*?)\n      \}," % re.escape(name), dl.group(1), re.S)
+    if not m:
+        sys.exit("no DOWNLOAD_PATHS block for " + name)
+    for distro, cft, plain in re.findall(r"\"([^\"]+)\":\s*(?:cftUrl\(\"([^\"]+)\"\)|\"([^\"]+)\")", m.group(1)):
+        path = cft or plain
+        fname = path.rsplit("/", 1)[-1]
+        arch = "arm64" if distro.endswith("arm64") else "x64"
+        if distro.startswith("mac"):
+            fam = "mac"
+        elif distro.startswith("win"):
+            fam = "win"
+        elif distro.startswith("ubuntu") or distro.startswith("debian"):
+            fam = "linux"
+        else:
+            sys.exit("unknown OS family in DOWNLOAD_PATHS key " + distro)
+        plat = fam + "-" + arch
+        if plat not in platforms:
+            continue
+        key = "%s|%s" % (name, plat)
+        if fname in dispatch and dispatch[fname] != key:
+            sys.exit("DOWNLOAD_PATHS filename %s maps to both %s and %s" % (fname, dispatch[fname], key))
+        dispatch[fname] = key
+if len(dispatch) != 12:
+    sys.exit("expected 12 derived dispatch rows, got %d" % len(dispatch))
+if sorted(dispatch.values()) != sorted("%s|%s" % (r.split("|")[0], r.split("|")[1]) for r in rows):
+    sys.exit("dispatch keys do not cover exactly the EXECUTABLE_PATHS rows")
 open(os.environ["DERIVED"], "w").write("\n".join(rows) + "\n")
+open(os.environ["DISPATCH"], "w").write("\n".join("%s|%s" % (f, k) for f, k in sorted(dispatch.items())) + "\n")
 ' || { printf 'FAIL: could not derive the expected table from the bundle fixture %s\n' "$fixture"; exit 1; }
 
 # expected_for_url <url> — prints "<name>|<exe_rel>" for a fetch URL.
-# The exe_rel comes from the bundle-derived table above; this function
-# only maps the URL filename to (browser, platform). Returns empty for
-# shapes with no entry.
+# BOTH halves come from the bundle fixture: the filename→(browser,
+# platform) dispatch is derived from DOWNLOAD_PATHS (distro keys mapped
+# mechanically to the generic platforms; see the F3-RT1 block above),
+# and the exe_rel comes from EXECUTABLE_PATHS. There is no hand-written
+# filename→key table left in this file to swap — the F3-RT1 mutant
+# (dispatch keys + code exe_rel swapped together) is not expressible
+# here; the nearest expressible mutant edits the fixture's
+# DOWNLOAD_PATHS rows, which the sha256 guard catches unless the hash
+# is updated too (the documented three-way residual).
 expected_for_url() {
   local _fname _key _row _exe
   _fname="${1##*/}"
-  case "$_fname" in
-    chrome-headless-shell-linux64.zip) _key="chromium-headless-shell|linux-x64" ;;
-    chrome-linux64.zip) _key="chromium|linux-x64" ;;
-    chrome-headless-shell-linux-arm64.zip) _key="chromium-headless-shell|linux-arm64" ;;
-    chrome-linux-arm64.zip) _key="chromium|linux-arm64" ;;
-    chrome-headless-shell-mac-arm64.zip) _key="chromium-headless-shell|mac-arm64" ;;
-    chrome-mac-arm64.zip) _key="chromium|mac-arm64" ;;
-    chrome-headless-shell-mac-x64.zip) _key="chromium-headless-shell|mac-x64" ;;
-    chrome-mac-x64.zip) _key="chromium|mac-x64" ;;
-    ffmpeg-linux-arm64.zip) _key="ffmpeg|linux-arm64" ;;
-    ffmpeg-linux.zip) _key="ffmpeg|linux-x64" ;;
-    ffmpeg-mac-arm64.zip) _key="ffmpeg|mac-arm64" ;;
-    ffmpeg-mac.zip) _key="ffmpeg|mac-x64" ;;
-    *) printf '' ; return 0 ;;
-  esac
+  _key="$(awk -F'|' -v f="$_fname" '$1 == f { print $2"|"$3; exit }' "$derived_dispatch")"
+  [[ -n "$_key" ]] || { printf ''; return 0; }
   _row="$(grep -F "$_key|" "$derived_table" || true)"
   [[ -n "$_row" ]] || { printf ''; return 0; }
   _exe="${_row##*|}"
@@ -145,7 +194,7 @@ expected_for_url() {
 # Scratch dirs (the function mkdirs under state_dir before calling curl).
 state_dir="$(mktemp -d)"
 pw_cache_dir="$(mktemp -d)"
-trap 'rm -rf "$state_dir" "$pw_cache_dir" "$derived_table"' EXIT
+trap 'rm -rf "$state_dir" "$pw_cache_dir" "$derived_table" "$derived_dispatch"' EXIT
 
 # Stubbed curl: log the invocation, then build a fixture zip containing
 # exactly the expected executable for the fetched URL shape and succeed
