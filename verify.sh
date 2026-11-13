@@ -3009,11 +3009,19 @@ jr_reject() {
 }
 jr_prep() { # round kind [extra prepare args...] — expert kinds are stamped by their expert; no --grader.
   local round="$1" kind="$2"; shift 2
-  local grader_args=(--grader judge-subagent)
-  if [[ "$kind" == expert-* ]]; then grader_args=(); fi
-  if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round "$round" --kind "$kind" "${grader_args[@]}" --brief-type landing --mode full --page design/page.html "$@" >"$work/judge-prep-$round-$kind.log" 2>&1; then
-    fail "judge-artifact (D15): prepare round $round kind $kind failed — dependent cases will cascade; see $work/judge-prep-$round-$kind.log"
-    cat "$work/judge-prep-$round-$kind.log" >&2 || true
+  # Bash ≤4.3 aborts on "${arr[@]}" for an empty array under `set -u`
+  # (D21 Defect 4), so --grader is passed only on the non-expert branch —
+  # no empty array is ever expanded on any path through this helper.
+  if [[ "$kind" == expert-* ]]; then
+    if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round "$round" --kind "$kind" --brief-type landing --mode full --page design/page.html "$@" >"$work/judge-prep-$round-$kind.log" 2>&1; then
+      fail "judge-artifact (D15): prepare round $round kind $kind failed — dependent cases will cascade; see $work/judge-prep-$round-$kind.log"
+      cat "$work/judge-prep-$round-$kind.log" >&2 || true
+    fi
+  else
+    if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round "$round" --kind "$kind" --grader judge-subagent --brief-type landing --mode full --page design/page.html "$@" >"$work/judge-prep-$round-$kind.log" 2>&1; then
+      fail "judge-artifact (D15): prepare round $round kind $kind failed — dependent cases will cascade; see $work/judge-prep-$round-$kind.log"
+      cat "$work/judge-prep-$round-$kind.log" >&2 || true
+    fi
   fi
 }
 # jr_fill_scores <file> <t> <l> <c> <s>: fill a skeleton the way a judge
