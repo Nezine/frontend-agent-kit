@@ -103,6 +103,18 @@ t "V14 case-variant-clone-dir PAT" 1 "/tmp/fakeproj/KIT-CLONE/notes.txt:1: api_k
 # V15 (W-RT2): the public example spliced into a longer key -> kept
 # (the strip must not join the parts into the fixture before removal)
 t "V15 splice-joins-into-fixture PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"sk-proj-ABC${AKIA_EX}DEFGHIJKLMNOPQRSTUVWX\"" "$sec_11_pat"
+# MIG-3 fix pass 3 (W-RT3): 200 whole-token fixtures on one line. The
+# linear single-pass removal must drop them all; the fix-pass-2 loop took
+# 310 ms for 200 and 22.9 s for 2000 on a 66 KB line (over 100 s on 1 MB).
+_many200=""
+for _i in {1..200}; do _many200="$_many200$LIT "; done
+t "V16 two-hundred-whole-fixtures-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: $_many200" "$sec_11_pat"
+# MIG-3 fix pass 3: the shrink boundary, pinned (see the D34 entry). The
+# fixture literal is absent here, so the removal is a no-op and the
+# verdict comes from the AKIA strip plus the re-test: 19 real chars after
+# the example stay below the 20-char PAT minimum (dropped); 20 reach it.
+t "V17a shrink-boundary-19-chars PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"sk-proj-${AKIA_EX}ABCDEFGHIJKLMNOPQRS\"" "$sec_11_pat"
+t "V17b shrink-boundary-20-chars PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"sk-proj-${AKIA_EX}ABCDEFGHIJKLMNOPQRST\"" "$sec_11_pat"
 # C: a different (real-shape) secret under a clone -> kept (1)
 t "C1 other-AKIA-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: aws_access_key_id = AKIA$(printf 'B%.0s' {1..16})" "$sec_11_pat"
 # D: the public AWS example under a clone -> dropped (0), global exemption intact

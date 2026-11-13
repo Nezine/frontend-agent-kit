@@ -871,12 +871,12 @@ sec_11_text_assign_unq=""
 # exempted too — but the D34 record promises only the literal fixture
 # string itself is exempted. Only an occurrence delimited on both sides
 # by a non-secret character (or a line edge) is removed, and only in
-# its exact case: a longer token, an embedded occurrence, and a
-# lowercase occurrence all still match and still fail.
+# its exact case: a longer token containing the fixture, an embedded
+# occurrence, and a lowercase occurrence all still match and still fail.
 sec_11_fixture_lit="sk-proj-"ABCDEFGHIJKLMNOPQRSTUVWX
 sec_11_keep_unless_example_only() {
-  local pat="$1" line stripped _cd _under_clone _s _out _rest _pre _post _right_src _left_ok _right_ok
-  shopt -s nocasematch
+  local pat="$1" line stripped _cd _under_clone _nc_state
+  _nc_state="$(shopt -p nocasematch)"  # fix pass 3: save the caller's state
   while IFS= read -r line; do
     # MIG-3 fix pass 2 (W-RT1): the clone test is case-SENSITIVE.
     # Clone detection (:244) runs with nocasematch off, so a lookalike
@@ -895,50 +895,50 @@ sec_11_keep_unless_example_only() {
       # the ORIGINAL line, BEFORE the AKIA strip below. Stripping first
       # can splice the fixture into existence inside a longer key (the
       # strip joins the parts; the removal then deletes the joined
-      # fixture) or shrink a token below the pattern threshold, so the
-      # removal must judge the line as grepped, not the stripped one.
-      # MIG-3 fix pass 2 (W-RT3): LINEAR string operations only. The
-      # previous regex led with an UNANCHORED (.*), which the engine
-      # retried at every start position (O(n^2): ~33 s for a 100 KB
-      # line). The loop below uses one regex per pass, anchored at both
-      # ends (^(.*)LIT(.*)$), so the engine tries exactly one start
-      # position and backtracks linearly to the LAST occurrence of the
-      # literal (measured: 13 ms for a 100 KB clean line, 25 ms with
-      # one fixture, 140 ms for a 1 MB clean line, 220 ms for a 1 MB
-      # line with the fixture at the end). The ${var%%...} /
-      # ${var#...} split was measured quadratic (6.9 s for a 1 MB
-      # line) and is not used. An occurrence is removed only when
-      # delimited on both sides by a non-secret character (or a line
-      # edge, via the sentinel spaces), and only in its exact case
-      # (nocasematch is off here). Occurrences are processed
-      # right-to-left: when the text after an occurrence is empty, the
-      # following character is the first character already emitted
-      # (the head of a kept literal) — never a line edge.
-      _s=" $line "
-      _out=""
-      _rest="$_s"
-      while [[ "$_rest" =~ ^(.*)"$sec_11_fixture_lit"(.*)$ ]]; do
-        _pre="${BASH_REMATCH[1]}"
-        _post="${BASH_REMATCH[2]}"
-        case "$_pre" in *[A-Za-z0-9_-]) _left_ok=0 ;; *) _left_ok=1 ;; esac
-        _right_src="$_post"
-        [[ -z "$_right_src" ]] && _right_src="$_out"
-        case "$_right_src" in [A-Za-z0-9_-]*) _right_ok=0 ;; *) _right_ok=1 ;; esac
-        if [[ "$_left_ok" == 1 && "$_right_ok" == 1 ]]; then
-          _out="$_post$_out"
-        else
-          _out="$sec_11_fixture_lit$_post$_out"
-        fi
-        _rest="$_pre"
-      done
-      _out="$_rest$_out"
-      stripped="${_out# }"
-      stripped="${stripped% }"
+      # fixture), so the removal must judge the line as grepped, not
+      # the stripped one. (Fix pass 3: the swap does NOT fix the shrink
+      # shapes — those stay dropped; see the D34 entry.)
+      # MIG-3 fix pass 3 (W-RT3): LINEAR single-pass removal. The fix-pass-2
+      # loop rescanned the remaining line once per fixture occurrence (O(n*k):
+      # 22.9 s for 2000 fixtures on a 66 KB line, over 100 s on a 1 MB line).
+      # One awk pass now walks the line left-to-right: index() finds the next
+      # occurrence, the scanned prefix is never re-scanned, and each piece is
+      # printed once as it is decided, so no accumulated string is re-copied.
+      # Measured end-to-end through this function, repeated runs: 19-27 ms
+      # for a 100 KB clean line, 20-25 ms with one fixture, 148-185 ms for a
+      # 1 MB clean line, 147-190 ms with the fixture at the end; 2000 fixtures:
+      # 12-18 ms on a 66 KB line, 169-245 ms on a 1 MB line. The ${var%%...}
+      # / ${var#...} split was measured quadratic (6.9 s for a 1 MB line) and
+      # is not used. An occurrence is removed only when delimited on both sides
+      # by a non-secret character (or a line edge — an empty neighbour counts
+      # as a delimiter), and only in its exact case (awk index() is always
+      # case-sensitive). The character before an occurrence is the last one of
+      # the preceding piece, or of the literal just kept or removed when two
+      # occurrences abut.
+      stripped="$(printf '%s\n' "$line" | LC_ALL=C awk -v lit="$sec_11_fixture_lit" '
+        {
+          rest = $0
+          lastc = ""
+          while ((p = index(rest, lit)) > 0) {
+            pre = substr(rest, 1, p - 1)
+            post = substr(rest, p + length(lit))
+            if (length(pre) > 0) { lc = substr(pre, length(pre), 1) } else { lc = lastc }
+            if (length(post) > 0) { rc = substr(post, 1, 1) } else { rc = "" }
+            printf "%s", pre
+            if (lc ~ /[A-Za-z0-9_-]/ || rc ~ /[A-Za-z0-9_-]/) { printf "%s", lit }
+            if (length(pre) > 0) { lastc = substr(pre, length(pre), 1) }
+            lastc = substr(lit, length(lit), 1)
+            rest = post
+          }
+          printf "%s\n", rest
+        }')"
     fi
     shopt -s nocasematch
     stripped="${stripped//AKIAIOSFODNN7EXAMPLE/}"
     if [[ "$stripped" =~ $pat ]]; then printf '%s\n' "$line"; fi
   done
+  # MIG-3 fix pass 3: restore the caller's nocasematch state saved on entry.
+  eval "$_nc_state"
 }
 # RR3-03: detect a UTF-16 file and print its encoding (UTF-16LE /
 # UTF-16BE), or print nothing. BOM FF FE => LE, FE FF => BE; with no
