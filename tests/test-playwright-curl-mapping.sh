@@ -14,13 +14,13 @@
 #
 # Stubs: curl logs the call and builds a fixture zip containing exactly
 # the expected executable for that URL shape (expected_for_url below —
-# the bundle's EXECUTABLE_PATHS table, keyed by URL shape, independent
-# of install.sh's arm bodies), then succeeds; registry values match the
-# CLI 0.1.24 bundle's browsers.json (chromium / chromium-headless-shell
-# rev 1254, browserVersion 158.0.8127.18; ffmpeg rev 1013).
-# playwright_core_dir returns empty, so the .links step only prints its
-# warning. A fetch PASS therefore proves the real placement path:
-# mapping matched, cross-check passed, extraction ran, the expected
+# derived at test time from the pinned bundle's EXECUTABLE_PATHS, see
+# the F2-RT2 block; never hand-copied in this file), then succeeds;
+# registry values match the CLI 0.1.24 bundle's browsers.json (chromium /
+# chromium-headless-shell rev 1254, browserVersion 158.0.8127.18; ffmpeg
+# rev 1013). playwright_core_dir returns empty, so the .links step only
+# prints its warning. A fetch PASS therefore proves the real placement
+# path: mapping matched, cross-check passed, extraction ran, the expected
 # executable was present and executable, and INSTALLATION_COMPLETE was
 # written — a typo'd `name`/`exe_rel` in install.sh fails loudly here
 # (F-RT2 fix pass, 2026-11-13: the old fail-fast stub never reached
@@ -56,34 +56,96 @@ playwright_revision() {
 }
 playwright_core_dir() { return 1; }
 
+# --- F2-RT2 fix pass 2 (2026-11-13): the expected table is DERIVED
+# from the bundle at test time, not hand-copied in this file. The fix
+# pass 1 table was hand-copied, so mutating install.sh's `exe_rel` AND
+# the table together passed 53/53 — the test judged the code against
+# itself. Now the source of truth is
+# tests/fixtures/playwright-core-executable-paths.txt, the verbatim
+# EXECUTABLE_PATHS block from the pinned @playwright/cli@0.1.24 bundle
+# (coreBundle.js:34565–34614), guarded by a pinned sha256:
+# EXPECTED_FIXTURE_SHA256 below. Any edit to the fixture without
+# updating the hash fails this test LOUDLY before any case runs, so a
+# joint mutation of code + fixture is caught by the checksum, a
+# code-only mutation is caught because the stub builds the fixture zip
+# from the bundle-derived exe_rel while the code gates on its own
+# (wrong) one, and a fixture-only mutation is caught by the checksum
+# (and would also fail the placement, since the stub and the code would
+# then disagree). The python3 parser below extracts exactly 12 rows
+# (chromium / chromium-headless-shell / ffmpeg × linux-x64, linux-arm64,
+# mac-x64, mac-arm64) and refuses to continue on any other count.
+# The filename alone selects the browser + platform in expected_for_url
+# (the filename literally names both); the exe_rel itself ALWAYS comes
+# from the fixture, never from this file.
+# Tradeoff, stated plainly: the fixture is PINNED, not fetched — the
+# test must work in CI with no network, so a CLI re-pin needs a manual
+# re-derivation (procedure in the fixture header) plus a hash update.
+# A coordinated three-way edit (code + fixture + the hash in this file)
+# would still pass; that requires editing the test's own tripwire, not
+# just the code and its expectation, and is the documented residual.
+fixture="$root/tests/fixtures/playwright-core-executable-paths.txt"
+EXPECTED_FIXTURE_SHA256="05f0147430dee68460e16ad90fba01c9c8647735b13bf2339554a9baf60d09c0"
+[[ -f "$fixture" ]] || { printf 'FAIL: bundle fixture not found at %s\n' "$fixture"; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then
+  _fixture_sha="$(sha256sum "$fixture" | awk '{print $1}')"
+else
+  _fixture_sha="$(FIXTURE="$fixture" python3 -c 'import hashlib, os; print(hashlib.sha256(open(os.environ["FIXTURE"], "rb").read()).hexdigest())')"
+fi
+if [[ "$_fixture_sha" != "$EXPECTED_FIXTURE_SHA256" ]]; then
+  printf 'FAIL: bundle fixture %s sha256 mismatch (got %s, expected %s) — re-derive it per its header and update EXPECTED_FIXTURE_SHA256; refusing to run on a stale/tampered fixture.\n' "$fixture" "$_fixture_sha" "$EXPECTED_FIXTURE_SHA256"
+  exit 1
+fi
+derived_table="$(mktemp)"
+FIXTURE="$fixture" DERIVED="$derived_table" python3 -c '
+import os, re, sys
+text = open(os.environ["FIXTURE"]).read()
+rows = []
+for name in ("chromium", "chromium-headless-shell", "ffmpeg"):
+    m = re.search(r"\"%s\":\s*\{(.*?)\n      \}" % re.escape(name), text, re.S)
+    if not m:
+        sys.exit("no EXECUTABLE_PATHS block for " + name)
+    for plat, arr in re.findall(r"\"(linux-x64|linux-arm64|mac-x64|mac-arm64)\":\s*\[([^\]]*)\]", m.group(1)):
+        parts = re.findall(r"\"([^\"]+)\"", arr)
+        if not parts:
+            sys.exit("empty exe path for %s %s" % (name, plat))
+        rows.append("%s|%s|%s" % (name, plat, "/".join(parts)))
+if len(rows) != 12:
+    sys.exit("expected 12 derived rows, got %d" % len(rows))
+open(os.environ["DERIVED"], "w").write("\n".join(rows) + "\n")
+' || { printf 'FAIL: could not derive the expected table from the bundle fixture %s\n' "$fixture"; exit 1; }
+
 # expected_for_url <url> — prints "<name>|<exe_rel>" for a fetch URL.
-# The table is the CLI 0.1.24 bundle's EXECUTABLE_PATHS, keyed by URL
-# shape (independent of install.sh's arm bodies): the curl stub builds
-# the fixture zip from it, and map() asserts placement against it, so a
-# typo'd `name`/`exe_rel` in install.sh fails the fetch case instead of
-# passing silently (F-RT2). Returns empty for shapes with no entry.
+# The exe_rel comes from the bundle-derived table above; this function
+# only maps the URL filename to (browser, platform). Returns empty for
+# shapes with no entry.
 expected_for_url() {
-  case "$1" in
-    */chrome-headless-shell-linux64.zip) printf 'chromium-headless-shell|chrome-headless-shell-linux64/chrome-headless-shell' ;;
-    */chrome-linux64.zip) printf 'chromium|chrome-linux64/chrome' ;;
-    */chrome-headless-shell-linux-arm64.zip) printf 'chromium-headless-shell|chrome-headless-shell-linux-arm64/chrome-headless-shell' ;;
-    */chrome-linux-arm64.zip) printf 'chromium|chrome-linux-arm64/chrome' ;;
-    */chrome-headless-shell-mac-arm64.zip) printf 'chromium-headless-shell|chrome-headless-shell-mac-arm64/chrome-headless-shell' ;;
-    */chrome-mac-arm64.zip) printf 'chromium|chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' ;;
-    */chrome-headless-shell-mac-x64.zip) printf 'chromium-headless-shell|chrome-headless-shell-mac-x64/chrome-headless-shell' ;;
-    */chrome-mac-x64.zip) printf 'chromium|chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' ;;
-    */ffmpeg-linux-arm64.zip) printf 'ffmpeg|ffmpeg-linux' ;;
-    */ffmpeg-linux.zip) printf 'ffmpeg|ffmpeg-linux' ;;
-    */ffmpeg-mac-arm64.zip) printf 'ffmpeg|ffmpeg-mac' ;;
-    */ffmpeg-mac.zip) printf 'ffmpeg|ffmpeg-mac' ;;
-    *) printf '' ;;
+  local _fname _key _row _exe
+  _fname="${1##*/}"
+  case "$_fname" in
+    chrome-headless-shell-linux64.zip) _key="chromium-headless-shell|linux-x64" ;;
+    chrome-linux64.zip) _key="chromium|linux-x64" ;;
+    chrome-headless-shell-linux-arm64.zip) _key="chromium-headless-shell|linux-arm64" ;;
+    chrome-linux-arm64.zip) _key="chromium|linux-arm64" ;;
+    chrome-headless-shell-mac-arm64.zip) _key="chromium-headless-shell|mac-arm64" ;;
+    chrome-mac-arm64.zip) _key="chromium|mac-arm64" ;;
+    chrome-headless-shell-mac-x64.zip) _key="chromium-headless-shell|mac-x64" ;;
+    chrome-mac-x64.zip) _key="chromium|mac-x64" ;;
+    ffmpeg-linux-arm64.zip) _key="ffmpeg|linux-arm64" ;;
+    ffmpeg-linux.zip) _key="ffmpeg|linux-x64" ;;
+    ffmpeg-mac-arm64.zip) _key="ffmpeg|mac-arm64" ;;
+    ffmpeg-mac.zip) _key="ffmpeg|mac-x64" ;;
+    *) printf '' ; return 0 ;;
   esac
+  _row="$(grep -F "$_key|" "$derived_table" || true)"
+  [[ -n "$_row" ]] || { printf ''; return 0; }
+  _exe="${_row##*|}"
+  printf '%s|%s' "${_key%%|*}" "$_exe"
 }
 
 # Scratch dirs (the function mkdirs under state_dir before calling curl).
 state_dir="$(mktemp -d)"
 pw_cache_dir="$(mktemp -d)"
-trap 'rm -rf "$state_dir" "$pw_cache_dir"' EXIT
+trap 'rm -rf "$state_dir" "$pw_cache_dir" "$derived_table"' EXIT
 
 # Stubbed curl: log the invocation, then build a fixture zip containing
 # exactly the expected executable for the fetched URL shape and succeed
@@ -290,6 +352,45 @@ map "W-RT3 double /builds/ refuses" refuse \
 map "W-RT3 evilbuilds/builds refuses" refuse \
   "https://cdn.playwright.dev/evilbuilds/builds/ffmpeg/1013/ffmpeg-linux.zip"
 
+# --- F2-RT1 fix pass 2: semicolon-param traversal must refuse at the
+# validator (segment-shape allowlist). The red team's exact live URLs:
+# GCS strips `;`-params server-side, so `..;` fetched the WRONG
+# revision (140.x placed as chromium-1254) on the fix-pass-1 code.
+# Also the `.;` / encoded-`;` / double-encoding / overlong-UTF-8 /
+# unicode-dot / triple-dot / `%00` family (W2-RT3): every one reaches
+# curl only if the validator lets it through, and the allowlist refuses
+# them all here — no residual is left to server behaviour. ---
+map "F2-RT1 semicolon CDN CFT chrome landing refuses (live URL)" refuse \
+  "https://cdn.playwright.dev/builds/cft/$V/..;/140.0.7339.186/linux64/chrome-linux64.zip"
+map "F2-RT1 semicolon GCS chrome landing refuses (live URL)" refuse \
+  "https://storage.googleapis.com/chrome-for-testing-public/$V/..;/140.0.7339.186/linux64/chrome-linux64.zip"
+map "F2-RT1 semicolon GCS headless-shell landing refuses (live URL)" refuse \
+  "https://storage.googleapis.com/chrome-for-testing-public/$V/..;/140.0.7339.186/linux64/chrome-headless-shell-linux64.zip"
+map "F2-RT1 semicolon CDN CFT headless-shell landing refuses (live URL)" refuse \
+  "https://cdn.playwright.dev/builds/cft/$V/..;/140.0.7339.186/linux64/chrome-headless-shell-linux64.zip"
+map "F2-RT1 semicolon GCS mac-arm64 chrome landing refuses (live URL)" refuse \
+  "https://storage.googleapis.com/chrome-for-testing-public/$V/..;/140.0.7339.186/mac-arm64/chrome-mac-arm64.zip"
+map "F2-RT1 semicolon-param ..;x=1 refuses" refuse \
+  "https://cdn.playwright.dev/builds/cft/$V/..;x=1/140.0.7339.186/linux64/chrome-linux64.zip"
+map "F2-RT1 semicolon in version segment refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013;/../ffmpeg/1005/ffmpeg-linux.zip"
+map "W2-RT3 dot-semicolon .; refuses" refuse \
+  "https://storage.googleapis.com/chrome-for-testing-public/$V/.;/140.0.7339.186/linux64/chrome-linux64.zip"
+map "W2-RT3 encoded semicolon ..%3b refuses" refuse \
+  "https://storage.googleapis.com/chrome-for-testing-public/$V/..%3b/140.0.7339.186/linux64/chrome-linux64.zip"
+map "W2-RT3 double-encoded dotdot %252e refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%252e%252e/%252e%252e/ffmpeg/1005/ffmpeg-linux.zip"
+map "W2-RT3 overlong UTF-8 %c0%ae refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%c0%ae%c0%ae/%c0%ae%c0%ae/ffmpeg/1005/ffmpeg-linux.zip"
+map "W2-RT3 unicode dot %e2%80%a4 refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%e2%80%a4%e2%80%a4/ffmpeg/1005/ffmpeg-linux.zip"
+map "W2-RT3 triple-dot segment refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/.../ffmpeg/1005/ffmpeg-linux.zip"
+map "W2-RT3 null byte %00 segment refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%00/ffmpeg-linux.zip"
+map "W2-RT3 backslash traversal refuses" refuse \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013\\..\\..\\ffmpeg\\1005/ffmpeg-linux.zip"
+
 # --- D35 fallback derivation: linux-arm64 chrome URL must derive the
 # headless shell (previously the detection case listed only
 # linux64/mac-arm64/mac-x64, so an ARM64 run silently skipped it) ---
@@ -353,6 +454,46 @@ fallback_multi "W-RT2 linux64 chrome + linux64 HS does not derive" nodrive \
   "" \
   "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-linux64.zip" \
   "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-headless-shell-linux64.zip"
+
+# --- F2-RT1 fix pass 2: the fallback path must refuse a poisoned log
+# line, including the DERIVED headless-shell URL — derivation is string
+# substitution, so it inherits the `..;` segment, and the derived URL
+# is only safe because playwright_curl_one validates it too. ---
+fallback_refuse() {
+  local label="$1" log_url="$2" out rc
+  printf 'Download failed for chrome-for-testing. URL: %s\n' "$log_url" > "$state_dir/install.log"
+  out="$(playwright_curl_fallback 2>&1)"; rc=$?
+  if [[ "$rc" != 0 ]] && ! printf '%s' "$out" | grep -q 'stub-curl called for' && printf '%s' "$out" | grep -q 'refusing to place'; then
+    printf 'PASS: %s\n' "$label"; pass=$((pass + 1))
+  else
+    printf 'FAIL: %s — expected fallback refusal (rc=1, no fetch), got rc=%s out=%s\n' "$label" "$rc" "$out"; fail=$((fail + 1))
+  fi
+}
+fallback_refuse "F2-RT1 fallback refuses semicolon log line (derived HS also refused)" \
+  "https://storage.googleapis.com/chrome-for-testing-public/$V/..;/140.0.7339.186/linux64/chrome-linux64.zip"
+
+# --- W2-RT2 fix pass 2: a log with TWO chrome URLs (two arches) must
+# derive BOTH headless shells, not just the last-sorted arch's. ---
+fallback_derive_both() {
+  local label="$1" hs1="$2" hs2="$3" out u
+  shift 3
+  : > "$state_dir/install.log"
+  for u in "$@"; do
+    printf 'Download failed for chrome-for-testing. URL: %s\n' "$u" >> "$state_dir/install.log"
+  done
+  out="$(playwright_curl_fallback 2>&1)"
+  if printf '%s' "$out" | grep -q "deriving it from the same CDN version directory: $hs1" \
+    && printf '%s' "$out" | grep -q "deriving it from the same CDN version directory: $hs2"; then
+    printf 'PASS: %s\n' "$label"; pass=$((pass + 1))
+  else
+    printf 'FAIL: %s — expected derivation of both %s and %s, got: %s\n' "$label" "$hs1" "$hs2" "$out"; fail=$((fail + 1))
+  fi
+}
+fallback_derive_both "W2-RT2 two chrome URLs derive both headless shells" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-headless-shell-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux-arm64/chrome-headless-shell-linux-arm64.zip" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux-arm64/chrome-linux-arm64.zip"
 
 printf 'mapping test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]

@@ -1,0 +1,65 @@
+# EXECUTABLE_PATHS — pinned bundle derivation for tests/test-playwright-curl-mapping.sh
+# Source: @playwright/cli@0.1.24, package/lib/coreBundle.js, lines 34565-34614
+# (playwright-core 1.66.0-alpha-1794252756000).
+# coreBundle.js sha256: f11cf49aa0658caecdb20525ce1e19e89201ecf157fbee18579e1ba061aee352
+# The block below is VERBATIM from that file (no hand transcription).
+# Only the chromium / chromium-headless-shell / ffmpeg rows are used by
+# the test; the other browsers are present because the block is verbatim.
+# Re-derivation (run when the CLI is re-pinned; the test fails loudly if
+# this file changes without EXPECTED_FIXTURE_SHA256 in the test being
+# updated to match):
+#   npm pack @playwright/cli@0.1.24
+#   tar -xzf playwright-cli-0.1.24.tgz package/lib/coreBundle.js
+#   sed -n '<start>,<end>p' package/lib/coreBundle.js   # EXECUTABLE_PATHS block; confirm the line numbers with grep -n first
+#   sha256sum tests/fixtures/playwright-core-executable-paths.txt
+#     # update EXPECTED_FIXTURE_SHA256 in test-playwright-curl-mapping.sh
+    EXECUTABLE_PATHS = {
+      "chromium": {
+        "<unknown>": void 0,
+        "linux-x64": ["chrome-linux64", "chrome"],
+        "linux-arm64": ["chrome-linux-arm64", "chrome"],
+        "mac-x64": ["chrome-mac-x64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        "mac-arm64": ["chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"],
+        "win-x64": ["chrome-win64", "chrome.exe"]
+      },
+      "chromium-headless-shell": {
+        "<unknown>": void 0,
+        "linux-x64": ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+        "linux-arm64": ["chrome-headless-shell-linux-arm64", "chrome-headless-shell"],
+        "mac-x64": ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+        "mac-arm64": ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
+        "win-x64": ["chrome-headless-shell-win64", "chrome-headless-shell.exe"]
+      },
+      "firefox": {
+        "<unknown>": void 0,
+        "linux-x64": ["firefox", "firefox"],
+        "linux-arm64": ["firefox", "firefox"],
+        "mac-x64": ["firefox", "Nightly.app", "Contents", "MacOS", "firefox"],
+        "mac-arm64": ["firefox", "Nightly.app", "Contents", "MacOS", "firefox"],
+        "win-x64": ["firefox", "firefox.exe"]
+      },
+      "webkit": {
+        "<unknown>": void 0,
+        "linux-x64": ["pw_run.sh"],
+        "linux-arm64": ["pw_run.sh"],
+        "mac-x64": ["pw_run.sh"],
+        "mac-arm64": ["pw_run.sh"],
+        "win-x64": ["Playwright.exe"]
+      },
+      "ffmpeg": {
+        "<unknown>": void 0,
+        "linux-x64": ["ffmpeg-linux"],
+        "linux-arm64": ["ffmpeg-linux"],
+        "mac-x64": ["ffmpeg-mac"],
+        "mac-arm64": ["ffmpeg-mac"],
+        "win-x64": ["ffmpeg-win64.exe"]
+      },
+      "winldd": {
+        "<unknown>": void 0,
+        "linux-x64": void 0,
+        "linux-arm64": void 0,
+        "mac-x64": void 0,
+        "mac-arm64": void 0,
+        "win-x64": ["PrintDeps.exe"]
+      }
+    };
