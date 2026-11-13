@@ -19,7 +19,7 @@ verify_sh="$root/verify.sh"
 [[ -f "$verify_sh" ]] || { printf 'FAIL: verify.sh not found at %s\n' "$verify_sh"; exit 1; }
 
 # Patterns, verbatim from gate.sh (sourced, not retyped).
-# NOTE (D34/W1 macOS fix): do NOT use `source <(grep ...)` here.
+# NOTE (D34/W1 macOS fix): do NOT use `source` with process substitution here.
 # On macOS bash 3.2 the process-substitution fd is closed before the
 # `source` builtin reads it, so grep dies with "Broken pipe" and no
 # pattern is set (fails on macos-15/26, passes on GNU bash 5.2).
@@ -28,8 +28,15 @@ verify_sh="$root/verify.sh"
 _pat_tmp="$(mktemp "${TMPDIR:-/tmp}/sec11-pat.XXXXXX")"
 [[ -n "$_pat_tmp" ]] || { printf 'FAIL: mktemp failed\n'; exit 1; }
 trap 'rm -f "$_pat_tmp"' EXIT
+# F1/R3 hardening: drop any caller-exported value first, so a stale
+# inherited value can never mask a missing line in gate.sh.
+unset sec_11_pat sec_11_assign_pat sec_11_assign_unquoted_pat
 grep -E '^sec_11_(pat|assign_pat|assign_unquoted_pat)=' "$gate_sh" > "$_pat_tmp"
 [[ -s "$_pat_tmp" ]] || { printf 'FAIL: no sec_11 patterns found in %s\n' "$gate_sh"; exit 1; }
+# F2 hardening: require exactly 3 extracted lines before sourcing, so a
+# duplicated pattern line can never win silently (last-wins).
+_pat_count="$(grep -cE '^sec_11_(pat|assign_pat|assign_unquoted_pat)=' "$_pat_tmp")"
+[[ "$_pat_count" == 3 ]] || { printf 'FAIL: expected 3 sec_11 pattern lines in %s, got %s\n' "$gate_sh" "$_pat_count"; exit 1; }
 source "$_pat_tmp"
 [[ -n "${sec_11_pat:-}" && -n "${sec_11_assign_pat:-}" && -n "${sec_11_assign_unquoted_pat:-}" ]] || { printf 'FAIL: sec_11 patterns did not load from %s (empty source)\n' "$gate_sh"; exit 1; }
 
