@@ -236,6 +236,29 @@ guessed. A finding about a whole file (no single line) prints as
   stated in the config: a generic high-entropy string on a
   non-`tokensHash` line in the run log, matching neither built-in pattern,
   would be missed by both layers.
+- **Full-tree false-positive scan (§1.1, D34, MIG-3 fix pass W5).** The
+  §6 D34 case gates a *reduced* nested clone (markers + every file that
+  carries a known secret-shaped line) because a full-tree copy costs
+  ~3 min per gate run — so a new secret-shaped line added anywhere in
+  the tree would NOT be caught by that case until a clean project with a
+  nested clone failed on it in the field. The tripwire is this
+  procedure, re-run whenever a secret-shaped line is added to the tree
+  (new fixture, new doc example, new regex): replicate the §1.1 text
+  pass over the whole repo tree — take the three patterns verbatim from
+  `gate.sh` (`sec_11_pat`, `sec_11_assign_pat`,
+  `sec_11_assign_unquoted_pat`), `find` every regular file minus
+  `node_modules/`, `.git/`, `.taste-skill/` and the two gate-leg logs,
+  `grep -HnIE -i` each pattern, and pipe the hits through the real
+  `sec_11_keep_unless_example_only` filter from `gate.sh` (from the
+  `sec_11_fixture_lit` definition through the function's closing brace).
+  Report file:line locations only, never hit content. Expected result:
+  exactly one surviving line — the §5c case-(104) fixture in
+  `verify.sh:5140`, which is exempted only under a nested clone (D34
+  (c1)) and is the reason the §6 reduced clone exists. Any other
+  surviving line is a new false positive: fix it before it ships (reword
+  the line so it no longer quotes a secret shape, as was done for the
+  research brief in D34 — never exempt a real secret shape), and add its
+  file to the §6 reduced clone so the case pins it.
 
 ## Widths — the rhythm-widths ambiguity, resolved from the code
 

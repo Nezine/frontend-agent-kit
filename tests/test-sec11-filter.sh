@@ -1,0 +1,90 @@
+#!/bin/bash
+# Unit test for the §1.1 example-only filter in gate.sh
+# (sec_11_keep_unless_example_only, D34 (c1) + MIG-3 fix pass W1).
+#
+# Extracts the REAL filter from gate.sh (verbatim — no copied logic)
+# and runs it against constructed lines. Never prints a secret value:
+# the fixture literal is derived at runtime from verify.sh:5140 (the
+# §5c case-(104) fixture line) and only counts are reported.
+#
+# Run: bash tests/test-sec11-filter.sh
+# Exit 0 = all cases pass; non-zero = at least one case failed.
+# Wired into CI (.github/workflows/ci.yml, next to the Playwright
+# unit test) and into verify.sh §6b, so a broken filter fails both.
+set -u
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+gate_sh="$root/skills/frontend-kit/scripts/gate/gate.sh"
+verify_sh="$root/verify.sh"
+[[ -f "$gate_sh" ]] || { printf 'FAIL: gate.sh not found at %s\n' "$gate_sh"; exit 1; }
+[[ -f "$verify_sh" ]] || { printf 'FAIL: verify.sh not found at %s\n' "$verify_sh"; exit 1; }
+
+# Patterns, verbatim from gate.sh (sourced, not retyped).
+source <(grep -E '^sec_11_(pat|assign_pat|assign_unquoted_pat)=' "$gate_sh")
+
+# Filter definition + function, verbatim from gate.sh: from the
+# sec_11_fixture_lit definition line through the function's closing brace.
+filter_src="$(awk '/^sec_11_fixture_lit=/{f=1} f{print} f && /^}/{exit}' "$gate_sh")"
+[[ -n "$filter_src" ]] || { printf 'FAIL: sec_11 filter not found in gate.sh\n'; exit 1; }
+eval "$filter_src"
+
+# Fixture literal, derived at runtime from verify.sh:5140 — never
+# written out here, so this file ships no credential-shaped literal.
+_fixture_line="$(sed -n '5140p' "$verify_sh")"
+LIT="$(printf '%s' "$_fixture_line" | sed -n 's/.*api_key = "//; s/".*//p')"
+[[ -n "$LIT" ]] || { printf 'FAIL: could not extract the case-(104) fixture literal from verify.sh:5140\n'; exit 1; }
+[[ "${#LIT}" == 32 ]] || { printf 'FAIL: fixture literal has unexpected length %s (want 32)\n' "${#LIT}"; exit 1; }
+[[ "$LIT" =~ ^sk-proj-[A-Za-z0-9_-]{20,}$ ]] || { printf 'FAIL: fixture literal has an unexpected shape\n'; exit 1; }
+LOW="$(printf '%s' "$LIT" | tr 'A-Z' 'a-z')"
+TAIL="${LIT#sk-proj-}"
+
+clone_dirs=("/tmp/fakeproj/kit-clone")
+pass=0
+fail=0
+# t <label> <expected-kept-0-or-1> <line> <pattern>
+t() {
+  local label="$1" expect="$2" line="$3" pat="$4" got
+  got="$(printf '%s\n' "$line" | sec_11_keep_unless_example_only "$pat" | wc -l)"
+  got="${got//[[:space:]]/}"
+  if [[ "$got" == "$expect" ]]; then
+    printf 'PASS %s (kept=%s)\n' "$label" "$got"; pass=$((pass + 1))
+  else
+    printf 'FAIL %s (kept=%s, want %s)\n' "$label" "$got" "$expect"; fail=$((fail + 1))
+  fi
+}
+
+# A: fixture under a clone -> exempted (0), PAT and ASSIGN
+t "A1 fixture-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/verify.sh:5140:  printf 'api_key = \"$LIT\" was visible'" "$sec_11_pat"
+t "A2 fixture-under-clone ASSIGN" 0 "/tmp/fakeproj/kit-clone/verify.sh:5140:  printf 'api_key = \"$LIT\" was visible'" "$sec_11_assign_pat"
+# B: same literal outside any clone (case (104) bad half) -> kept (1)
+t "B1 fixture-outside-clone PAT" 1 "/tmp/fakeproj/design/judge/round-1.md:7: Judge note: api_key = \"$LIT\" was visible" "$sec_11_pat"
+t "B2 fixture-outside-clone ASSIGN" 1 "/tmp/fakeproj/design/judge/round-1.md:7: Judge note: api_key = \"$LIT\" was visible" "$sec_11_assign_pat"
+# W1 (fix pass): the exemption is whole-token, case-sensitive.
+# V3: longer key with the fixture as a prefix, under a clone -> kept
+t "V3 prefix-longer-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"${LIT}ABCD\"" "$sec_11_pat"
+t "V3b prefix-longer-under-clone ASSIGN" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"${LIT}ABCD\"" "$sec_11_assign_pat"
+# V4: fixture embedded in a longer api_key value, under a clone -> kept
+t "V4 embedded-both-sides-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/config.env:1: api_key = \"xx${LIT}yy\"" "$sec_11_pat"
+t "V4b embedded-suffix-only-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/config.env:1: api_key = \"${LIT}zz\"" "$sec_11_pat"
+t "V4c embedded-prefix-only-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/config.env:1: api_key = \"qq${LIT}\"" "$sec_11_pat"
+# V6: lowercase fixture, under a clone -> kept (exemption is exact-case)
+t "V6 lowercase-fixture-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"$LOW\"" "$sec_11_pat"
+# V9: fixture as a JSON value, under a clone -> exempted (quoted whole token)
+t "V9 fixture-as-JSON-value-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/data.json:3: \"api_key\": \"$LIT\"" "$sec_11_pat"
+t "V9b fixture-as-JSON-value-under-clone ASSIGN" 0 "/tmp/fakeproj/kit-clone/data.json:3: \"api_key\": \"$LIT\"" "$sec_11_assign_pat"
+# V10: fixture as a JSON value outside a clone -> kept
+t "V10 fixture-as-JSON-value-outside-clone PAT" 1 "/tmp/fakeproj/design/judge/round-1.md:7: \"api_key\": \"$LIT\"" "$sec_11_pat"
+# Mixed line: one whole-token fixture plus one longer key -> kept
+# (removing only the whole token must not exempt the longer one).
+t "V10b mixed-whole-plus-longer-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: $LIT and ${LIT}ABCD" "$sec_11_pat"
+# Two whole-token fixtures on one line -> both removed, exempted.
+t "V10c two-whole-fixtures-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: $LIT $LIT" "$sec_11_pat"
+# C: a different (real-shape) secret under a clone -> kept (1)
+t "C1 other-AKIA-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: aws_access_key_id = AKIA$(printf 'B%.0s' {1..16})" "$sec_11_pat"
+# D: the public AWS example under a clone -> dropped (0), global exemption intact
+t "D1 example-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: AKIAIOSFODNN7EXAMPLE" "$sec_11_pat"
+# E: gate.sh's own definition line (not under a clone) -> dropped (0):
+# the split spelling must not match the pattern.
+t "E1 definition-line PAT" 0 "sec_11_fixture_lit=\"sk-proj-\"$TAIL" "$sec_11_pat"
+
+printf 'sec11-filter: %s passed, %s failed\n' "$pass" "$fail"
+[[ "$fail" == 0 ]]

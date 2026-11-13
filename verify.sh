@@ -6037,10 +6037,16 @@ trap - EXIT
 if [[ -n "${work:-}" ]]; then rm -rf -- "$work" 2>/dev/null || printf 'WARNING: could not remove temp work dir %s (leaked).\n' "$work" >&2; fi
 
 # --- 6b. D34 (L1 narrow): the §1.1 text pass scans a nested kit clone ------
-# (gate.sh:994 drops the clone exclusion from the sec_11 find only; the
-# :618 shared find keeps it). Two halves, both against a reduced nested
+# (gate.sh:1019 drops the clone exclusion from the sec_11 find only; the
+# :622 shared find keeps it). Two halves, both against a reduced nested
 # clone (markers + every file that carries a known secret-shaped line —
-# a full-tree copy would cost ~3 min per gate run on this machine, D34):
+# a full-tree copy would cost ~3 min per gate run on this machine, D34).
+# The reduced clone is a fast tripwire, not the whole check: the
+# full-tree false-positive scan procedure is recorded in
+# skills/frontend-kit/scripts/gate/README.md ("Full-tree false-positive
+# scan", §1.1) and must be re-run whenever a new secret-shaped line is
+# added anywhere in the tree, so the next false positive is caught by
+# that procedure, not by a clean project failing in the field.
 # (1) secrets planted ONLY inside the clone must fail 1.1 via the
 # built-in grep, naming the planted files; (2) a pristine clone must
 # produce no 1.1 grep failure and no verify.sh hit (the (c1) clone-scoped
@@ -6080,6 +6086,7 @@ else
   bash "$_d34_gate" --target "$_d34_bad" --security-only >"$_d34_work/gate-bad.log" 2>&1 || _d34_bad_rc=$?
   if ! grep -q "security 1.1: secret scan: high-confidence secret pattern found (built-in grep)" "$_d34_work/gate-bad.log" || ! grep -Eq "kit-clone/notes.txt:[0-9]+:" "$_d34_work/gate-bad.log" || ! grep -Eq "kit-clone/config.env:[0-9]+:" "$_d34_work/gate-bad.log"; then
     fail "D34 clone-secret case: a secret planted only inside a nested clone did NOT fail gate §1.1 via the built-in grep naming both planted files — see $_d34_work/gate-bad.log"
+    cat "$_d34_work/gate-bad.log" >&2 || true
   else
     ok "D34: secrets planted only inside a nested kit clone fail gate §1.1 via the built-in grep, naming the planted files"
   fi
@@ -6097,6 +6104,18 @@ else
     ok "D34: a pristine nested kit clone produces no §1.1 grep failure and no verify.sh hit"
   fi
   rm -rf -- "$_d34_work" 2>/dev/null || true
+fi
+
+# --- 6c. sec_11 filter unit tests (D34, MIG-3 fix pass W4) --------------
+# tests/test-sec11-filter.sh pins the clone-scoped (c1) exemption of the
+# §5c case-(104) fixture literal, including the W1 whole-token cases
+# (V3 prefix-longer, V4 embedded, V6 lowercase). Run it here so
+# ./verify.sh fails if the filter regresses; CI runs it as its own step
+# too (.github/workflows/ci.yml). Its per-case lines print below.
+if bash "$root/tests/test-sec11-filter.sh"; then
+  ok "sec_11 filter unit tests pass (tests/test-sec11-filter.sh)"
+else
+  fail "sec_11 filter unit tests failed — see tests/test-sec11-filter.sh output above"
 fi
 
 # --- 7. Pro Max search smoke (v1 behaviour kept) -----------------------------
