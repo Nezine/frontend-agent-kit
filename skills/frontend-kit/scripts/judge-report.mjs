@@ -1396,6 +1396,163 @@ export function verifyLockLine(project, r) {
   return { ok: reasons.length === 0, reasons };
 }
 
+// MIE-7 (D38): the round budget — ONE predicate, shared by run-log.mjs
+// `record` and this module's `prepare` (the D15 round-4 lesson: two
+// copies of a counting rule drift, F1–F7 — so the predicate lives here,
+// next to verifyLockLine, in the import-safe module, and run-log.mjs
+// imports it; the reverse is circular, run-log.mjs running its CLI at
+// top level). Caps: 3 distinct round numbers per direction, 9 distinct
+// rounds in total. The counting rule (council synthesis, correcting
+// the board's literal wording): a direction is a taste-lock EPOCH —
+// round numbers RESTART at 1 per direction (round-brief.mjs:365
+// "Re-pick restart: round 1 of the new direction"), so the board's
+// literal "distinct numbers in the whole log" can never exceed 3 and
+// the total cap could never fire. The per-direction cap is therefore
+// the distinct `round` numbers among kind:"round" lines AFTER the
+// latest taste-lock line in file order; the total cap is the count of
+// distinct (epoch, round-number) PAIRS across the whole log
+// (equivalently the sum over epochs of distinct round numbers per
+// epoch). The pair rule is correct under BOTH numbering schemes —
+// with global numbering each epoch's numbers are already distinct, so
+// pairs == numbers — and the restart reading is confirmed by
+// round-brief.mjs:365 plus judge-report.mjs canonicalOut, whose
+// per-kind paths are keyed by round number alone.
+//   Epoch boundaries: only VERIFIED taste-lock lines start a new epoch
+// (shared verifyLockLine above — a hand-appended fake lock line must
+// NOT reset the per-direction count; if the latest lock does not
+// verify it starts no new epoch and rounds after it count against the
+// previous direction). No taste-lock yet in the log: the whole log is
+// the current direction.
+//   What counts: EVERY parsed kind:"round" line with an integer round
+// >= 1, regardless of grader / scores / verification — fail-closed
+// over-counting. A --grader none round counts (a no-grade record IS a
+// kind:"round" line, run-log.mjs:1512-1513; exempting it would let an
+// agent evade the cap by re-labelling rounds); a gate-fail round
+// counts too. Normalised with Number(r.round) — a raw Set over r.round
+// would count "2" and 2 as two rounds — and non-integers are ignored.
+// kind:"feedback", "crosscheck", "land", "lock", "purpose-fail" never
+// count. Only a NEW distinct round / pair is checked: re-recording an
+// already-recorded number passes the budget check (all other
+// validations still apply).
+//   Read-log robustness: run-log.mjs readLog has no try/catch (a
+// corrupt line crashes it) while prepare's log reader catches parse
+// errors and refuses — this helper handles parse errors
+// deterministically instead: a corrupt line refuses (exit 2 via the
+// caller's fail) in BOTH entry points, never a crash in record and
+// never a silent pass in prepare.
+export const ROUND_BUDGET_PER_DIRECTION = 3;
+export const ROUND_BUDGET_TOTAL = 9;
+
+// The run-log rows for the budget count, or the corrupt line that
+// stops the count. A missing log file is an empty log (round 1, no
+// lock yet). A line that parses to a non-object carries no kind or
+// round and cannot count; it is skipped, not treated as corrupt.
+function budgetLogRows(project) {
+  const logFile = path.join(project, 'design', 'run-log.jsonl');
+  if (!fs.existsSync(logFile)) return { rows: [] };
+  let text;
+  try {
+    text = fs.readFileSync(logFile, 'utf8');
+  } catch (e) {
+    return { corruptLine: 0, corruptDetail: `design/run-log.jsonl cannot be read (${e.message})` };
+  }
+  const rows = [];
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    try {
+      rows.push(JSON.parse(lines[i]));
+    } catch (e) {
+      return { corruptLine: i + 1, corruptDetail: `design/run-log.jsonl line ${i + 1} is not valid JSON (${e.message})` };
+    }
+  }
+  return { rows };
+}
+
+// Pure status of a candidate round against the budget: counts only,
+// no exit. `round` is the candidate round number (already validated
+// a positive integer by the caller). Returns { corrupt, corruptLine,
+// corruptDetail } when the log cannot be counted, else {
+// perDirection, total, lockVersion (null when no verified lock yet),
+// currentRounds (sorted distinct numbers in the current epoch),
+// alreadyRecorded (the candidate number is already in the current
+// epoch — a re-record, which passes the budget check) }.
+export function roundBudgetStatus(project, round) {
+  const read = budgetLogRows(project);
+  if (read.corruptLine !== undefined) {
+    return { corrupt: true, corruptLine: read.corruptLine, corruptDetail: read.corruptDetail };
+  }
+  // Epochs are segments split by VERIFIED taste-lock lines, keyed by
+  // the lock line's file position (each verified lock starts a new
+  // epoch even when two locks carry the same version — the version is
+  // a label, the position is the boundary). Epoch 0 is the log before
+  // the first verified lock.
+  let epoch = 0;
+  let lockVersion = null;
+  const perEpoch = new Map();
+  const pairs = new Set();
+  const epochSet = (key) => {
+    let s = perEpoch.get(key);
+    if (!s) { s = new Set(); perEpoch.set(key, s); }
+    return s;
+  };
+  for (let i = 0; i < read.rows.length; i++) {
+    const r = read.rows[i];
+    if (!r || typeof r !== 'object') continue;
+    if (r.kind === 'taste-lock') {
+      if (verifyLockLine(project, r).ok) {
+        epoch = i + 1;
+        lockVersion = r.lockVersion;
+      }
+      continue;
+    }
+    if (r.kind !== 'round') continue;
+    const n = Number(r.round);
+    if (!Number.isInteger(n) || n < 1) continue;
+    epochSet(epoch).add(n);
+    pairs.add(`${epoch}:${n}`);
+  }
+  const currentRounds = [...(perEpoch.get(epoch) || [])].sort((a, b) => a - b);
+  return {
+    corrupt: false,
+    perDirection: currentRounds.length,
+    total: pairs.size,
+    lockVersion,
+    currentRounds,
+    alreadyRecorded: currentRounds.includes(round),
+  };
+}
+
+// The exiting form of the budget predicate, in the shape of
+// checkIndependenceBasis above: `fail` is the caller's reject/refuse
+// (exit 2, nothing written). Per-direction is checked first, then
+// total. A re-recorded number returns without failing; a corrupt log
+// fails closed. The refusal message is the stable grep target: it
+// contains `round budget`, `re-pick` and `human gate`, names WHICH cap
+// fired and the counts, states that retrying the same round number
+// will refuse identically, and names the ONLY next actions (re-pick a
+// new direction / present the best version at the human gate) — never
+// "fix and retry". With the total budget spent a re-pick starts a new
+// direction but does not reopen recording, and the message says so.
+export function checkRoundBudget(project, round, fail) {
+  const st = roundBudgetStatus(project, round);
+  if (st.corrupt) {
+    fail(`round budget cannot be checked: ${st.corruptDetail} — the run log is corrupt; repair or restore the log before recording or preparing a round.`);
+    return;
+  }
+  if (st.alreadyRecorded) return;
+  if (st.perDirection >= ROUND_BUDGET_PER_DIRECTION) {
+    const since = st.lockVersion === null
+      ? 'with no taste-lock recorded yet'
+      : `since taste-lock v${st.lockVersion}`;
+    fail(`round budget exhausted (per-direction): ${st.perDirection} distinct rounds already recorded ${since} (rounds ${st.currentRounds.join(', ')}) — recording round ${round} would be a ${st.perDirection + 1}th distinct round in this direction. Retrying this same round number will refuse identically — the count is by distinct round number, not by attempt. The only next actions are to re-pick a new direction (record a new taste-lock and start again at round 1) or to present the best version at the human gate.`);
+    return;
+  }
+  if (st.total >= ROUND_BUDGET_TOTAL) {
+    fail(`round budget exhausted (total): ${st.total} distinct rounds already recorded across all directions — recording round ${round} would be a ${st.total + 1}th distinct round overall. Retrying this same round number will refuse identically — the count is by distinct round number, not by attempt. The only next actions are to re-pick a new direction or to present the best version at the human gate — with the total budget spent, a re-pick starts a new direction but does not reopen recording; the loop ends at the human gate.`);
+  }
+}
+
 // One cited report file's existence/containment half, in the shape
 // verifyCrosscheckLine's report half accepts at record time
 // (lexical containment inside <project>/design/, exists, not a
@@ -1725,6 +1882,16 @@ function prepare(project, args) {
   const mode = args.mode;
   if (!['full', 'cheap'].includes(mode)) usage('--mode must be full | cheap');
   if (!args.page) usage('--page <built.html> is required (the built page this report binds to)');
+
+  // MIE-7 (D38): round budget — CHECKED FIRST, before page validation,
+  // gate/cross-check derivation and the writeFileSync below, so a
+  // refused prepare writes no skeleton and creates no directories.
+  // Applies to ALL kinds under the same "new distinct round" rule (a
+  // prepare for an already-recorded round number passes). Expert C's
+  // placement; Expert B dissented (wanted the check after the gate +
+  // cross-check derivations so a missing gate is still reported as a
+  // missing gate) — dissent recorded in decisions.md D38.
+  checkRoundBudget(project, round, refuse);
 
   const projectReal = (() => { try { return fs.realpathSync(project); } catch { return path.resolve(project); } })();
   const designDir = path.resolve(project, 'design');

@@ -1732,6 +1732,18 @@ if (!args.project) usage('--project <dir> is required');
 if (cmd === 'record') {
   const round = Number(args.round);
   if (!Number.isInteger(round) || round < 1) usage('--round must be a positive integer');
+  // MIE-7 (D38): round budget — checked FIRST, immediately after the
+  // --round integer validation and before grader/basis/gate/judge-
+  // artifact validation and before any appendLog, so a refused round
+  // writes nothing. The predicate lives ONCE in judge-report.mjs
+  // (checkRoundBudget, next to verifyLockLine — the import-safe
+  // module) and is imported here; a --grader none round consumes
+  // budget like any other kind:"round" line, and a gate-fail round
+  // counts too. With no judge-report module (a partial install) the
+  // budget cannot be checked, so the record fails closed — the same
+  // stance the independence-basis wrapper above takes.
+  if (!judgeReportMod) reject('the judge-report parser (judge-report.mjs, next to run-log.mjs) is missing — the round budget cannot be checked, so this cannot be recorded. Re-run ./install.sh.');
+  judgeReportMod.checkRoundBudget(args.project, round, reject);
   const grader = (args.grader || '').trim();
   if (FORBIDDEN_GRADERS.includes(grader.toLowerCase())) {
     console.error(`run-log: REJECTED — grader "${grader}" is the builder. The builder NEVER grades its own work (user direction 2026-11-10). No entry written.`);

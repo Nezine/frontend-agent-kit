@@ -3106,6 +3106,15 @@ node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15-land --round 9 -
 if [[ "$jr_cc_ok" != 1 ]]; then
   fail "judge-artifact (D15): setup cross-check records failed — the §5c cases below will cascade; see $work/judge-cc-*.log"
 fi
+# D38 (MIE-7): this fixture is now a BUDGETED log — the round budget
+# counts every kind:"round" line, so its rounds are recorded under
+# taste-locks (re-picks), at most three distinct rounds per direction:
+# v1 here (rounds 1–3), v2 before `jr_prep 4` below (rounds 4–6), v3
+# before `jr_prep 7` below (rounds 7, 9). The locks are fixture setup,
+# not cases: no case is added, removed or renumbered and no assertion
+# changes. Tokens never move in this fixture, so every lock verifies.
+node "$run_log_mjs" --project "$jr_proj" lock --tokens design/tokens.css --refs "direction one" >"$work/judge-lock-v1.log" 2>&1 \
+  || fail "judge-artifact (D15): setup taste-lock v1 failed — the §5c cases below will cascade; see $work/judge-lock-v1.log"
 # jr_reject <name> <logfile> <pattern> <cmd...>: the command must exit
 # non-zero (run-log refusals are exit 2), write nothing, and refuse via
 # a message containing <pattern>.
@@ -3290,6 +3299,11 @@ else
   fail "judge-artifact (D15): feedback with a regrade artifact failed — see $work/judge-t21.log"
   cat "$work/judge-t21.log" >&2 || true
 fi
+# D38 (MIE-7): re-pick before round 4 — the v1 direction already holds
+# rounds 1–3, so rounds 4–6 record under lock v2 (see the v1 note at
+# the §5c setup).
+node "$run_log_mjs" --project "$jr_proj" lock --tokens design/tokens.css --refs "direction two" >"$work/judge-lock-v2.log" 2>&1 \
+  || fail "judge-artifact (D15): taste-lock v2 failed — cases (20)+ will cascade; see $work/judge-lock-v2.log"
 # Jury on round 4: absolute + three juror artifacts (families fam1..fam3).
 jr_prep 4 absolute
 jr_prep 4 jury --index 1 --family fam1
@@ -3381,6 +3395,11 @@ fi
 # for the land's round → exit 2 (D15 land precondition).
 jr_reject "land with no round record for its round" "$work/judge-t32.log" "has no round record" \
   node "$run_log_mjs" --project "$jr_proj" land --slice d15-land --round 9 --gate pass $jr_legs
+# D38 (MIE-7): re-pick before round 7 — the v2 direction already holds
+# rounds 4–6, so rounds 7 and 9 record under lock v3 (see the v1 note
+# at the §5c setup).
+node "$run_log_mjs" --project "$jr_proj" lock --tokens design/tokens.css --refs "direction three" >"$work/judge-lock-v3.log" 2>&1 \
+  || fail "judge-artifact (D15): taste-lock v3 failed — cases (33)+ will cascade; see $work/judge-lock-v3.log"
 # (33) a judge artifact containing a REFUSAL line is void → exit 2.
 jr_prep 7 absolute
 jr_fill_scores "$jr_proj/design/judge/round-7.md" 4 4 4 4
@@ -3518,12 +3537,62 @@ jr_reject "record citing a judge artifact with a substituted look-alike in the R
 # --- Red-team-round cases (43)–(49): the feedback regrade page
 # binding (N12, SEVERE), the pairwise-tie positive, the read-path
 # fake shapes (runlog-check + best), and prepare containment.
-printf 'cross-check report r10\n' > "$jr_proj/design/crosscheck/round-10.md"
-printf 'cross-check report r11\n' > "$jr_proj/design/crosscheck/round-11.md"
-touch -t 202611111202 "$jr_proj/design/crosscheck/round-10.md" "$jr_proj/design/crosscheck/round-11.md"
+# D38 (MIE-7): cases (43)–(46) run on a SECOND project, jr2_proj, not
+# jr_proj. jr_proj already holds 8 distinct rounds (1–7, 9) — adding
+# rounds 10–11 to the same log would make 10 distinct (epoch, round)
+# pairs, past the total cap of 9, so no fixture arrangement in one log
+# can keep them: the 10th distinct round MUST refuse. jr2_proj holds
+# only rounds 10–11 (2 pairs) under its own lock v1. The cases'
+# assertions are unchanged — only the project they run against moves,
+# with jr2_ helpers mirroring jr_ (same log-file names: jr_proj never
+# prepares rounds 10/11).
+jr2_proj="$work/judge-proj2"
+mkdir -p "$jr2_proj/design/screenshots" "$jr2_proj/design/screenshots-prev" "$jr2_proj/design/judge" "$jr2_proj/design/crosscheck"
+cp "$work/tokens.css" "$jr2_proj/design/tokens.css"
+cp "$work/page-d15-orig.html" "$jr2_proj/design/page.html"
+cp "$jr_proj/design/page2.html" "$jr2_proj/design/page2.html"
+for v in 1440 768 390; do
+  printf 'PNG-%s-A' "$v" > "$jr2_proj/design/screenshots/$v.png"
+  printf 'PNG-%s-B' "$v" > "$jr2_proj/design/screenshots-prev/$v.png"
+done
+printf 'GATE RESULT: PASS\n' > "$jr2_proj/design/gate-leg1.log"
+printf '===== gate verdict: GREEN =====\n' > "$jr2_proj/design/gate-leg2.log"
+touch -t 202611111200 "$jr2_proj/design/tokens.css"
+touch -t 202611111201 "$jr2_proj/design/page.html" "$jr2_proj/design/page2.html"
+touch -t 202611111202 "$jr2_proj/design/screenshots/"*.png "$jr2_proj/design/screenshots-prev/"*.png "$jr2_proj/design/gate-leg1.log" "$jr2_proj/design/gate-leg2.log"
+jr2_log="$jr2_proj/design/run-log.jsonl"
+jr2_lines() { if [[ -f "$jr2_log" ]]; then grep -c . "$jr2_log" || true; else printf '0'; fi; }
+jr2_prep() { # round kind [extra prepare args...] — like jr_prep, for jr2_proj
+  local round="$1" kind="$2"; shift 2
+  local grader_args=(--grader judge-subagent)
+  if [[ "$kind" == expert-* ]]; then grader_args=(); fi
+  if ! node "$judge_report_mjs" --project "$jr2_proj" prepare --round "$round" --kind "$kind" "${grader_args[@]}" --brief-type landing --mode full --page design/page.html "$@" >"$work/judge-prep-$round-$kind.log" 2>&1; then
+    fail "judge-artifact (D15): prepare round $round kind $kind failed — dependent cases will cascade; see $work/judge-prep-$round-$kind.log"
+    cat "$work/judge-prep-$round-$kind.log" >&2 || true
+  fi
+}
+jr2_reject() { # like jr_reject, for the jr2 project's log
+  local name="$1" logf="$2" pat="$3"; shift 3
+  local before; before="$(jr2_lines)"
+  if "$@" >"$logf" 2>&1; then
+    fail "judge-artifact (D15): $name exited 0 — must be refused (exit 2)"
+  elif [[ "$(jr2_lines)" != "$before" ]]; then
+    fail "judge-artifact (D15): $name wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "$pat" "$logf"; then
+    fail "judge-artifact (D15): $name was refused but not via the expected message (/$pat/) — see $logf"
+    cat "$logf" >&2 || true
+  else
+    ok "run-log refuses $name (exit 2, nothing written)"
+  fi
+}
+node "$run_log_mjs" --project "$jr2_proj" lock --tokens design/tokens.css --refs "direction one" >"$work/judge2-lock-v1.log" 2>&1 \
+  || fail "judge-artifact (D15): jr2 setup taste-lock v1 failed — cases (43)–(46) will cascade; see $work/judge2-lock-v1.log"
+printf 'cross-check report r10\n' > "$jr2_proj/design/crosscheck/round-10.md"
+printf 'cross-check report r11\n' > "$jr2_proj/design/crosscheck/round-11.md"
+touch -t 202611111202 "$jr2_proj/design/crosscheck/round-10.md" "$jr2_proj/design/crosscheck/round-11.md"
 jr_cc2_ok=1
 for r in 10 11; do
-  node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/judge-cc-$r.log" 2>&1 || jr_cc2_ok=0
+  node "$run_log_mjs" --project "$jr2_proj" crosscheck --slice d15 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/judge-cc-$r.log" 2>&1 || jr_cc2_ok=0
 done
 if [[ "$jr_cc2_ok" != 1 ]]; then
   fail "judge-artifact (D15): red-team-round setup cross-checks for rounds 10/11 failed — cases (43)–(46) will cascade; see $work/judge-cc-1*.log"
@@ -3532,11 +3601,11 @@ jr_legs_nopage="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.lo
 # (43) N12 setup positive: a graded record WITHOUT --page stores
 # page: null but DOES store pageSha (the hash of the page the judge
 # artifact binds to) — the shape the N12 escape hid behind.
-jr_prep 10 absolute
-jr_fill_scores "$jr_proj/design/judge/round-10.md" 4 4 4 4
-jr_before="$(jr_lines)"
-if node "$run_log_mjs" --project "$jr_proj" record --round 10 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-10.md --gate pass $jr_legs_nopage >"$work/judge-t43.log" 2>&1; then
-  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"page":null' && tail -n 1 "$jr_log" | grep -q '"pageSha":"[0-9a-f]\{64\}"'; then
+jr2_prep 10 absolute
+jr_fill_scores "$jr2_proj/design/judge/round-10.md" 4 4 4 4
+jr_before="$(jr2_lines)"
+if node "$run_log_mjs" --project "$jr2_proj" record --round 10 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-10.md --gate pass $jr_legs_nopage >"$work/judge-t43.log" 2>&1; then
+  if [[ "$(jr2_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr2_log" | grep -q '"page":null' && tail -n 1 "$jr2_log" | grep -q '"pageSha":"[0-9a-f]\{64\}"'; then
     ok "run-log records a graded round without --page (page null, pageSha stored — the N12 setup shape)"
   else
     fail "judge-artifact (D15): round 10 recorded without --page but the stored line lacks page:null + pageSha"
@@ -3550,20 +3619,20 @@ fi
 # --page), feedback itself passing no --page → exit 2. Before the
 # red-team fix this recorded: the artifact's own page became the
 # binding and the round's pageSha was never consulted.
-if ! node "$judge_report_mjs" --project "$jr_proj" prepare --round 10 --kind regrade --grader other-model --brief-type landing --mode full --page design/page2.html --out design/judge/round-10-regrade-wrong.md >"$work/judge-prep-10-regrade-wrong.log" 2>&1; then
+if ! node "$judge_report_mjs" --project "$jr2_proj" prepare --round 10 --kind regrade --grader other-model --brief-type landing --mode full --page design/page2.html --out design/judge/round-10-regrade-wrong.md >"$work/judge-prep-10-regrade-wrong.log" 2>&1; then
   fail "judge-artifact (D15): prepare of the wrong-page regrade artifact failed — case (44) will cascade; see $work/judge-prep-10-regrade-wrong.log"
   cat "$work/judge-prep-10-regrade-wrong.log" >&2 || true
 fi
-jr_fill_scores "$jr_proj/design/judge/round-10-regrade-wrong.md" 5 5 5 5
-jr_reject "feedback regrade artifact bound to a different page than the round graded (no --page anywhere)" "$work/judge-t44.log" "page whose hash differs" \
-  node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 10 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-10-regrade-wrong.md
+jr_fill_scores "$jr2_proj/design/judge/round-10-regrade-wrong.md" 5 5 5 5
+jr2_reject "feedback regrade artifact bound to a different page than the round graded (no --page anywhere)" "$work/judge-t44.log" "page whose hash differs" \
+  node "$run_log_mjs" --project "$jr2_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 10 --score-after 5,5,5,5 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-10-regrade-wrong.md
 # (45) N12 CONTROL: a regrade artifact for the page round 10 actually
 # graded (page.html), feedback still passing no --page → exit 0.
-jr_prep 10 regrade --grader other-model
-jr_fill_scores "$jr_proj/design/judge/round-10-regrade.md" 4 4 4 4
-jr_before="$(jr_lines)"
-if node "$run_log_mjs" --project "$jr_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 10 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-10-regrade.md >"$work/judge-t45.log" 2>&1; then
-  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"judgeReport":"design/judge/round-10-regrade.md"'; then
+jr2_prep 10 regrade --grader other-model
+jr_fill_scores "$jr2_proj/design/judge/round-10-regrade.md" 4 4 4 4
+jr_before="$(jr2_lines)"
+if node "$run_log_mjs" --project "$jr2_proj" feedback --from "user: darker ink" --change "--color-ink: #000" --round 10 --score-after 4,4,4,4 --grader other-model --basis "$jr_basis" --judge-report design/judge/round-10-regrade.md >"$work/judge-t45.log" 2>&1; then
+  if [[ "$(jr2_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr2_log" | grep -q '"judgeReport":"design/judge/round-10-regrade.md"'; then
     ok "run-log records feedback whose regrade artifact binds to the page the round graded (pageSha match, no --page needed)"
   else
     fail "judge-artifact (D15): N12 control feedback recorded but the stored line lacks the regrade citation"
@@ -3577,15 +3646,15 @@ fi
 # incumbent in its) — the derived verdict is tie, and recording
 # --pairwise tie transcribes it (companion to (27): the same
 # disagreement cited as a keep is refused).
-jr_prep 11 absolute
-jr_prep 11 pairwise --index 1 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
-jr_prep 11 pairwise --index 2 --shots-a design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png --shots-b design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png
-jr_fill_scores "$jr_proj/design/judge/round-11.md" 4 4 4 4
-jr_fill_pairwise "$jr_proj/design/judge/round-11-pairwise-1.md" A
-jr_fill_pairwise "$jr_proj/design/judge/round-11-pairwise-2.md" A
-jr_before="$(jr_lines)"
-if node "$run_log_mjs" --project "$jr_proj" record --round 11 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-11.md --gate pass $jr_legs --pairwise tie --pairwise-reports design/judge/round-11-pairwise-1.md,design/judge/round-11-pairwise-2.md >"$work/judge-t46.log" 2>&1; then
-  if [[ "$(jr_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr_log" | grep -q '"pairwise":"tie"'; then
+jr2_prep 11 absolute
+jr2_prep 11 pairwise --index 1 --shots-a design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png --shots-b design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png
+jr2_prep 11 pairwise --index 2 --shots-a design/screenshots-prev/1440.png,design/screenshots-prev/768.png,design/screenshots-prev/390.png --shots-b design/screenshots/1440.png,design/screenshots/768.png,design/screenshots/390.png
+jr_fill_scores "$jr2_proj/design/judge/round-11.md" 4 4 4 4
+jr_fill_pairwise "$jr2_proj/design/judge/round-11-pairwise-1.md" A
+jr_fill_pairwise "$jr2_proj/design/judge/round-11-pairwise-2.md" A
+jr_before="$(jr2_lines)"
+if node "$run_log_mjs" --project "$jr2_proj" record --round 11 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-11.md --gate pass $jr_legs --pairwise tie --pairwise-reports design/judge/round-11-pairwise-1.md,design/judge/round-11-pairwise-2.md >"$work/judge-t46.log" 2>&1; then
+  if [[ "$(jr2_lines)" == "$((jr_before + 1))" ]] && tail -n 1 "$jr2_log" | grep -q '"pairwise":"tie"'; then
     ok "run-log records --pairwise tie when the two pairwise artifacts' derivations disagree (the derived verdict)"
   else
     fail "judge-artifact (D15): pairwise tie recorded but the stored line lacks pairwise:tie"
@@ -3851,6 +3920,16 @@ fi
 # (60) NA20 CONTROL (behaviour retained, not changed): feedback
 # --score-after for a round with NO round record at all still
 # records, anchored by --page (the pre-D15 fallback form).
+# D38 (MIE-7): re-pick before the round-12 regrade prepare. Cases
+# (52)–(59) append hand-written kind:"round" lines (rounds 3, 5, 6) to
+# this log — the budget counts every parsed round line, so the log
+# already holds 5 distinct rounds (1, 2, 3, 5, 6) and a new round 12
+# would refuse as the 6th. The lock starts a new epoch AFTER those
+# cases ran, so prepare 12 passes; it changes no earlier assertion
+# (the appended lines stay in the old epoch, and the NA20 feedback
+# below needs no round record for 12 in either epoch).
+node "$run_log_mjs" --project "$rp_proj" lock --tokens design/tokens.css --refs "read-path re-pick" >"$work/rp-lock-v1.log" 2>&1 \
+  || fail "judge-artifact (D15): read-path project taste-lock failed — case (60) will cascade; see $work/rp-lock-v1.log"
 rp_prep 12 regrade --grader other-model
 jr_fill_scores "$rp_proj/design/judge/round-12-regrade.md" 4 4 4 4
 rp_before="$(rp_lines)"
@@ -5803,6 +5882,256 @@ elif ! grep -q "template directory is missing" "$work/m5-t128.log"; then
   cat "$work/m5-t128.log" >&2 || true
 else
   ok "lock refuses fail-closed when its template directory is missing (exit 2, nothing written)"
+fi
+
+
+# --- 5f. round-budget enforcement (D38, MIE-7) --------------------------------
+# A new distinct round past either cap is REFUSED (exit 2, nothing
+# written) in BOTH entry points: `run-log.mjs record` (checked first,
+# immediately after the --round integer validation) and
+# `judge-report.mjs prepare` (checked first, after round/kind/grader/
+# index validation, before page validation, gate/cross-check derivation
+# and the writeFileSync — a refused prepare writes no skeleton and
+# creates no directories). Caps: 3 distinct round numbers per direction
+# (taste-lock epoch), 9 distinct (epoch, round-number) pairs in total.
+# Counting (council synthesis, correcting the board's literal wording):
+# round numbers RESTART at 1 per direction (round-brief.mjs:365), so the
+# per-direction cap counts distinct kind:"round" numbers AFTER the
+# latest VERIFIED taste-lock line, and the total cap counts distinct
+# (epoch, round) pairs across the whole log. Every parsed kind:"round"
+# line with an integer round >= 1 counts — graded, --grader none and
+# gate-fail alike — and only a NEW distinct round/pair is checked, so
+# re-recording an already-recorded number passes. A hand-appended fake
+# lock line (case (136)) must NOT reset the per-direction count.
+# Numbering continues §5e's: cases (129)+, never renumbering existing
+# cases (§5e occupies (107)–(128); §5f was (107)–(120) before the
+# MIE-5 merge and was renumbered on the rebase onto main e2a62cc).
+# orders the verify.sh merges: MIE-6, then MIE-5 §5e, then MIE-7 §5f).
+# Fresh scratch projects throughout (NOT §5c's jr_proj — budget
+# counting reads the whole log, so §5c's existing round records would
+# pollute every count). Helpers reuse §5c's shapes with an r7_ prefix.
+r7_legs="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html"
+r7_mkproj() { # dir — tokens/page/shots/legs + cross-checks rounds 1..4 (slice r7)
+  local P="$1" r
+  mkdir -p "$P/design/screenshots" "$P/design/screenshots-prev" "$P/design/judge" "$P/design/crosscheck"
+  cp "$work/design/tokens.css" "$P/design/tokens.css"
+  cp "$work/page-d15-orig.html" "$P/design/page.html"
+  for v in 1440 768 390; do
+    printf 'PNG-%s-A' "$v" > "$P/design/screenshots/$v.png"
+    printf 'PNG-%s-B' "$v" > "$P/design/screenshots-prev/$v.png"
+  done
+  printf 'GATE RESULT: PASS\n' > "$P/design/gate-leg1.log"
+  printf '===== gate verdict: GREEN =====\n' > "$P/design/gate-leg2.log"
+  for r in 1 2 3 4; do printf 'cross-check report r%s\n' "$r" > "$P/design/crosscheck/round-$r.md"; done
+  touch -t 202611111200 "$P/design/tokens.css"
+  touch -t 202611111201 "$P/design/page.html"
+  touch -t 202611111202 "$P/design/screenshots/"*.png "$P/design/screenshots-prev/"*.png "$P/design/gate-leg1.log" "$P/design/gate-leg2.log" "$P/design/crosscheck/"*.md
+  for r in 1 2 3 4; do
+    node "$run_log_mjs" --project "$P" crosscheck --slice r7 --round $r --severe 0 --warning 0 --report "design/crosscheck/round-$r.md" --checker security-expert --basis "$jr_basis" >"$work/r7-cc-$r.log" 2>&1 \
+      || fail "round-budget (D38): r7 project setup cross-check round $r failed — cases (129)+ will cascade; see $work/r7-cc-$r.log"
+  done
+}
+r7_lines() { # proj — non-empty lines in its run log (0 when absent)
+  if [[ -f "$1/design/run-log.jsonl" ]]; then grep -c . "$1/design/run-log.jsonl" || true; else printf '0'; fi
+}
+r7_record_nograde() { # proj round — gate-pass no-grade record; must exit 0
+  local P="$1" round="$2"
+  node "$run_log_mjs" --project "$P" record --round "$round" --grader none --scores none --gate pass $r7_legs >"$work/r7-rec-$(basename "$P")-$round.log" 2>&1 \
+    || fail "round-budget (D38): no-grade record round $round failed — see $work/r7-rec-$(basename "$P")-$round.log"
+}
+r7_prep() { # proj round kind — prepare; must exit 0 (setup helper)
+  local P="$1" round="$2" kind="$3"; shift 3
+  node "$judge_report_mjs" --project "$P" prepare --round "$round" --kind "$kind" --grader judge-subagent --brief-type landing --mode full --page design/page.html "$@" >"$work/r7-prep-$(basename "$P")-$round-$kind.log" 2>&1 \
+    || fail "round-budget (D38): prepare round $round kind $kind failed — see $work/r7-prep-$(basename "$P")-$round-$kind.log"
+}
+r7_reject() { # name logfile pattern proj cmd... — a budget refusal must exit non-zero, write nothing, and refuse via a message containing <pattern> AND the shared refusal words (round budget / per-direction-or-total cap counts are in <pattern>; re-pick / human gate / retry-refuses-identically), never "fix and retry"
+  local name="$1" logf="$2" pat="$3" proj="$4"; shift 4
+  local before; before="$(r7_lines "$proj")"
+  if "$@" >"$logf" 2>&1; then
+    fail "round-budget (D38): $name exited 0 — must be refused (exit 2)"
+  elif [[ "$(r7_lines "$proj")" != "$before" ]]; then
+    fail "round-budget (D38): $name wrote to the run log — a refused entry must write nothing"
+  elif ! grep -q "$pat" "$logf" || ! grep -q "round budget" "$logf" || ! grep -q "re-pick" "$logf" || ! grep -q "human gate" "$logf" || ! grep -q "will refuse identically" "$logf"; then
+    fail "round-budget (D38): $name was refused but not via the expected message (/$pat/ + round budget / re-pick / human gate / retry refuses identically) — see $logf"
+    cat "$logf" >&2 || true
+  elif grep -q "fix and retry" "$logf"; then
+    fail "round-budget (D38): $name says \"fix and retry\" — the only next actions are re-pick or the human gate"
+  else
+    ok "run-log refuses $name (exit 2, nothing written)"
+  fi
+}
+r7_proj="$work/r7-proj"; r7_mkproj "$r7_proj"
+# Setup: lock v1 (direction one), then graded rounds 1 (4,4,4,4) and 2
+# (5,5,5,5) via the prepare -> fill -> record chain. The cap is reached
+# below with two graded rounds + one no-grade round — the graded-counts
+# control: graded and no-grade rounds share one budget.
+node "$run_log_mjs" --project "$r7_proj" lock --tokens design/tokens.css --refs "direction one" >"$work/r7-lock-v1.log" 2>&1 \
+  || fail "round-budget (D38): setup lock v1 failed — cases (129)+ will cascade; see $work/r7-lock-v1.log"
+r7_prep "$r7_proj" 1 absolute
+jr_fill_scores "$r7_proj/design/judge/round-1.md" 4 4 4 4
+node "$run_log_mjs" --project "$r7_proj" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r7_legs >"$work/r7-rec-g1.log" 2>&1 \
+  || fail "round-budget (D38): setup graded record round 1 failed — cases (129)+ will cascade; see $work/r7-rec-g1.log"
+r7_prep "$r7_proj" 2 absolute
+jr_fill_scores "$r7_proj/design/judge/round-2.md" 5 5 5 5
+node "$run_log_mjs" --project "$r7_proj" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 5,5,5,5 --judge-report design/judge/round-2.md --gate pass $r7_legs >"$work/r7-rec-g2.log" 2>&1 \
+  || fail "round-budget (D38): setup graded record round 2 failed — cases (129)+ will cascade; see $work/r7-rec-g2.log"
+# (129) POSITIVE CONTROL: the 3rd distinct round in a direction records
+# (exit 0) — the cap is 3, and the no-grade round 3 is the third
+# distinct number after graded rounds 1–2.
+r7_before="$(r7_lines "$r7_proj")"
+if node "$run_log_mjs" --project "$r7_proj" record --round 3 --grader none --scores none --gate pass $r7_legs >"$work/r7-t107.log" 2>&1 && [[ "$(r7_lines "$r7_proj")" == "$((r7_before + 1))" ]]; then
+  ok "round 3 records (exit 0) — the 3rd distinct round in a direction, graded + no-grade sharing one budget"
+else
+  fail "round-budget (D38): round 3 did not record — see $work/r7-t107.log"
+fi
+# (130) 4th distinct round in a direction refuses in record (exit 2,
+# per-direction cap named with its counts, line count unchanged).
+r7_reject "record of a 4th distinct round in a direction" "$work/r7-t108.log" "round budget exhausted (per-direction).*3 distinct rounds" "$r7_proj" \
+  node "$run_log_mjs" --project "$r7_proj" record --round 4 --grader none --scores none --gate pass $r7_legs
+# (131) Prepare for the 4th distinct round refuses (exit 2) and writes
+# no skeleton — the check runs before page validation, gate/cross-check
+# derivation and the writeFileSync, so no design/judge/round-4.md.
+if node "$judge_report_mjs" --project "$r7_proj" prepare --round 4 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r7-t109.log" 2>&1; then
+  fail "round-budget (D38): prepare of a 4th distinct round exited 0 — the per-direction cap must refuse it (exit 2)"
+elif [[ -f "$r7_proj/design/judge/round-4.md" ]]; then
+  fail "round-budget (D38): refused prepare wrote design/judge/round-4.md — a refused prepare must write nothing"
+elif ! grep -q "round budget" "$work/r7-t109.log" || ! grep -q "round budget exhausted (per-direction)" "$work/r7-t109.log"; then
+  fail "round-budget (D38): the prepare refusal was not via the round-budget message — see $work/r7-t109.log"
+  cat "$work/r7-t109.log" >&2 || true
+else
+  ok "prepare refuses a 4th distinct round in a direction (exit 2, no skeleton written)"
+fi
+# (132) Re-recording an already-recorded round number passes the budget
+# check — only a NEW distinct round is checked (all other validations
+# still apply).
+r7_before="$(r7_lines "$r7_proj")"
+if node "$run_log_mjs" --project "$r7_proj" record --round 3 --grader none --scores none --gate pass $r7_legs >"$work/r7-t110.log" 2>&1 && [[ "$(r7_lines "$r7_proj")" == "$((r7_before + 1))" ]]; then
+  ok "re-record of an already-recorded round number passes the budget check (exit 0)"
+else
+  fail "round-budget (D38): re-record of round 3 did not pass — see $work/r7-t110.log"
+fi
+# (133) Prepare for an already-recorded round number passes — and writes
+# its skeleton normally (kind cheap, so no overwrite: the no-grade
+# round 3 was recorded without prepare, so no round-3.md exists).
+if node "$judge_report_mjs" --project "$r7_proj" prepare --round 3 --kind cheap --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r7-t111.log" 2>&1 && [[ -f "$r7_proj/design/judge/round-3-cheap.md" ]]; then
+  ok "prepare for an already-recorded round number passes (exit 0, skeleton written)"
+else
+  fail "round-budget (D38): prepare for recorded round 3 did not pass — see $work/r7-t111.log"
+fi
+# (134) POSITIVE CONTROL: best crowns the highest verified round —
+# round 2 (5,5,5,5) over round 1 (4,4,4,4).
+if node "$run_log_mjs" --project "$r7_proj" best >"$work/r7-t112.log" 2>&1 && grep -q "best: round 2" "$work/r7-t112.log"; then
+  ok "best crowns the highest verified round (round 2, 5,5,5,5)"
+else
+  fail "round-budget (D38): best did not crown round 2 — see $work/r7-t112.log"
+fi
+# (135) runlog-check passes the proof log (graded rounds 1–2, no-grade
+# round 3 + its re-record, cheap prepare for round 3).
+if node "$runlog_check_mjs" "$r7_proj/design/run-log.jsonl" >"$work/r7-t113.log" 2>&1; then
+  ok "runlog-check passes the round-budget proof log"
+else
+  fail "round-budget (D38): runlog-check failed the proof log — see $work/r7-t113.log"
+  cat "$work/r7-t113.log" >&2 || true
+fi
+# (136) A hand-appended FAKE taste-lock line must NOT reset the
+# per-direction count: the line names the real tokens file but a
+# zeroed tokensHash, so it does not verify (verifyLockLine) and starts
+# no new epoch — round 4 still refuses against taste-lock v1.
+printf '{"kind":"taste-lock","lockVersion":99,"tokens":"design/tokens.css","tokensHash":"0000000000000000000000000000000000000000000000000000000000000000","references":"fake direction","purpose":null,"approvedBy":null,"notes":null,"at":"2026-11-13T00:00:00.000Z"}\n' >> "$r7_proj/design/run-log.jsonl"
+r7_reject "record of a 4th distinct round after a fake taste-lock" "$work/r7-t114.log" "since taste-lock v1" "$r7_proj" \
+  node "$run_log_mjs" --project "$r7_proj" record --round 4 --grader none --scores none --gate pass $r7_legs
+# (137) POSITIVE CONTROL: round 1 after a re-pick records (exit 0) —
+# the re-pick starts a new direction. The lock takes an explicit
+# --version 2: the fake v99 line counts toward the lock command's
+# default (existing lock count + 1), so the default would be v3, and
+# the fake line does not OCCUPY v2 (it does not verify) — the explicit
+# version is the fixture's way of naming the re-pick v2.
+if node "$run_log_mjs" --project "$r7_proj" lock --tokens design/tokens.css --refs "direction two" --version 2 >"$work/r7-t115-lock.log" 2>&1; then
+  r7_before="$(r7_lines "$r7_proj")"
+  if node "$run_log_mjs" --project "$r7_proj" record --round 1 --grader none --scores none --gate pass $r7_legs >"$work/r7-t115.log" 2>&1 && [[ "$(r7_lines "$r7_proj")" == "$((r7_before + 1))" ]]; then
+    ok "round 1 after a re-pick records (exit 0) — a new direction restarts the per-direction budget"
+  else
+    fail "round-budget (D38): round 1 after the re-pick did not record — see $work/r7-t115.log"
+  fi
+else
+  fail "round-budget (D38): re-pick lock v2 failed — case (137) will cascade; see $work/r7-t115-lock.log"
+fi
+r7_total="$work/r7-total"; r7_mkproj "$r7_total"
+# Setup: three directions of three no-grade rounds each (9 distinct
+# (epoch, round) pairs). The 9th round — direction 3, round 3 — is
+# case (138) itself, asserted exit 0 below.
+for r7_d in 1 2 3; do
+  node "$run_log_mjs" --project "$r7_total" lock --tokens design/tokens.css --refs "direction $r7_d" >"$work/r7-total-lock-$r7_d.log" 2>&1 \
+    || fail "round-budget (D38): total-project lock v$r7_d failed — cases (138)+ will cascade; see $work/r7-total-lock-$r7_d.log"
+  r7_record_nograde "$r7_total" 1
+  r7_record_nograde "$r7_total" 2
+  if [[ "$r7_d" != 3 ]]; then r7_record_nograde "$r7_total" 3; fi
+done
+# (138) POSITIVE CONTROL: the 9th distinct round overall records
+# (exit 0) — the total cap is 9.
+r7_before="$(r7_lines "$r7_total")"
+if node "$run_log_mjs" --project "$r7_total" record --round 3 --grader none --scores none --gate pass $r7_legs >"$work/r7-t116.log" 2>&1 && [[ "$(r7_lines "$r7_total")" == "$((r7_before + 1))" ]]; then
+  ok "the 9th distinct round overall records (exit 0)"
+else
+  fail "round-budget (D38): the 9th round did not record — see $work/r7-t116.log"
+fi
+# (139) The 10th distinct round overall refuses in record (exit 2,
+# total cap named, line count unchanged). ISOLATION requires a 4th
+# lock version — a 3rd re-pick, beyond the "max 2 re-picks" prose.
+# Lock enforces no re-pick count; this is a test fixture, NOT a legal
+# run — no lock-side max-re-picks enforcement is added.
+node "$run_log_mjs" --project "$r7_total" lock --tokens design/tokens.css --refs "direction four" >"$work/r7-t117-lock.log" 2>&1 \
+  || fail "round-budget (D38): total-project lock v4 failed — case (139) will cascade; see $work/r7-t117-lock.log"
+r7_reject "record of a 10th distinct round overall" "$work/r7-t117.log" "round budget exhausted (total).*9 distinct rounds" "$r7_total" \
+  node "$run_log_mjs" --project "$r7_total" record --round 1 --grader none --scores none --gate pass $r7_legs
+# (140) Prepare for the 10th distinct round overall refuses (exit 2)
+# and writes no skeleton — the total cap binds prepare exactly as it
+# binds record. No design/judge/round-1.md may appear in the total
+# project (it never ran prepare before).
+if node "$judge_report_mjs" --project "$r7_total" prepare --round 1 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r7-t118.log" 2>&1; then
+  fail "round-budget (D38): prepare of a 10th distinct round exited 0 — the total cap must refuse it (exit 2)"
+elif [[ -f "$r7_total/design/judge/round-1.md" ]]; then
+  fail "round-budget (D38): refused prepare wrote design/judge/round-1.md — a refused prepare must write nothing"
+elif ! grep -q "round budget" "$work/r7-t118.log" || ! grep -q "round budget exhausted (total)" "$work/r7-t118.log" || ! grep -q "re-pick" "$work/r7-t118.log" || ! grep -q "human gate" "$work/r7-t118.log"; then
+  fail "round-budget (D38): the prepare refusal was not via the total-budget message — see $work/r7-t118.log"
+  cat "$work/r7-t118.log" >&2 || true
+else
+  ok "prepare refuses a 10th distinct round overall (exit 2, no skeleton written)"
+fi
+r7_gf="$work/r7-gatefail"; r7_mkproj "$r7_gf"
+# (141) A gate-FAIL round consumes budget too: round 1 records with
+# --gate fail (no legs needed on a fail), rounds 2–3 gate-pass, and
+# the 4th distinct round refuses — the fail is the 1st distinct
+# number, not a free round.
+node "$run_log_mjs" --project "$r7_gf" lock --tokens design/tokens.css --refs "direction one" >"$work/r7-gf-lock.log" 2>&1 \
+  || fail "round-budget (D38): gate-fail project lock failed — case (141) will cascade; see $work/r7-gf-lock.log"
+if node "$run_log_mjs" --project "$r7_gf" record --round 1 --grader none --scores none --gate fail >"$work/r7-t119-fail.log" 2>&1; then
+  r7_record_nograde "$r7_gf" 2
+  r7_record_nograde "$r7_gf" 3
+  r7_reject "record of a 4th distinct round after a gate-fail round" "$work/r7-t119.log" "round budget exhausted (per-direction).*3 distinct rounds" "$r7_gf" \
+    node "$run_log_mjs" --project "$r7_gf" record --round 4 --grader none --scores none --gate pass $r7_legs
+else
+  fail "round-budget (D38): gate-fail record round 1 did not record — see $work/r7-t119-fail.log"
+fi
+# (142) READ-LOG ROBUSTNESS: a corrupt line in the run log refuses
+# (exit 2) in BOTH entry points — record must not crash on it (as
+# run-log.mjs readLog would) and prepare must not silently pass it.
+# Appended to the gate-fail project's log after case (141), so the
+# proof logs above stay clean.
+printf 'this line is not json\n' >> "$r7_gf/design/run-log.jsonl"
+r7_before="$(r7_lines "$r7_gf")"
+node "$run_log_mjs" --project "$r7_gf" record --round 2 --grader none --scores none --gate pass $r7_legs >"$work/r7-t120-rec.log" 2>&1
+r7_rc=$?
+node "$judge_report_mjs" --project "$r7_gf" prepare --round 2 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r7-t120-prep.log" 2>&1
+r7_prc=$?
+if [[ "$r7_rc" == 0 ]] || [[ "$r7_prc" == 0 ]]; then
+  fail "round-budget (D38): a corrupt run-log line did not refuse record + prepare (record rc=$r7_rc, prepare rc=$r7_prc) — the budget check must fail closed on a corrupt log"
+elif [[ "$(r7_lines "$r7_gf")" != "$r7_before" ]] || [[ -f "$r7_gf/design/judge/round-2.md" ]]; then
+  fail "round-budget (D38): a refused corrupt-log operation wrote to the log or a skeleton — a refused operation must write nothing"
+elif ! grep -q "cannot be checked" "$work/r7-t120-rec.log" || ! grep -q "cannot be checked" "$work/r7-t120-prep.log"; then
+  fail "round-budget (D38): the corrupt-log refusals were not via the cannot-be-checked message — see $work/r7-t120-rec.log / $work/r7-t120-prep.log"
+else
+  ok "a corrupt run-log line refuses record and prepare (exit 2, nothing written)"
 fi
 
 
