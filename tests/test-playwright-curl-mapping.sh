@@ -544,5 +544,22 @@ fallback_derive_both "W2-RT2 two chrome URLs derive both headless shells" \
   "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-linux64.zip" \
   "https://cdn.playwright.dev/builds/cft/$V/linux-arm64/chrome-linux-arm64.zip"
 
+# --- W3-RT4 fix pass 3: a log holding TWO versions for one arch must
+# derive BOTH versions' headless shells (before, only the first-sorted
+# — oldest — version's HS was derived), and a wrong-version HS URL in
+# the log must NOT suppress derivation of the right version's HS
+# (before, the per-arch substring guard suppressed it). The wrong-version
+# derived HS is still refused downstream by the version cross-check —
+# these cases assert the derivation lines only, not the fetch. ---
+fallback_derive_both "W3-RT4 two versions same arch derive both headless shells" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-headless-shell-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/140.0.7339.186/linux64/chrome-headless-shell-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/140.0.7339.186/linux64/chrome-linux64.zip"
+fallback_multi "W3-RT4 wrong-version HS in log does not suppress right-version derivation" derive \
+  "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-headless-shell-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/$V/linux64/chrome-linux64.zip" \
+  "https://cdn.playwright.dev/builds/cft/140.0.7339.186/linux64/chrome-headless-shell-linux64.zip"
+
 printf 'mapping test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]

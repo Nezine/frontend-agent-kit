@@ -1143,7 +1143,7 @@ for info in z.infolist():
 }
 playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s)
   command -v curl >/dev/null 2>&1 || { printf 'curl fallback unavailable: curl not found.\n'; return 1; }
-  local log="$state_dir/install.log" urls url ok=1 chrome_urls="" hs_url="" _hs_arch="" _arch="" _chrome_url="" _hs_file=""
+  local log="$state_dir/install.log" urls url ok=1 chrome_urls="" hs_url="" _hs_arch="" _chrome_url="" _hs_file=""
   urls="$(grep -oE 'URL: https://[^ ]+\.zip' "$log" 2>/dev/null | sed -E 's/^URL: //' | sort -u || true)"
   if [[ -z "$urls" ]]; then
     # No "Download failed" line (e.g. the CLI died another way): fall back
@@ -1203,21 +1203,36 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   # One machine has one arch, so this was implausible in production —
   # but the loop is small, the per-arch guard already exists, and a
   # two-chrome log is now a test case (mapping test, W2-RT2).
-  for _arch in linux64 linux-arm64 mac-arm64 mac-x64; do
-    _chrome_url=""; _hs_file=""
-    case "$_arch" in
-      linux64) _chrome_url="$(printf '%s\n' "$chrome_urls" | grep -F '/chrome-linux64.zip' | head -n 1 || true)"; _hs_file="chrome-headless-shell-linux64.zip" ;;
-      linux-arm64) _chrome_url="$(printf '%s\n' "$chrome_urls" | grep -F '/chrome-linux-arm64.zip' | head -n 1 || true)"; _hs_file="chrome-headless-shell-linux-arm64.zip" ;;
-      mac-arm64) _chrome_url="$(printf '%s\n' "$chrome_urls" | grep -F '/chrome-mac-arm64.zip' | head -n 1 || true)"; _hs_file="chrome-headless-shell-mac-arm64.zip" ;;
-      mac-x64) _chrome_url="$(printf '%s\n' "$chrome_urls" | grep -F '/chrome-mac-x64.zip' | head -n 1 || true)"; _hs_file="chrome-headless-shell-mac-x64.zip" ;;
-    esac
+  # W3-RT4 fix pass 3 (2026-11-13): the derivation is now PER CHROME
+  # URL, not per arch, and the guard is the EXACT derived URL, not a
+  # substring. Before, each arch took its first-sorted chrome URL, so
+  # a log holding two versions for one arch derived only the
+  # lexicographically-first (oldest) version's headless shell, and the
+  # guard (`grep -qF "chrome-headless-shell-<arch>"`) let a
+  # wrong-version HS URL suppress derivation of the right version's HS.
+  # Now every distinct chrome URL in the log derives its own HS URL,
+  # and only that exact HS URL in the log suppresses it. A wrong-version
+  # derived HS is still refused downstream by playwright_curl_one's
+  # version cross-check (never placed); the right version's HS is no
+  # longer lost. A two-version log is still implausible in production
+  # (one machine, one arch, one CLI run emits one version) — but the
+  # loop is the same size, and the two-version log is now a test case
+  # (mapping test, W3-RT4).
+  while IFS= read -r _chrome_url || [[ -n "$_chrome_url" ]]; do
     [[ -z "$_chrome_url" ]] && continue
-    _hs_arch="$_arch"; hs_url="${_chrome_url%/*}/$_hs_file"
-    if ! printf '%s\n' "$urls" | grep -qF "chrome-headless-shell-$_hs_arch"; then
+    case "${_chrome_url##*/}" in
+      chrome-linux64.zip) _hs_arch="linux64"; _hs_file="chrome-headless-shell-linux64.zip" ;;
+      chrome-linux-arm64.zip) _hs_arch="linux-arm64"; _hs_file="chrome-headless-shell-linux-arm64.zip" ;;
+      chrome-mac-arm64.zip) _hs_arch="mac-arm64"; _hs_file="chrome-headless-shell-mac-arm64.zip" ;;
+      chrome-mac-x64.zip) _hs_arch="mac-x64"; _hs_file="chrome-headless-shell-mac-x64.zip" ;;
+      *) continue ;;
+    esac
+    hs_url="${_chrome_url%/*}/$_hs_file"
+    if ! printf '%s\n' "$urls" | grep -qxF "$hs_url"; then
       printf 'curl fallback: chrome URL seen but no headless-shell URL for %s was logged (CLI died during chrome retries) — deriving it from the same CDN version directory: %s\n' "$_hs_arch" "$hs_url"
       playwright_curl_one "$hs_url" || printf 'curl fallback: WARNING — derived headless-shell fetch failed for %s (non-fatal: the post-fallback CLI re-run will retry it; the eyes step uses chromium-1254 and does not need the headless shell).\n' "$hs_url"
     fi
-  done
+  done <<< "$chrome_urls"
   [[ "$ok" == 1 ]]
 }
 
