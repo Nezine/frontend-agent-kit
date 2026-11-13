@@ -1086,7 +1086,7 @@ for info in z.infolist():
 }
 playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s)
   command -v curl >/dev/null 2>&1 || { printf 'curl fallback unavailable: curl not found.\n'; return 1; }
-  local log="$state_dir/install.log" urls url ok=1 chrome_url="" hs_url=""
+  local log="$state_dir/install.log" urls url ok=1 chrome_url="" hs_url="" _hs_arch=""
   urls="$(grep -oE 'URL: https://[^ ]+\.zip' "$log" 2>/dev/null | sed -E 's/^URL: //' | sort -u || true)"
   if [[ -z "$urls" ]]; then
     # No "Download failed" line (e.g. the CLI died another way): fall back
@@ -1135,15 +1135,24 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   # step does not need it (verify.sh eyes use chromium-1254; the headless
   # shell is what `playwright-cli install-browser chrome-for-testing`
   # needs to report a clean install).
-  if [[ -n "$chrome_url" ]] && ! printf '%s\n' "$urls" | grep -q 'chrome-headless-shell-.*\.zip'; then
+  # W-RT2 fix pass (2026-11-13): the guard below is PER-ARCH. Before,
+  # ANY headless-shell URL in the log suppressed derivation for EVERY
+  # arch, so a log with an arm64 chrome URL and a linux64 headless-shell
+  # URL never attempted the arm64 headless shell. Derive the HS URL for
+  # the arch of $chrome_url unless an HS URL for THAT SAME arch is
+  # already in the log.
+  if [[ -n "$chrome_url" ]]; then
+    _hs_arch=""
     case "$chrome_url" in
-      */linux64/chrome-linux64.zip) hs_url="${chrome_url%/chrome-linux64.zip}/chrome-headless-shell-linux64.zip" ;;
-      */linux-arm64/chrome-linux-arm64.zip) hs_url="${chrome_url%/chrome-linux-arm64.zip}/chrome-headless-shell-linux-arm64.zip" ;;
-      */mac-arm64/chrome-mac-arm64.zip) hs_url="${chrome_url%/chrome-mac-arm64.zip}/chrome-headless-shell-mac-arm64.zip" ;;
-      */mac-x64/chrome-mac-x64.zip) hs_url="${chrome_url%/chrome-mac-x64.zip}/chrome-headless-shell-mac-x64.zip" ;;
+      */linux64/chrome-linux64.zip) _hs_arch="linux64"; hs_url="${chrome_url%/chrome-linux64.zip}/chrome-headless-shell-linux64.zip" ;;
+      */linux-arm64/chrome-linux-arm64.zip) _hs_arch="linux-arm64"; hs_url="${chrome_url%/chrome-linux-arm64.zip}/chrome-headless-shell-linux-arm64.zip" ;;
+      */mac-arm64/chrome-mac-arm64.zip) _hs_arch="mac-arm64"; hs_url="${chrome_url%/chrome-mac-arm64.zip}/chrome-headless-shell-mac-arm64.zip" ;;
+      */mac-x64/chrome-mac-x64.zip) _hs_arch="mac-x64"; hs_url="${chrome_url%/chrome-mac-x64.zip}/chrome-headless-shell-mac-x64.zip" ;;
     esac
-    printf 'curl fallback: chrome URL seen but no headless-shell URL was logged (CLI died during chrome retries) — deriving it from the same CDN version directory: %s\n' "$hs_url"
-    playwright_curl_one "$hs_url" || printf 'curl fallback: WARNING — derived headless-shell fetch failed for %s (non-fatal: the post-fallback CLI re-run will retry it; the eyes step uses chromium-1254 and does not need the headless shell).\n' "$hs_url"
+    if [[ -n "$_hs_arch" ]] && ! printf '%s\n' "$urls" | grep -qF "chrome-headless-shell-$_hs_arch"; then
+      printf 'curl fallback: chrome URL seen but no headless-shell URL for %s was logged (CLI died during chrome retries) — deriving it from the same CDN version directory: %s\n' "$_hs_arch" "$hs_url"
+      playwright_curl_one "$hs_url" || printf 'curl fallback: WARNING — derived headless-shell fetch failed for %s (non-fatal: the post-fallback CLI re-run will retry it; the eyes step uses chromium-1254 and does not need the headless shell).\n' "$hs_url"
+    fi
   fi
   [[ "$ok" == 1 ]]
 }
