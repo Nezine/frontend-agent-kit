@@ -639,7 +639,12 @@ done < <(all_skills_dirs)
 # identical per-file sha256 and modes, on a fresh Linux install and a
 # fresh macOS install). FAIL per differing copy, in the §2b every-copy
 # pattern, so a silent drift in either direction fails loudly instead of
-# re-opening MIE-8. PLUS an explicit absence assertion:
+# re-opening MIE-8. Modes are NOT asserted here: `diff -r` compares
+# content only (a mode change, or a file replaced by a same-content
+# symlink, passes it — red-team toy test, MIE-8 fix round). The practical
+# hole is nil: gate.sh's exec bit is asserted per copy by §2e, and the
+# MIE-8 per-file check (D39 Proof 1) verified all 16 modes match in every
+# copy on both machines. PLUS an explicit absence assertion:
 # `scripts/assets/moments/index.json` must be absent in BOTH trees — the
 # moments data lives in the taste tree
 # ($refs_dir/taste/skills/taste-skill/assets/moments/, 18 moments,

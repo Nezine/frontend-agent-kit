@@ -150,3 +150,71 @@ progress note) and that push renews the lease.
 - **MIE-5 (Q2, D36) DONE 2026-11-13** — lock-time template-integrity check. Branch `mie/mie-5-q2` (implementation commit `95229be`, rebased onto main `0d92f91` after PR #4 merged; D36 entry + this note follow in a second commit on the same branch). `lock` now runs `validateTemplateIntegrity()` before appending: demo.html byte-equal to the template, token-name set enforced (measured 70 distinct names / 83 occurrences from `templates/design/tokens.css`, method in D36), four design docs anchor-preserved with the three-signal stub refusal, `--allow-dropped-tokens` exact-set value flag recorded in lock notes + PLAN.md Amendments. verify.sh §5e (cases 107–128) green: full `./verify.sh` 278 ok / 0 fail in both default and `--strict` modes (1 warning: no system Chrome; 1 pending: Impeccable hook not wired). No PR opened yet — QC + red team next, per coordinator sequencing (MIE-5 lands after MIE-6).
 - MIE-7 DONE 2026-11-13 02:53 UTC — branch mie/mie-7-q4, D38 round-budget enforcement in record + prepare. Files: skills/frontend-kit/scripts/judge-report.mjs (shared checkRoundBudget + roundBudgetStatus, ROUND_BUDGET_PER_DIRECTION=3 / TOTAL=9), skills/frontend-kit/scripts/run-log.mjs (record check-first), verify.sh (§5f, cases (129)–(142) after the rebase renumbering — was (107)–(120) before the MIE-5 merge occupied (107)–(128)), skills/frontend-kit/references/decisions.md (D38 entry). Counting per the council synthesis (corrects the board's literal wording): per-direction = distinct round numbers after the latest VERIFIED taste-lock; total = distinct (epoch, round) pairs. --grader none consumes budget; no --allow-4th-round flag; fake lock lines do not reset the count; corrupt log lines refuse in both entry points. Proof: §5f standalone 14 ok / 0 fail (4th distinct refuses in record + prepare; 10th total refuses in record + prepare after lock v4; re-record + prepare-for-recorded pass; round 3 / round-1-after-re-pick / 9th round exit 0; runlog-check passes; best crowns round 2). Regression: §5b+§5c standalone 229 ok / 0 fail / 1 unverified, identical to the pristine-HEAD baseline (1 unverified = case (104) gitleaks half, pre-existing); the first branch run showed 48 genuine budget refusals against §5c's fixtures, fixed per the D15 adjudication pattern by adding taste-locks v1/v2/v3 to jr_proj, moving cases (43)–(46) to a new jr2_proj, and locking rp_proj before case (60) — no case renumbered, no assertion changed, no rule weakened. NOTE: the `## Mie handoff` heading was absent at base 907aeaa — added here with this entry; the coordinator's working copy already carries the heading with MIE-4–MIE-10 entries, so the merge may need a one-line reconciliation. Full ./verify.sh (2026-11-13, fresh install from this branch, scratch HOME): 259 ok / 3 fail / 2 unverified — all 3 fails are the gate's fail-closed secret scan (no gitleaks on this machine); §5b/§5c/§5f zero fails in the full run. Rebased onto main 0d92f91 (PR #4 merged); decisions.md conflict resolved by keeping main's D20–D32 then D38. CI green still the merge gate; QC + red team next per the brief — no PR opened.
 MIE-8 DONE (implementer, 2026-11-13) — PROVEN NEGATIVE, no install.sh fix.
+Branch `mie/mie-8-d39`, pushed to fork (no PR yet — QC + red team next, coordinator orders).
+Proof re-run by the implementer: VM fresh install (main-disk scratch HOME
+`~/workspace/mie-track/mie-8/scratch/vm/home` — /tmp is a 512MB tmpfs, see
+D39 caveat 1) + MacBook fresh install (scratch HOME `/tmp/mie8-mac/home`).
+diff -r IDENTICAL on both machines (VM: 2 copies; MacBook: 9 copies); 16/16
+files sha256 + modes MATCH per copy; moments probe installed ENOENT / repo
+ENOENT / taste tree 18 moments + 25 effects; installed taste data 1,645
+files, zero sha256 mismatches, moments index
+db86d14cfb013db307ce95c0a42467987b52e5004c56d40ac41e69a8ac8170fd on both
+machines. install.sh: 0 occurrences of `scripts/gate`. Full D39 entry in
+decisions.md; verify.sh gains §2g (byte-identity + moments-index absence
+in both trees). Embedded verify exits 1 on both machines for reasons
+outside MIE-8 (VM: §1.1 no-scanner fail-closed, gitleaks extraction failed
+on this fs; MacBook: node not on PATH in non-interactive SSH, 109x, plus
+BSD sed + bash-3.2 unbound-variable abort — no summary line). D15 §5b/§5c
+FAIL question NOT chased (open item for coordinator; implementer's VM run
+showed 0 FAILs there). MIE-10 constraint recorded in D39: probe build must
+avoid dealing taste moments or accept the false FAIL honestly.
+
+GAP-16 CANDIDATE (proposed for the coordinator to award — NOT implemented
+in MIE-8): the moments/effects gap is real and verdict-affecting
+(consistency.mjs momentFits() always false with both reads ENOENT, so a
+correctly-dealt moment FAILs the `moment` check). Fix options for the
+council to decide: (a) vendor the moments/effects data into the skill
+tree, or (b) pass the taste path via a flag. Interim position (c) adopted
+in D39: accept silent-empty as designed until GAP-16 is decided.
+
+MIE-8 FIX ROUND (2026-11-13, red-team PASS 03:07 UTC + QC FAIL 03:16 UTC
+closures) — all fixes in ONE commit on branch `mie/mie-8-d39`, no PR yet
+(coordinator opens it after QC round 2 + red team round 2). No install.sh
+change; verdict still PROVEN NEGATIVE.
+- M1: MacBook 9-copy diff/sha proof RE-RUN with output saved
+  (`scratch/mac-probe-fix.log`, 734 lines): fresh install from scratch
+  HOME `~/mie-8-fix-20261113/home`, clone HEAD 907aeaa recorded by
+  `git rev-parse`; 9x `diff -r` IDENTICAL, 144/144 per-file sha256+mode
+  MATCH (16 files x 9 copies, 0 mismatches); installed taste 1,645 files,
+  moments index hash db86d14c...fd. install.sh exit 1 on the embedded
+  verify (copy phase OK). One hung leg-2 fixture gate.mjs killed to let
+  the run proceed (macOS verify/gate hang, MIE-2 territory). D39 Proof 1
+  cites the log.
+- M2: probe.sh taste row corrected (`scripts/gate`, nonexistent, ->
+  `scripts/`); re-run on the VM (`scratch/vm/probe-fix.log`): taste row
+  now present (18 moments) / present (25 meta.json). D39 table unchanged.
+- m1: install_dir range corrected 400-426 -> 400-430 (brace at 430).
+- m2: §2g comment in verify.sh notes modes are NOT asserted there
+  (diff -r is content-only); gate.sh exec bit covered by §2e.
+- m3: D39 records the VM cp -R fallback (35 WARNING lines in
+  vm/install.log + 35 entries in copy-fallbacks.log).
+- m4: "29Gi free" sourced to the MIE-3 inventory (commit 4b425ec,
+  "28-29Gi free"); original clone HEAD noted as unlogged in
+  mac-install.log (0 occurrences of 907aeaa).
+- m5: `scratch/verify-negative-setup.md` records the tamper (1-line drift
+  in the .agents copy's gate.sh; moments index planted in the .codex
+  copy) + expected exactly-2-FAILs result, both observed in
+  vm/verify-negative.log (exactly 2 `^FAIL:` lines).
+- QC item 14: GAP-16 proposal (coord/mie.md:154-160) compared line-by-line
+  against the council (a)/(b) synthesis text (coordinator's record,
+  "MIE-8 COUNCIL SYNTHESIS — (a)/(b) FIX OPTIONS"); operative (a)/(b)
+  wording matches, differences are elided explanatory detail only —
+  proposal left unchanged; comparison recorded in D39.
+- QC (a): grader_args line cited with tree (2959 on the 907aeaa base,
+  2997 on this branch's HEAD). QC (b): D39 Proof 3 tightened — 1,645
+  installed files, zero mismatches over the common files; the remaining
+  19 vendor/taste files deliberately not installed per install.sh:528-531.
+- verify.sh re-run on the branch follows this commit; exit code +
+  failure/unverified counts are in the fix report to the coordinator
+  (full exit 0 not expected on the VM: no Chrome; gitleaks workaround
+  may be needed, as before).
