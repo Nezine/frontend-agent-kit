@@ -871,11 +871,11 @@ scoped here is the GATE checks, not the lens.
 FAIL blocks the round. Fix, then re-run the gate from the top. Do not proceed
 to step 4 with a red gate.
 
-D22 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts, run it to its printed PASS or FAIL in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn to wait for a different result; fix, then re-run the gate from the top.
+D22 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts — invoking leg 1, gate.sh — run it to its printed result (leg 1 PASS/FAIL, leg 2 GREEN/FAIL) in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn without an intervening fix to wait for a different result; fix, then re-run the gate from the top. After 3 failed re-runs in one turn, end the turn with the FAIL and its findings.
 
-Carve-out: the loop's own yields — step-1.7 plan approval, step-2a variant pick, the v0 nod, and the step-6 human gate — and the between-turn buffet polling cadence are not this rule.
+Carve-out: the loop's own yields — step-1.7 plan approval, step-2a variant pick, the v0 nod, and the step-6 human gate — and the between-turn buffet polling cadence are not forbidden by this rule.
 
-Definitions: a "yield" is ending the turn, handing back to the human, or waiting for an outside event before the gate's printed result; a "turn" is one agent run, from its start until it hands back. In-turn polling conflates three things — sleep/retry loops, spawned-subagent status checks, and buffet polling (D5, carved out above) — and is forbidden. Legitimate waits are NOT forbidden: human gates, the step-3a SEVERE input-required handoff, the degraded rung, and escalate.
+Definitions: a "yield" is ending the turn, handing back to the human, or waiting for an outside event before the gate's printed result; a "turn" is one agent run, from its start until it hands back. Mid-gate, in-turn polling is forbidden: re-checking a gate leg, status, or file inside the turn — by a sleep/retry loop or a spawned-subagent status check — without an intervening fix, to wait for a different result. Buffet polling is the between-turn BUFFET-MODE.md §5 cadence (15-min pull / 30-min merge) and is not this rule. After the gate's printed result, the following are legitimate: human gates and the step-3a SEVERE input-required handoff. Escalate and the degraded rung are not waits and are not mid-gate exits: escalate ends work on the direction, and the degraded rung is a loop mode, not a wait.
 
 ## Step 3a — Security/compliance cross-check (after the gate, before any vision grade)
 
