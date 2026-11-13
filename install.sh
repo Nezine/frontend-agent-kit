@@ -876,6 +876,23 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
       # D35: prss is mirror #2 in PLAYWRIGHT_CDN_MIRRORS (ffmpeg only);
       # it previously fell through to `return 0` unchecked (fail-open).
       # The `builds/<kind>/<seg>` parsing below is host-agnostic.
+      # W-RT1 fix pass (2026-11-13): the prss mirror serves ffmpeg ONLY
+      # (PLAYWRIGHT_CDN_MIRRORS pins it to the dbazure prefix for
+      # ffmpeg); a chromium/headless-shell name on this host must refuse
+      # HERE, not just at the mapping — the check must never be a
+      # standalone accept for a prss chromium URL (latent fail-open if
+      # the check is ever reused as a gate or a prss CFT arm is added).
+      # Refusal in code, not documentation: the mapping is the allowlist
+      # today, but this branch is the cross-check and should not accept
+      # a host/kind/name combination the mapping cannot emit.
+      case "$url" in
+        https://playwright.download.prss.microsoft.com/*)
+          case "$name" in
+            chromium|chromium-headless-shell)
+              printf 'curl fallback: refusing to place %s from the prss mirror (it serves ffmpeg only): %s\n' "$name" "$url"
+              return 1 ;;
+          esac ;;
+      esac
       _url_kind="$(printf '%s' "$url" | sed -E 's#.*/builds/([^/]+)/.*#\1#')"
       _url_seg="$(printf '%s' "$url" | sed -E 's#.*/builds/(cft|ffmpeg)/([^/]+)/.*#\2#')"
       if [[ "$_url_kind" == "cft" ]]; then
