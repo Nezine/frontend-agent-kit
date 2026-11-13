@@ -822,7 +822,29 @@ playwright_curl_validate_url() { # <url> — 0 if the URL path is safe for mappi
   # (`evilbuilds/builds/`), must never reach the mapping — the `*` in
   # `*builds/` would otherwise span it. A URL with no `/builds/` at all
   # still falls through to the mapping/check refusal, unchanged.
-  local url="$1" path
+  # F2-RT1 fix pass 2 (2026-11-13): segment-shape allowlist, on top of
+  # the denylist above. The denylist refuses the known spellings, but
+  # the server's normalization rules cannot be enumerated that way —
+  # GCS strips `;params` from a segment, so `..;` passed the validator
+  # and fetched the WRONG revision live (140.x placed as chromium-1254),
+  # and double-encoding / overlong UTF-8 / unicode dots / `%00` all
+  # reach curl and die only at the server. So every path segment must
+  # ALSO match the shape of a segment the CLI actually emits.
+  # Legitimate segment shapes, enumerated from the mapping arms below
+  # (playwright_curl_one) + the CLI 0.1.24 bundle (PLAYWRIGHT_CDN_MIRRORS
+  # / DOWNLOAD_PATHS / cftUrl): mirror prefixes (`dbazure`, `download`,
+  # `playwright`, or any segment of the generalised `*builds/` prefix,
+  # e.g. `a`/`b`/`c`/`d`), `chrome-for-testing-public`, `builds`,
+  # `cft`/`ffmpeg`, a version (`158.0.8127.18`) or revision (`1013`),
+  # an arch dir (`linux64`, `linux-arm64`, `mac-arm64`, `mac-x64`), and
+  # a filename (`chrome-linux64.zip`, `chrome-headless-shell-mac-arm64.zip`,
+  # `ffmpeg-linux-arm64.zip`, ...). Every one of those is `[A-Za-z0-9._-]+`
+  # and none is all dots; a segment containing `;`, `%`, `\`, `+`, `~`,
+  # `:` or any other character, an empty segment, or an all-dots segment
+  # (`.`, `..`, `...`) is not emitted by the CLI and refuses here, before
+  # the mapping. The query/fragment were stripped above, so `?`/`#`
+  # never appear in a segment.
+  local url="$1" path _vpath _vseg
   case "$url" in
     https://cdn.playwright.dev/*) path="${url#https://cdn.playwright.dev}" ;;
     https://playwright.download.prss.microsoft.com/*) path="${url#https://playwright.download.prss.microsoft.com}" ;;
@@ -841,6 +863,28 @@ playwright_curl_validate_url() { # <url> — 0 if the URL path is safe for mappi
       printf 'curl fallback: refusing to place URL with percent-encoded dot or slash: %s\n' "$url"
       return 1 ;;
   esac
+  # Segment-shape allowlist (F2-RT1 fix pass 2, see the enumeration in
+  # the header comment above). Pure parameter expansion — no arrays, no
+  # `read -a` — so it stays bash-3.2-safe.
+  _vpath="${path#/}"
+  while :; do
+    case "$_vpath" in
+      */*) _vseg="${_vpath%%/*}"; _vpath="${_vpath#*/}" ;;
+      *) _vseg="$_vpath"; _vpath="" ;;
+    esac
+    case "$_vseg" in
+      ""|*[!A-Za-z0-9._-]*)
+        printf 'curl fallback: refusing to place URL with path segment outside [A-Za-z0-9._-]: %s\n' "$url"
+        return 1 ;;
+    esac
+    case "$_vseg" in
+      *[!.]* ) ;;
+      *)
+        printf 'curl fallback: refusing to place URL with dot-only path segment: %s\n' "$url"
+        return 1 ;;
+    esac
+    [[ -z "$_vpath" ]] && break
+  done
   case "$path" in
     *"/builds/"*"/builds/"*|*"builds/builds/"*)
       printf 'curl fallback: refusing to place URL with more than one /builds/ segment: %s\n' "$url"
