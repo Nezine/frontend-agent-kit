@@ -6134,6 +6134,36 @@ else
   ok "a corrupt run-log line refuses record and prepare (exit 2, nothing written)"
 fi
 
+# (143) READ-LOG ROBUSTNESS (MEDIUM-1 fix): a valid-JSON scalar line in the
+# run log refuses (exit 2) in BOTH entry points — it must not crash
+# record (collectUsedJudgeShas) or prepare (deriveCrosscheckClear) with
+# an uncaught TypeError. A scalar line carries no kind or round, so the
+# budget check treats it as corrupt, exactly like a non-JSON line (120).
+# Fresh project: the gate-fail project's log is already corrupt from
+# (120), so a scalar appended there would not isolate this case.
+r7_null="$work/r7-null"; r7_mkproj "$r7_null"
+node "$run_log_mjs" --project "$r7_null" lock --tokens design/tokens.css --refs "direction one" >"$work/r7-null-lock.log" 2>&1 \
+  || fail "round-budget (D38): null-line project lock failed — case (143) will cascade; see $work/r7-null-lock.log"
+r7_record_nograde "$r7_null" 1
+r7_record_nograde "$r7_null" 2
+printf 'null\n' >> "$r7_null/design/run-log.jsonl"
+r7_before="$(r7_lines "$r7_null")"
+node "$run_log_mjs" --project "$r7_null" record --round 3 --grader none --scores none --gate pass $r7_legs >"$work/r7-t121-rec.log" 2>&1
+r7_rc=$?
+node "$judge_report_mjs" --project "$r7_null" prepare --round 2 --kind absolute --grader judge-subagent --brief-type landing --mode full --page design/page.html >"$work/r7-t121-prep.log" 2>&1
+r7_prc=$?
+if [[ "$r7_rc" == 0 ]] || [[ "$r7_prc" == 0 ]]; then
+  fail "round-budget (D38): a scalar run-log line did not refuse record + prepare (record rc=$r7_rc, prepare rc=$r7_prc) — the budget check must fail closed on a corrupt log"
+elif [[ "$(r7_lines "$r7_null")" != "$r7_before" ]] || [[ -f "$r7_null/design/judge/round-2.md" ]]; then
+  fail "round-budget (D38): a refused scalar-line operation wrote to the log or a skeleton — a refused operation must write nothing"
+elif ! grep -q "cannot be checked" "$work/r7-t121-rec.log" || ! grep -q "cannot be checked" "$work/r7-t121-prep.log"; then
+  fail "round-budget (D38): the scalar-line refusals were not via the cannot-be-checked message — see $work/r7-t121-rec.log / $work/r7-t121-prep.log"
+elif grep -qi "TypeError" "$work/r7-t121-rec.log" || grep -qi "TypeError" "$work/r7-t121-prep.log"; then
+  fail "round-budget (D38): a scalar run-log line crashed with a TypeError — it must refuse deterministically (exit 2), never crash"
+else
+  ok "a scalar run-log line refuses record and prepare (exit 2, nothing written, no crash)"
+fi
+
 
 # --- 6. Playwright eyes ------------------------------------------------------
 # Skip-awareness (W-FIX-SKIP 2026-11-10): install.sh records --skip-eyes

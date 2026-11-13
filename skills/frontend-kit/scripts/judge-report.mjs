@@ -1446,7 +1446,10 @@ export const ROUND_BUDGET_TOTAL = 9;
 // The run-log rows for the budget count, or the corrupt line that
 // stops the count. A missing log file is an empty log (round 1, no
 // lock yet). A line that parses to a non-object carries no kind or
-// round and cannot count; it is skipped, not treated as corrupt.
+// round — it is corrupt, not skipped: downstream readers dereference
+// rows, so skipping it here would pass the budget check and then
+// crash (MEDIUM-1, 2026-11-13). A corrupt line refuses (exit 2) in
+// both entry points.
 function budgetLogRows(project) {
   const logFile = path.join(project, 'design', 'run-log.jsonl');
   if (!fs.existsSync(logFile)) return { rows: [] };
@@ -1460,11 +1463,16 @@ function budgetLogRows(project) {
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i]) continue;
+    let v;
     try {
-      rows.push(JSON.parse(lines[i]));
+      v = JSON.parse(lines[i]);
     } catch (e) {
       return { corruptLine: i + 1, corruptDetail: `design/run-log.jsonl line ${i + 1} is not valid JSON (${e.message})` };
     }
+    if (!v || typeof v !== 'object') {
+      return { corruptLine: i + 1, corruptDetail: `design/run-log.jsonl line ${i + 1} parses to ${v === null ? 'null' : 'a ' + typeof v} instead of a JSON object — a run-log line must be a JSON object` };
+    }
+    rows.push(v);
   }
   return { rows };
 }
@@ -1543,7 +1551,7 @@ export function checkRoundBudget(project, round, fail) {
   if (st.alreadyRecorded) return;
   if (st.perDirection >= ROUND_BUDGET_PER_DIRECTION) {
     const since = st.lockVersion === null
-      ? 'with no taste-lock recorded yet'
+      ? 'with no verified taste-lock'
       : `since taste-lock v${st.lockVersion}`;
     fail(`round budget exhausted (per-direction): ${st.perDirection} distinct rounds already recorded ${since} (rounds ${st.currentRounds.join(', ')}) — recording round ${round} would be a ${st.perDirection + 1}th distinct round in this direction. Retrying this same round number will refuse identically — the count is by distinct round number, not by attempt. The only next actions are to re-pick a new direction (record a new taste-lock and start again at round 1) or to present the best version at the human gate.`);
     return;
@@ -1834,7 +1842,7 @@ function deriveCrosscheckClear(project, round) {
   } catch (e) {
     return `design/run-log.jsonl cannot be parsed (${e.message}) — the cross-check bit cannot be derived`;
   }
-  const checks = rows.filter((r) => r.kind === 'crosscheck' && r.round === round);
+  const checks = rows.filter((r) => r && typeof r === 'object' && r.kind === 'crosscheck' && r.round === round);
   const latest = checks[checks.length - 1];
   if (!latest) return `no cross-check record for round ${round} in the run log — record it (run-log.mjs crosscheck) before preparing a judge report`;
   const ccv = verifyCrosscheckLine(project, latest);

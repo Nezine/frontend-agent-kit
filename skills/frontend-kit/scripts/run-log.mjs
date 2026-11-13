@@ -1056,6 +1056,7 @@ try { judgeReportMod = await import('./judge-report.mjs'); } catch { judgeReport
 function collectUsedJudgeShas(rows) {
   const used = new Set();
   for (const r of rows) {
+    if (!r || typeof r !== 'object') continue; // MEDIUM-1: a scalar log line carries no fields; skip, never dereference
     if (r.judgeReportSha) used.add(r.judgeReportSha);
     for (const field of ['pairwiseReportShas', 'juryReportShas']) {
       if (r[field]) for (const sha of String(r[field]).split(';')) if (sha) used.add(sha);
