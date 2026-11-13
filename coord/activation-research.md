@@ -181,3 +181,54 @@ Round 1's honest limit: D78 fixes the coordination hole given live runtimes, NOT
 3. For a runtime that doesn't listen: the honest fallback is BUFFET §1 succession at 60 min + run-pauses + human return — state it, don't pretend otherwise.
 4. Next experiment before the hackathon: run the end-to-end wake drill (stale coordinator → probe fires → @mention → parent wakes → Deputy takes over) and record it; until that drill passes, the loop is detector-proven and actuator-assumed.
 5. Keep the owner authorization as the temporary bridge only — it papers over the runtime hole by adding a human ping path; it does not fix it, and it expires with the competition scope.
+
+## 10. Round 3 — D78 condition: progress-signal heartbeat (2026-11-13 ~20:20 ICT)
+
+**Context:** Muse's 20:00 RECOMMENDATION conditionally approves D78 with ONE condition: the heartbeat must carry a PROGRESS signal (newest commit/PR or a "blocked: <reason>" line), not just a pulse — 2 consecutive cycles with no progress escalate to the Deputy. The 5-min probe cron enforces. Fallback = BUFFET §1 succession at 60 min. Landing = BUFFET §1 (no new §16.7). First live test = tonight's 20:30 rehearsal.
+
+### 10.1 Heartbeat line format (amended D78)
+
+The coordinator appends one line to its own `coord/<name>.md` every 15 min and pushes it (the heartbeat commit). One line, machine-parseable, human-readable:
+
+`HB 2026-11-13T13:00:00Z stage=<stage> next=<short next action> progress=<short hash of the newest commit or PR this run produced, or "none"> blocked=<short reason with underscores, or "none"> pending=<count of unprocessed pending items>`
+
+Rules: `progress=` is the newest commit/PR short hash (7+ chars) the coordinator's run has produced — a NEW hash in a later heartbeat is progress. `blocked=` names the current blocker (`blocked=waiting-human-eas-login`); a reason that appears, changes, or clears is progress. Timestamps are UTC ISO8601. No spaces inside values (underscores instead).
+
+### 10.2 The progress check (what "2 consecutive cycles with no progress" means)
+
+A "cycle" is the interval between two consecutive heartbeat lines (nominally 15 min). A cycle is no-progress when the newer line's (progress, blocked) is identical to the older's. Escalation rules, in order:
+
+1. **Progress** — progress hash changed, OR blocked reason appeared/changed/cleared → OK. The run is moving.
+2. **Blocked-and-reported (legitimate, no escalation now)** — blocked != "none" and stable across cycles: the coordinator is stuck on a KNOWN blocker it has already reported. The Deputy and the humans can already see it in the heartbeat, so the probe does NOT escalate. The 60-min clock applies instead: if the same blocked reason persists unchanged for >=60 min from its first appearance, the Deputy intervenes (reassign the unblock, escalate to humans, or declare the slice `input-required`) under the BUFFET §1 succession rule — the probe reports this as NO-PROGRESS with reason BLOCKED-STALE-60MIN.
+3. **No progress and silent (escalate)** — blocked = "none" and (progress, blocked) identical across TWO consecutive no-progress cycles (three consecutive heartbeat lines, pairwise identical, spanning >=30 min) → escalate to the Deputy. The probe exits 4 (NO-PROGRESS).
+4. **One no-progress cycle only** — two identical lines (blocked=none) spanning >=15 min but no third line yet → watching, NOT escalating (exit 0, logged as NO-PROGRESS-1CYCLE). Two cycles are required; one is a warning.
+
+Why the blocked distinction works: a reported blocker is visible state — the Deputy already knows what is stuck and why, and the 60-min clock bounds how long a reported block can sit. Silence is invisible state — the run looks alive (heartbeats arrive) while nothing moves, which is exactly the 13/11 failure mode. The progress signal turns the heartbeat from a pulse into a state report.
+
+### 10.3 Probe changes (activation-probe.sh, amended)
+
+New flag `--heartbeat-file <path>` (default `coord/muse.md` — the rehearsal coordinator's file; pass the coordinator's own file for other runs). The probe reads all `HB ` lines from that file at `origin/<branch>` and evaluates §10.2: last three lines for the 2-cycle check; earliest line carrying the current blocked reason for the 60-min check. Exit codes: 0 OK (progress, or blocked-reported within its 60-min allowance, or one no-progress cycle only) | 2 STALE (existing takeover condition: tip age > stale-mins AND pending work — evaluated first) | 3 ERROR (cannot read state — loud, never OK) | 4 NO-PROGRESS (escalate to Deputy: two silent no-progress cycles, or a blocked reason stable >=60 min). The log line gains `progress=<hash> blocked=<reason> hb_span_s=<seconds>`.
+
+### 10.4 Tests (simulated, /tmp/act-probe-r3/ — same method as round 2)
+
+Amended probe (`coord/activation-probe.sh`, awk field parser after a sed quoting bug failed T2 on the first run — the bug is recorded here, not hidden: the sed version mis-parsed `blocked=none` as `nonepending=2`; fixed by switching to awk field splitting, re-tested clean). 8/8 pass, run 20:21 ICT:
+
+| Case | State | Expected | Observed | Result |
+|---|---|---|---|---|
+| T1 | progress hash changed between last two HB lines | exit 0 OK | exit 0 | PASS |
+| T2 | two silent no-progress cycles (3 identical lines, blocked=none, span 30 min) | exit 4 NO-PROGRESS | exit 4 | PASS |
+| T3 | blocked-and-reported, stable 45 min (<60) | exit 0 OK | exit 0 | PASS |
+| T3b | blocked reason changed between lines | exit 0 OK (progress) | exit 0 | PASS |
+| T3c | blocked reason stable 75 min (>=60) | exit 4 BLOCKED-STALE-60MIN | exit 4 | PASS |
+| T4 | stale tip (25 min) + pending marker | exit 2 STALE | exit 2 | PASS |
+| T5 | one no-progress cycle only (2 identical lines, span 15 min) | exit 0 OK (watching) | exit 0 | PASS |
+| T6 | no HB lines at all | exit 0 OK (PROGRESS-UNKNOWN) | exit 0 | PASS |
+
+**Verdict:** the progress-signal condition is enforced as specified, including the two subtleties that matter: a blocked-and-reported coordinator does NOT escalate before 60 min (T3), and a silent coordinator DOES escalate after two cycles (T2) — while one cycle alone only watches (T5). What this test does NOT prove: the probe has not been run against the real fork, has not been installed as a live 5-min cron, and the end-to-end wake drill has not been run. First live test = tonight's 20:30 rehearsal.
+
+### 10.5 Self-attack on this amendment (honest limits)
+
+- The progress hash is coordinator-reported: a coordinator can fake progress by pushing empty commits. The hash proves a push happened, not that the push was useful — the Deputy still judges quality; the probe only catches silence, not slop. Mitigation: the hash must be a real commit/PR on the run's branch (the Deputy can inspect it in one command), and the 2-cycle rule bounds the damage to 30 min.
+- Heartbeat lines are content, not server events: a coordinator can backdate HB timestamps or rotate blocked reasons ("waiting-X" -> "waiting-Y") to reset the clocks. Each rotation counts as progress only if it names a NEW blocker with evidence (the Deputy reads the heartbeat); rotation without evidence is visible in the log and the Deputy judges it. The probe implements no forgery cross-check — that is a Deputy-side inspection, not a probe property.
+- The 2-cycle rule needs three heartbeat lines: a run younger than 30 min cannot trip NO-PROGRESS even if it is dead from the start — but a young run trips STALE instead if its tip goes quiet with pending work, so the gap is covered by the other check.
+- NOT tested: the probe against the real fork; the probe as a live 5-min cron; the end-to-end wake drill; other machines' hook/cron availability. Same limits as round 2, unchanged.
