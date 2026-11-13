@@ -1969,7 +1969,7 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
         else
           _with_deps=""
           if [[ "$is_darwin" == 0 ]]; then _with_deps=" (on Linux, add --with-deps for system libs — needs sudo)"; fi
-          note_pending "Chrome-for-Testing browser not installed for Playwright CLI. Run: playwright-cli install-browser chrome-for-testing${_with_deps}. The CLI's Node downloader fails on this network (server closed connection at ~90%); if it fails again, fetch the URL it prints with: curl --fail -C - -L -o <file.zip> <url>, then extract it under $pw_cache_dir/ (see install.sh playwright_curl_fallback for the layout)."
+          note_pending "Chrome-for-Testing browser not installed for Playwright CLI. Run: playwright-cli install-browser chrome-for-testing${_with_deps}. The CLI's Node downloader fails on this network (server closed connection at ~90%); if it fails again, delete any stale file first, then fetch the URL it prints with: rm -f <file.zip> && curl --fail -C - -L -o <file.zip> <url> (the rm -f first: a corrupt or wrong-version partial would otherwise be resumed into), then extract it under $pw_cache_dir/ (see install.sh playwright_curl_fallback for the layout)."
         fi
       fi
     fi
