@@ -10886,7 +10886,7 @@ async function runWidth(cdp, helper, { w: width, h }, first) {
     const revealed = [], p5secs = [];
     if (!quick) for (const r of (await safe('reveal', () => tab.eval('window.__cc.revealList()'))) || []) {
       const p = place(r.docs[0]); revealed.push(r.id);
-      if (r.p5) { if (r.sec >= 0) p5secs.push(r.sec); continue; } // D16: the section's one Pattern 5 reveal is allowed
+      if (r.p5) { p5secs.push(r.sec); continue; } // D16: the section's one Pattern 5 reveal is allowed
       if (p.stop != null) for (const d of r.docs.slice(1)) { const top = d.top - stopY[p.stop]; if (top < vh && top + d.height > 0) p.rects.push({ left: d.left, top, width: d.width, height: d.height }); }
       F.push(Object.assign({ check: 'scroll-reveal', sev: 'FAIL', id: r.id, sel: r.sel, text: r.text, msg: `${r.n > 1 ? `${r.n} parts of this section animate` : 'animates'} in when scrolled into view (${r.how})${r.n > 1 ? `: ${r.sels.join(', ')}${r.n > 5 ? ', ...' : ''}` : ''}` }, p));
     }
