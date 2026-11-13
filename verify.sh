@@ -4962,6 +4962,186 @@ else
   ok "best and runlog-check both refuse a cheap line whose notRegraded does not transcribe its artifact's not-regraded set (X5)"
 fi
 
+# --- MIE-5 (D36) fixture writer: filled design docs -----------------------
+# m5_write_filled_docs <proj>: write filled-in TASTE.md / PLAN.md /
+# DESIGN-READ.md / DESIGN-SYSTEM.md into <proj>/design — every required
+# heading present (see run-log.mjs TEMPLATE_HEADINGS), no template
+# placeholder bracket, each file over 1 KB. The text is a fixed
+# fixture direction (Linear-style dark developer tool); it stands in
+# for the filled-in state a real project reaches before locking.
+# Shared by the round-7 fixtures below (a genuine lock needs a genuine
+# design dir since D36) and by the §5e cases.
+m5_write_filled_docs() {
+  local P="$1"
+  cat > "$P/design/TASTE.md" <<'EOF'
+# TASTE.md
+
+## Lock summary
+
+1. Direction: Linear-style dark developer tool, from the locked reference set.
+2. Tokens: design/tokens.css, locked at the taste lock recorded in the run log.
+3. Lock version: 1, immutable within a direction; a re-pick creates a new version.
+4. Picked variant: none yet.
+5. Stop: at least 4 on Type, Layout, Colour and Space plus a green gate, or after 3 rounds.
+
+## Intent
+
+A landing page for a small developer tool that explains itself in under a minute. It should feel like the tool itself: precise, quiet, a little severe, never like a marketing site shouting for attention. One idea per screen, generous whitespace, type doing the work that decoration usually does.
+
+## Likes
+
+- Linear: the restrained hero, one strong idea, nothing competing with the headline.
+- Stripe Press: long-form typographic rhythm, generous measure, quiet confidence.
+
+## Dislikes
+
+- Purple-blue gradient heroes with identical rounded cards on every section.
+- All-caps eyebrows above every heading, and stats with no source behind them.
+
+## Hard rules
+
+1. No gradients ever.
+2. Left-aligned throughout.
+3. Type is the design; no decorative gradient, no stock illustration.
+4. One accent, used twice per screen at most.
+5. No border or shadow on cards.
+
+## Reference direction
+
+- DESIGN.md: design/references/DESIGN.md/linear.md
+- Reference sites: linear.png, stripe.png
+- Why: the brief asks for a developer tool that reads as precise and calm, and both references earn that feeling with type and spacing rather than with colour or decoration, which is exactly what the locked tokens encode.
+EOF
+  cat > "$P/design/PLAN.md" <<'EOF'
+# PLAN.md
+
+## Decisions
+
+- Direction: Linear-style dark developer tool, see DESIGN-SYSTEM.md.
+- Brief type: landing.
+- Conviction: in five years the best developer tools will read like documents, not dashboards.
+
+## Assumptions
+
+- The audience reads English and evaluates tools on a lunch break.
+- The product has no real photography yet, so the hero uses a UI mock, not a photo.
+
+## Design Read
+
+- Visual variance: Med, one strong hero idea, restrained sections.
+- Motion intensity: Low, still, opacity-only transitions.
+- Information density: Med, standard landing rhythm.
+- Asset dependence: Med, some real imagery, mocks where the brief has none.
+- Brand fidelity: Low, direction inspired, values free.
+
+## Purpose + primary user task
+
+- Purpose: let a visitor decide in under a minute whether this tool is worth trying.
+- Primary user: a developer evaluating tools on a lunch break.
+- Primary user task: compare this tool against the one they already use and reach the signup decision.
+- Task flow: grasp what the tool does, see proof it works, check the price of trying it, start the trial.
+- Secondary tasks: find the docs link; contact support.
+- Out of scope: it does not teach the tool; it does not compare against every competitor.
+
+## Section inventory
+
+| id | section | notes |
+| --- | --- | --- |
+| hero | Hero | One idea, one CTA |
+| features | Features | Three panels, each with a visual |
+| pricing | Pricing | Two tiers, no fabricated figures |
+| footer | Footer | Closing, dark ground |
+
+## Acceptance criteria (EARS)
+
+- WHEN the viewport is 390px, THE SYSTEM SHALL show one column with no horizontal overflow and no glyph clipped at the viewport edge.
+- WHEN the page is rendered at 1440 / 768 / 390, THE SYSTEM SHALL show every section in the inventory above, each with a real visual.
+- WHEN a section is rendered, THE SYSTEM SHALL fill at least 55 percent of its box or merge with its neighbour.
+- WHEN the pricing CTA is clicked, THE SYSTEM SHALL show the trial start.
+- WHEN the hero loads, THE SYSTEM SHALL show one headline, one lede, and one call to action.
+
+## Screen × state matrix
+
+| section | default | loading | empty | error | partial |
+| --- | --- | --- | --- | --- | --- |
+| hero | hero | N/A | N/A | N/A | N/A |
+| features | features | N/A | N/A | N/A | N/A |
+| pricing | pricing | N/A | N/A | N/A | N/A |
+| footer | footer | N/A | N/A | N/A | N/A |
+
+## Design system (pointer — the declaration lives elsewhere)
+
+- Declaration: design/DESIGN-SYSTEM.md, reference mapping, do and don't rules, rationale.
+- Values: design/tokens.css, single source of truth for every value.
+- Recipe: none.
+
+## Amendments
+
+- None yet.
+
+## Approval record
+
+- Status: approved.
+- Approved by: the human, at the plan approval gate.
+- Date: 2026-11-13.
+EOF
+  cat > "$P/design/DESIGN-READ.md" <<'EOF'
+# DESIGN-READ.md
+
+## Design Read
+
+- Artifact: landing.
+- Audience: developers evaluating a tool on a lunch break.
+- Visual language: restrained editorial, type-led, quiet ground.
+- Mode: greenfield.
+- Anchor: Linear-style dark developer tool.
+- High-end bar: one strong hero idea, generous whitespace, nothing competing with the headline.
+
+## The five dials
+
+| Dial | Setting | Meaning |
+| --- | --- | --- |
+| Visual variance | Med | One strong hero idea, restrained sections. |
+| Motion intensity | Low | Still, opacity-only transitions. |
+| Information density | Med | Standard landing rhythm. |
+| Asset dependence | Med | Some real imagery, mocks where the brief has none. |
+| Brand fidelity | Low | Direction inspired, values free. |
+
+## What the dials decide
+
+- Variance: Med means the hero breaks the grid once; sections stay on it.
+- Motion: Low means no entrance choreography, 220ms opacity only.
+- Density: Med means three features per row at 1440, one at 390.
+- Asset dependence: Med means the hero needs a real product mock, not a drawn stand-in.
+- Brand fidelity: Low means the reference palette is adapted, not preserved exactly.
+EOF
+  cat > "$P/design/DESIGN-SYSTEM.md" <<'EOF'
+# DESIGN-SYSTEM.md
+
+## Reference mapping
+
+- Type roles: display serif from the locked reference editorial voice; body sans from its UI text.
+- Colour roles: canvas and ink from the reference light ground; accent from its single brand colour.
+- Space and radius: section rhythm from the reference vertical spacing; card radius from its panel language.
+- Motion: durations from the reference reveal behaviour.
+
+## Do / don't rules
+
+- Do: one accent, used twice per screen at most.
+- Do: type is the design, no decorative gradient ever.
+- Don't: no second button recipe for a special block.
+- Don't: no colour outside the token file, ever.
+
+## Rationale
+
+The brief asks for a developer tool that reads as precise and calm, and the reference earns that feeling with type and spacing rather than colour. The system keeps the palette to one accent so the hierarchy stays typographic, and keeps motion to opacity so nothing competes with the words. What was deliberately left out: gradients, shadows, and a second accent.
+
+## Drift rule
+
+If a fix round changes a value, it changes tokens.css and records the change in the round delta and in PLAN.md Amendments. It does not edit this file to match. If this file and tokens.css disagree, tokens.css governs; this file is stale until the next re-lock, when a new lock version re-quotes the mapping above.
+EOF
+}
+
 # --- Round 7 (F1/F2/A7): taste-lock lines, land lines and the
 # crosscheck selection-key types verify on read. Before round 7 no
 # read path verified a taste-lock line (the brief adopted the
@@ -4976,7 +5156,9 @@ fi
 r7_mkproj() {
   local p="$1"
   mkdir -p "$p/design/screenshots" "$p/design/judge"
-  cp "$work/design/tokens.css" "$p/design/tokens.css"
+  cp "$root/skills/frontend-kit/templates/design/tokens.css" "$p/design/tokens.css"
+  cp "$root/skills/frontend-kit/templates/design/demo.html" "$p/design/demo.html"
+  m5_write_filled_docs "$p"
   printf '<!doctype html><html><head><title>R7</title></head><body><main id="main"><h1>Verify fixture</h1></main></body></html>\n' > "$p/design/page.html"
   printf 'PNGDATA' > "$p/design/screenshots/round-1-1440.png"
   printf 'GATE RESULT: PASS\n' > "$p/design/gate-leg1.log"
@@ -5374,6 +5556,254 @@ for bad_page in "design/..html" "design/x.html.html" "design/../design/page.html
     ok "judge-report prepare refuses --page $bad_page (exit 2, nothing written)"
   fi
 done
+
+
+# --- 5e. run-log template-integrity check (D36, MIE-5) ----------------------
+# `lock` validates the project's design files against the installed kit
+# templates before it records (run-log.mjs validateTemplateIntegrity):
+# demo.html byte-equal (CRLF/trailing-newline normalised), the four
+# design docs filled in (no placeholder bracket, >= 1 KB, required
+# headings present), tokens.css still defining the template's unique
+# token-name set (values free, additions free). --allow-dropped-tokens
+# lists exactly the dropped names, recorded verbatim in the lock
+# entry's notes and verified against PLAN.md § Amendments. Every
+# refusal is exit 2 with nothing written. Own m5_-prefixed helpers,
+# own fixture dir; §5b/§5c are not renumbered (cases continue at 107).
+m5_mkproj() { # dir — filled design docs + template tokens.css/demo.html
+  local P="$1"
+  mkdir -p "$P/design"
+  cp "$root/skills/frontend-kit/templates/design/tokens.css" "$P/design/tokens.css"
+  cp "$root/skills/frontend-kit/templates/design/demo.html" "$P/design/demo.html"
+  m5_write_filled_docs "$P"
+}
+m5_lock_ok() { # name logfile proj [extra lock args...] — lock must record
+  local name="$1" logf="$2" P="$3"; shift 3
+  if ! node "$run_log_mjs" --project "$P" lock --tokens design/tokens.css --refs "Ref M5 (verify.test)" "$@" >"$logf" 2>&1; then
+    fail "template-integrity (D36): $name was refused — see $logf"
+    cat "$logf" >&2 || true
+    return 1
+  fi
+  local lines; lines="$(grep -c . "$P/design/run-log.jsonl" || true)"
+  if [[ "$lines" != 1 ]]; then
+    fail "template-integrity (D36): $name wrote $lines log lines, expected exactly 1 — see $logf"
+    return 1
+  fi
+  local want; want="$(sha256sum "$P/design/tokens.css" | cut -d' ' -f1)"
+  if ! python3 -c "import json,sys; l=json.loads(open(sys.argv[1]).readline()); sys.exit(0 if l.get('tokensHash')==sys.argv[2] else 1)" "$P/design/run-log.jsonl" "$want"; then
+    fail "template-integrity (D36): $name recorded a tokensHash that is not the sha256 of design/tokens.css — see $logf"
+    cat "$P/design/run-log.jsonl" >&2 || true
+    return 1
+  fi
+  if ! node "$run_log_mjs" --project "$P" show >"$work/m5-show.log" 2>&1 || ! grep -q "taste lock v1" "$work/m5-show.log"; then
+    fail "template-integrity (D36): $name recorded but show does not print the lock — see $work/m5-show.log"
+    cat "$work/m5-show.log" >&2 || true
+    return 1
+  fi
+  ok "lock records $name (exit 0, exactly 1 log line, tokensHash is the sha256 of design/tokens.css, show prints the lock)"
+}
+m5_lock_reject() { # name logfile pattern proj [extra lock args...] — lock must refuse, exit 2, nothing written
+  local name="$1" logf="$2" pat="$3" P="$4"; shift 4
+  if node "$run_log_mjs" --project "$P" lock --tokens design/tokens.css --refs "Ref M5 (verify.test)" "$@" >"$logf" 2>&1; then
+    fail "template-integrity (D36): $name exited 0 — must be refused (exit 2)"
+    return 1
+  elif [[ -f "$P/design/run-log.jsonl" ]]; then
+    fail "template-integrity (D36): $name wrote to the run log — a refused entry must write nothing"
+    return 1
+  elif ! grep -q "run-log: REJECTED" "$logf" || ! grep -q "$pat" "$logf"; then
+    fail "template-integrity (D36): $name was refused but not via the expected message (/run-log: REJECTED/ + /$pat/) — see $logf"
+    cat "$logf" >&2 || true
+    return 1
+  else
+    ok "lock refuses $name (exit 2, nothing written)"
+  fi
+}
+m5_snapshot() { # proj outfile — sha256 of every file under design/
+  (cd "$1" && find design -type f | LC_ALL=C sort | xargs sha256sum) > "$2"
+}
+m5p="$work/m5"
+
+# (107) DoD: a stub TASTE (failing all three stub signals — a placeholder
+# bracket remains, 42 bytes < 1 KB, five of six headings missing) plus a
+# 1-byte-diff demo.html. Must refuse (exit 2, stderr "run-log:
+# REJECTED"), write no run-log.jsonl, and leave every file byte-identical.
+m5p="$work/m5-dod"; m5_mkproj "$m5p"
+printf '## Lock summary\n\n[Write the intent here.]\n' > "$m5p/design/TASTE.md"
+printf 'X' >> "$m5p/design/demo.html"
+m5_snapshot "$m5p" "$work/m5-dod-before.txt"
+if node "$run_log_mjs" --project "$m5p" lock --tokens design/tokens.css --refs "Ref M5 (verify.test)" >"$work/m5-t107.log" 2>&1; then
+  fail "template-integrity (D36): the DoD case (stub TASTE + 1-byte-diff demo.html) exited 0 — must be refused (exit 2)"
+elif [[ -f "$m5p/design/run-log.jsonl" ]]; then
+  fail "template-integrity (D36): the DoD case wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "run-log: REJECTED" "$work/m5-t107.log"; then
+  fail "template-integrity (D36): the DoD case was refused but stderr lacks 'run-log: REJECTED' — see $work/m5-t107.log"
+  cat "$work/m5-t107.log" >&2 || true
+else
+  m5_snapshot "$m5p" "$work/m5-dod-after.txt"
+  if ! diff -q "$work/m5-dod-before.txt" "$work/m5-dod-after.txt" >/dev/null 2>&1; then
+    fail "template-integrity (D36): the refused DoD lock changed a file under design/ — a refused entry must write nothing"
+    diff "$work/m5-dod-before.txt" "$work/m5-dod-after.txt" >&2 || true
+  else
+    ok "lock refuses the DoD case (stub TASTE failing all three stub signals + 1-byte-diff demo.html): exit 2, 'run-log: REJECTED', no run log, every file byte-identical"
+  fi
+fi
+
+# (108) Whitespace-only demo.html difference (one extra space) refuses.
+m5p="$work/m5-ws"; m5_mkproj "$m5p"
+sed -i 's|<main class="demo-wrap">|<main  class="demo-wrap">|' "$m5p/design/demo.html"
+m5_lock_reject "a whitespace-only demo.html difference" "$work/m5-t108.log" "demo.html differs" "$m5p"
+
+# (109) Comment-only demo.html difference (one word in a comment) refuses.
+m5p="$work/m5-comment"; m5_mkproj "$m5p"
+sed -i 's|taste-lock demo|taste-lock DEMO|' "$m5p/design/demo.html"
+m5_lock_reject "a comment-only demo.html difference" "$work/m5-t109.log" "demo.html differs" "$m5p"
+
+# (110) Stub TASTE alone (pristine demo.html) refuses.
+m5p="$work/m5-stub"; m5_mkproj "$m5p"
+printf '## Lock summary\n\n[Write the intent here.]\n' > "$m5p/design/TASTE.md"
+m5_lock_reject "a stub TASTE alone" "$work/m5-t110.log" "placeholder bracket" "$m5p"
+
+# (111) 1-byte-diff demo.html alone (filled TASTE) refuses.
+m5p="$work/m5-1byte"; m5_mkproj "$m5p"
+printf 'X' >> "$m5p/design/demo.html"
+m5_lock_reject "a 1-byte-diff demo.html alone" "$work/m5-t111.log" "demo.html differs" "$m5p"
+
+# (112) Class B: deleting one token name refuses.
+m5p="$work/m5-drop1"; m5_mkproj "$m5p"
+sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+m5_lock_reject "a dropped token name (--color-accent)" "$work/m5-t112.log" "dropped without the flag: --color-accent" "$m5p"
+
+# (113) Class B: deleting a token no rule references still refuses —
+# --motion-clip-inset-b is used by no demo, gate rule, or lock rule
+# (only tokens.css and a style recipe name it). The check is a
+# name-set check, not a reference check.
+m5p="$work/m5-drop-unref"; m5_mkproj "$m5p"
+sed -i '/--motion-clip-inset-b:/d' "$m5p/design/tokens.css"
+m5_lock_reject "a dropped token no rule references (--motion-clip-inset-b)" "$work/m5-t113.log" "dropped without the flag: --motion-clip-inset-b" "$m5p"
+
+# (114) Value-only positive: changing a token VALUE (not a name) locks.
+m5p="$work/m5-value"; m5_mkproj "$m5p"
+sed -i 's|--color-ink: var(--primitive-neutral-1000);|--color-ink: #000000;|' "$m5p/design/tokens.css"
+m5_lock_ok "a value-only token change" "$work/m5-t114.log" "$m5p"
+
+# (115) Positive control: the pristine filled fixture locks.
+m5p="$work/m5-pristine"; m5_mkproj "$m5p"
+m5_lock_ok "the pristine filled fixture" "$work/m5-t115.log" "$m5p"
+
+# (116) Normalisation positive: a demo.html with CRLF line endings
+# (and only that difference) locks — CRLF -> LF is normalised.
+m5p="$work/m5-crlf"; m5_mkproj "$m5p"
+python3 -c "p='$m5p/design/demo.html'; s=open(p,'rb').read().replace(b'\n', b'\r\n'); open(p,'wb').write(s)"
+m5_lock_ok "a CRLF demo.html (normalisation positive)" "$work/m5-t116.log" "$m5p"
+
+# (117) --allow-dropped-tokens positive: the dropped name is listed
+# exactly, appears in PLAN.md § Amendments, and lands verbatim in the
+# lock entry's notes field.
+m5p="$work/m5-flag-ok"; m5_mkproj "$m5p"
+sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+python3 -c "p='$m5p/design/PLAN.md'; s=open(p).read().replace('- None yet.', '- None yet.\n- Dropped --color-accent at the taste lock: the direction uses no separate accent; ink carries the accent role.'); open(p,'w').write(s)"
+m5_lock_ok "the --allow-dropped-tokens positive" "$work/m5-t117.log" "$m5p" --allow-dropped-tokens "--color-accent"
+if ! grep -q "dropped tokens: --color-accent" "$m5p/design/run-log.jsonl"; then
+  fail "template-integrity (D36): the allowed drop was recorded but the lock entry's notes lack the dropped name verbatim — see $m5p/design/run-log.jsonl"
+elif ! grep -q -- "--color-accent" "$m5p/design/PLAN.md"; then
+  fail "template-integrity (D36): the allowed drop's PLAN.md § Amendments entry is missing"
+else
+  ok "the dropped name is recorded verbatim in the lock notes and in PLAN.md § Amendments (--allow-dropped-tokens positive)"
+fi
+
+# (118) The flag listing a name that is NOT actually missing refuses.
+m5p="$work/m5-flag-extra"; m5_mkproj "$m5p"
+sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+python3 -c "p='$m5p/design/PLAN.md'; s=open(p).read().replace('- None yet.', '- None yet.\n- Dropped --color-accent at the taste lock.'); open(p,'w').write(s)"
+m5_lock_reject "a flag listing a name that is not missing" "$work/m5-t118.log" "listed but not actually missing: --space-9" "$m5p" --allow-dropped-tokens "--color-accent,--space-9"
+
+# (119) The flag NOT listing a missing name refuses.
+m5p="$work/m5-flag-unlisted"; m5_mkproj "$m5p"
+sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+sed -i '/^  --space-9:/d' "$m5p/design/tokens.css"
+python3 -c "p='$m5p/design/PLAN.md'; s=open(p).read().replace('- None yet.', '- None yet.\n- Dropped --color-accent at the taste lock.'); open(p,'w').write(s)"
+m5_lock_reject "a flag not listing a missing name" "$work/m5-t119.log" "dropped without the flag: --space-9" "$m5p" --allow-dropped-tokens "--color-accent"
+
+# (120) The flag with the name missing from PLAN.md § Amendments refuses.
+m5p="$work/m5-flag-noamend"; m5_mkproj "$m5p"
+sed -i '/^  --color-accent:/d' "$m5p/design/tokens.css"
+m5_lock_reject "a flag whose name is not in PLAN.md § Amendments" "$work/m5-t120.log" "do not appear in PLAN.md" "$m5p" --allow-dropped-tokens "--color-accent"
+
+# (121) A missing design/tokens.css refuses.
+m5p="$work/m5-notokens"; m5_mkproj "$m5p"
+rm "$m5p/design/tokens.css"
+m5_lock_reject "a missing design/tokens.css" "$work/m5-t121.log" "design/tokens.css is missing" "$m5p"
+
+# (122) A missing PLAN.md refuses, including with the flag (the flag
+# refuses without PLAN.md; the six-file presence check is what
+# refuses here — see the D36 entry).
+m5p="$work/m5-noplan"; m5_mkproj "$m5p"
+rm "$m5p/design/PLAN.md"
+m5_lock_reject "a missing PLAN.md with the flag" "$work/m5-t122.log" "design/PLAN.md is missing" "$m5p" --allow-dropped-tokens "--color-accent"
+
+# (123) Split-layout positive: primitives.css present and the Layer 1
+# block deleted from tokens.css locks (values free, names in the split file).
+m5p="$work/m5-split-ok"; m5_mkproj "$m5p"
+cp "$root/skills/frontend-kit/templates/design/primitives.css" "$m5p/design/primitives.css"
+python3 - "$m5p/design/tokens.css" <<'EOF'
+import re,sys
+p=sys.argv[1]; s=open(p).read()
+s=re.sub(r'  --primitive-neutral-[0-9]+: [^;]+;\n', '', s)
+open(p,'w').write(s)
+EOF
+m5_lock_ok "the split layout (primitives.css + Layer 1 removed from tokens.css)" "$work/m5-t123.log" "$m5p"
+
+# (124) Split-layout XOR: primitives.css present AND the Layer 1 block
+# still in tokens.css refuses (one definition per primitive per project).
+m5p="$work/m5-split-xor"; m5_mkproj "$m5p"
+cp "$root/skills/frontend-kit/templates/design/primitives.css" "$m5p/design/primitives.css"
+m5_lock_reject "the split layout with the Layer 1 block still in tokens.css" "$work/m5-t124.log" "still defines Layer 1 primitive" "$m5p"
+
+# (125) Primitives value-only positive: a rebrand value in primitives.css locks.
+m5p="$work/m5-prim-value"; m5_mkproj "$m5p"
+cp "$root/skills/frontend-kit/templates/design/primitives.css" "$m5p/design/primitives.css"
+python3 - "$m5p/design/tokens.css" <<'EOF'
+import re,sys
+p=sys.argv[1]; s=open(p).read()
+s=re.sub(r'  --primitive-neutral-[0-9]+: [^;]+;\n', '', s)
+open(p,'w').write(s)
+EOF
+sed -i 's|#ffffff|#fefefe|' "$m5p/design/primitives.css"
+m5_lock_ok "a primitives.css value-only change" "$work/m5-t125.log" "$m5p"
+
+# (126) Primitives missing name: dropping a primitive from the split file refuses.
+m5p="$work/m5-prim-drop"; m5_mkproj "$m5p"
+cp "$root/skills/frontend-kit/templates/design/primitives.css" "$m5p/design/primitives.css"
+python3 - "$m5p/design/tokens.css" <<'EOF'
+import re,sys
+p=sys.argv[1]; s=open(p).read()
+s=re.sub(r'  --primitive-neutral-[0-9]+: [^;]+;\n', '', s)
+open(p,'w').write(s)
+EOF
+sed -i '/--primitive-neutral-500:/d' "$m5p/design/primitives.css"
+m5_lock_reject "a dropped primitive name" "$work/m5-t126.log" "primitives.css dropped without the flag: --primitive-neutral-500" "$m5p"
+
+# (127) Symlink discipline: a symlinked design file refuses.
+m5p="$work/m5-symlink"; m5_mkproj "$m5p"
+rm "$m5p/design/TASTE.md"
+ln -s "$root/skills/frontend-kit/templates/design/TASTE.md" "$m5p/design/TASTE.md"
+m5_lock_reject "a symlinked design file" "$work/m5-t127.log" "is a symlink" "$m5p"
+
+# (128) Fail-closed baseline: a run-log.mjs copy without its template
+# dir refuses the lock (the template baseline is missing, so nothing
+# can be checked against it).
+m5p="$work/m5-pristine2"; m5_mkproj "$m5p"
+mkdir -p "$work/m5-notree/scripts"
+cp "$run_log_mjs" "$work/m5-notree/scripts/run-log.mjs"
+if node "$work/m5-notree/scripts/run-log.mjs" --project "$m5p" lock --tokens design/tokens.css --refs "Ref M5 (verify.test)" >"$work/m5-t128.log" 2>&1; then
+  fail "template-integrity (D36): a run-log.mjs copy without its template dir locked — must refuse fail-closed (exit 2)"
+elif [[ -f "$m5p/design/run-log.jsonl" ]]; then
+  fail "template-integrity (D36): the no-template-dir lock wrote to the run log — a refused entry must write nothing"
+elif ! grep -q "template directory is missing" "$work/m5-t128.log"; then
+  fail "template-integrity (D36): the no-template-dir lock was refused but not via the missing-template message — see $work/m5-t128.log"
+  cat "$work/m5-t128.log" >&2 || true
+else
+  ok "lock refuses fail-closed when its template directory is missing (exit 2, nothing written)"
+fi
 
 
 # --- 6. Playwright eyes ------------------------------------------------------

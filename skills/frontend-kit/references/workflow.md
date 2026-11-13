@@ -236,8 +236,17 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   version, and re-using an existing version is rejected (exit 2). The lock
   entry also records the sha256 of the tokens file automatically.
   `--approved-by` carries the step-1.7 approval basis on human-less runs;
-  omit it on solo runs (human approval lives in PLAN.md). If the project is a git repo, ALSO `git add
-  design/ && git commit -m "Taste lock: <direction>"`; if it is not a git
+  omit it on solo runs (human approval lives in PLAN.md). Before it records,
+  the lock validates the design files against the kit templates (D36):
+  `design/demo.html` byte-equal to the template demo, the four design docs
+  filled in (no placeholder bracket, at least 1 KB, required headings
+  present), and `design/tokens.css` still defining the template's unique
+  token-name set (values free, additions free). A refused lock writes
+  nothing; a token name may be dropped only via
+  `--allow-dropped-tokens "<the exact dropped names>"` with each name
+  recorded in PLAN.md § Amendments first. If the project is a git repo, ALSO `git add
+  design/ && git commit -m "Taste lock: <direction>"` — AFTER the lock
+  records, never before it; if it is not a git
   repo, (a) + (b) alone ARE the commit — never create a repo just for this,
   and never treat "saved the file" without the run-log lock as committed.
 - **Metric-locked loop (step 1.8 / step 3):** the lock defines the
@@ -525,7 +534,10 @@ human instructions to the step-5 fix list, never judge inputs.
   token dictionary (`skills/frontend-kit/scripts/token-dictionary.mjs`), and into the run
   log's notes — NEVER into TASTE.md or `tokens.css` mid-loop. The lock
   is immutable within a direction. A lessons merge into TASTE.md happens
-  only once, after the human gate approves the build (step 6.4). The
+  only once, after the human gate approves the build (step 6.4). Dropped-token
+  Amendments entries are the exception to the round-delta flow: they are
+  written at lock time, before the lock, and verified by the lock (D36) —
+  never via a round delta. The
   re-run gate + `converge-check.mjs` run against the round's output
   before any re-grade: no archive without converge-green.
 

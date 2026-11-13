@@ -116,7 +116,13 @@ prompt for discussion.
    `design/DESIGN-SYSTEM.md`, and the round-folder scaffold
    `design/rounds/` (README + `_template/`) are copied with them and
    filled in at step 1 (plan, Design Read, declaration) and step 5
-   (one `design/rounds/<n>/` per fix round). Clone the kit OUTSIDE the
+   (one `design/rounds/<n>/` per fix round). The lock (step 1.8)
+   validates these files against the kit templates before it records:
+   `demo.html` byte-equal, the four docs filled in (no placeholder
+   bracket, at least 1 KB, required headings present), and `tokens.css`
+   still defining the template's unique token-name set (values free).
+   A project copied at an older template version refuses the lock
+   until the templates are re-copied (D36). Clone the kit OUTSIDE the
    project dir: the project dir must not contain the kit's own clone
    (`frontend-agent-kit/` from the install step) — the gate excludes a
    nested kit clone from its scans except the §1.1 secret text pass,
@@ -305,7 +311,13 @@ prompt for discussion.
      self-approval, the same back door as builder self-grading.
    The plan never moves the lock: round deltas merge into PLAN.md
    § Amendments, the token dictionary, and the run log's notes — never
-   into TASTE.md or `tokens.css` mid-loop (see step 5.5).
+   into TASTE.md or `tokens.css` mid-loop (see step 5.5). A token name
+   dropped at lock time is recorded the same way, before the lock:
+   write each dropped name into PLAN.md § Amendments and lock with
+   `--allow-dropped-tokens "<the exact dropped names>"` — the lock
+   verifies every dropped name appears there and refuses otherwise
+   (D36); the names are also recorded verbatim in the lock entry's
+   notes field.
 8. **Verifiable artifact:** commit `design/tokens.css` and the chosen
    references BEFORE any page HTML is written. If the finished page's tokens
    do not match the locked references, the workflow has a hole, not a feature.
@@ -328,7 +340,19 @@ prompt for discussion.
    existing version is rejected. The lock entry also records the sha256
    of the tokens file automatically, and `--approved-by` carries the
    step-1.7 approval basis on human-less runs (omit it on solo runs —
-   human approval lives in PLAN.md § Approval record). The 5-line lock
+   human approval lives in PLAN.md § Approval record). Before it
+   records, the lock validates the design files against the kit
+   templates (D36): `design/demo.html` must be byte-equal to the
+   template demo (CRLF line endings and trailing newlines normalised;
+   any other byte difference refuses), the four design docs must be
+   filled in (no template placeholder bracket, at least 1 KB, required
+   headings present), and `design/tokens.css` must still define the
+   template's unique token-name set (values free, additions free; a
+   rename is drop-old + add-new and needs `--allow-dropped-tokens`).
+   A refused lock writes nothing — fix the files (re-copy the
+   templates when the project was copied at an older template
+   version) and lock again. The git commit, when the project is a git
+   repo, runs AFTER the lock records — never before it. The 5-line lock
    summary at the top of `design/TASTE.md` is filled from the brief the
    generator emits (see "Round briefs + per-role context budgets"
    below), never hand-written.
@@ -387,7 +411,13 @@ Material Design 3, "Design tokens"
 - MODE vs THEME: a mode is a context value (light/dark); a theme is the
   whole set. Name modes explicitly (`on-dark`); never rely on an implied
   light default — the dark block in `tokens.css` is sparse overrides
-  (diffs only, see the Figma input section).
+  (diffs only, see the Figma input section). The lock enforces the
+  template's unique token-name set (D36, measured 2026-11-13: 70
+  distinct names over 83 definition occurrences — the dark block
+  re-defines 10 colour roles and the reduced-motion block 3 motion
+  tokens; re-definitions count once per name): token values are free
+  and new names may be added, but a template name may not disappear
+  without `--allow-dropped-tokens` and a PLAN.md § Amendments entry.
 
 **On-* pairing.** Every surface role has an `on-*` text role defined
 beside it in the same edit (`--color-canvas` → `--color-on-canvas`,
@@ -1099,7 +1129,10 @@ The stop rules live in `references/stop-rules.md`; this tree mirrors them.
    the run log's notes — NEVER into TASTE.md or `tokens.css` mid-loop.
    The lock is immutable within a direction. A lessons merge into
    TASTE.md happens only once, after the human gate approves the build
-   (step 6.4). The re-run gate + `converge-check.mjs` run against the
+   (step 6.4). Dropped-token Amendments entries are the exception to
+   the round-delta flow: they are written at lock time, before the
+   lock, and verified by the lock (step 1.7, D36) — never via a round
+   delta. The re-run gate + `converge-check.mjs` run against the
    round's output before any re-grade: no archive without
    converge-green.
 

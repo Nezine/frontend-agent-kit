@@ -41,7 +41,17 @@
 // locked tokens + chosen references BEFORE any HTML (see frontend-kit
 // SKILL.md step 1.5). "Commit" = files saved under design/ in the project
 // AND this lock entry in the run log; git commit only if the project is a
-// git repo.
+// git repo. MIE-5 (D36): `lock` first runs validateTemplateIntegrity()
+// against the installed kit templates (../templates/design/): demo.html
+// must be byte-equal to the template, the four design docs must be
+// filled in (no placeholder bracket, >= 1 KB, required headings
+// present), and design/tokens.css must still define the template's
+// unique token-name set (values free). A lock of stub or drifted
+// templates is REJECTED (exit 2, nothing written); the fix is to
+// re-copy the templates and fill them in before locking. Dropped token
+// names are allowed only via --allow-dropped-tokens, recorded verbatim
+// in the lock entry's notes and in PLAN.md § Amendments (verified,
+// never written, by the lock itself).
 //
 // P7 RUN STATE (no separate run.json file — council decision, 2026-11-10):
 // the machine-readable run state lives IN this append-only log, not in a
@@ -242,6 +252,7 @@
 //     --refs "<chosen DESIGN.md + reference screenshots>"
 //     [--version N] [--approved-by "<approval basis>"]
 //     [--purpose "<PLAN.md Purpose + primary user task section>"]
+//     [--notes "..."] [--allow-dropped-tokens "<name,name>"]
 //   lock records the step-1 taste lock (the "commit" of tokens + chosen
 //   references BEFORE any HTML). It appends {kind:'taste-lock'} to the run
 //   log; --tokens is required, --refs is required (name the locked
@@ -254,6 +265,21 @@
 //   purpose is a lock field, not a plan note. It is optional so
 //   existing lock invocations keep working; omit it only when the plan
 //   has no Purpose section yet, and record it on the next lock.
+//   MIE-5 (D36): before appending, lock runs validateTemplateIntegrity()
+//   against the installed kit templates — demo.html byte-equal (CRLF
+//   line endings and trailing newlines normalised; any other byte
+//   difference refuses), the four design docs filled in (no placeholder
+//   bracket, >= 1 KB, required headings present), tokens.css still
+//   defining the template's unique token-name set (values free,
+//   additions free). --allow-dropped-tokens lists, exactly, the token
+//   names the lock drops: the listed set must equal the actually-missing
+//   set (an extra listed name refuses, an unlisted missing name
+//   refuses); the flag refuses when PLAN.md is absent, and lock verifies
+//   each dropped name appears in PLAN.md § Amendments before appending
+//   (verified, never written). The flag's value is recorded verbatim in
+//   the lock entry's notes field (composed by lock from the flag as
+//   given, appended to --notes when both are present). --refs stays free
+//   text, never stat'ed.
 //   node run-log.mjs --project <dir> replan --action <re-plan|re-pick>
 //     --purpose "<revised purpose from PLAN.md>" [--notes "..."]
 //   node run-log.mjs --project <dir> crosscheck --slice <id> [--round N]
@@ -448,6 +474,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const ALLOWED_GRADERS = ['judge-subagent', 'muse-manager', 'other-model'];
 const ALLOWED_CHECKERS = ['security-expert', 'crosscheck-subagent', 'crosscheck-team'];
@@ -531,7 +558,7 @@ function usage(msg) {
   node run-log.mjs --project <dir> record --round N --grader <label> --basis "<why independent>" --scores <t,l,c,s> --judge-report <design/judge/round-N.md> --gate pass [--gate-leg1 <path> --gate-leg2 <path>] [--variant <name>] [--notes "..."] [--tokens-hash <hex>] [--fix-class "<class>"] [--outcome <kept|discarded|re-pick|stopped|escalated|pending>] [--gate-findings "<...>"] [--page <built.html>] [--trigger <flat-line|round-1-repick|stagnation>] [--pairwise <keep-incumbent|keep-challenger|tie> --pairwise-reports <p1,p2>] [--pairwise-agrees <yes|no>] [--jury "<t,l,c,s median>" --jury-mode <disjoint-3|single-family> --jury-votes "<v1;v2;v3>" --judge-reports <j1,j2,j3>] [--not-regraded "<#section,#section>"] [--expert-motion <1-5> --expert-motion-evidence "<observable>" --expert-motion-report <path>] [--expert-ux <1-5> --expert-ux-evidence "<observable>" --expert-ux-report <path>]  (D15: a graded round requires --judge-report; the evidence is derived from the artifact, --evidence is not accepted)
   node run-log.mjs --project <dir> record --round N --grader none --scores none --gate <pass|fail> [--gate-leg1 <path> --gate-leg2 <path>] [--variant <name>] [--notes "..."] [--expert-motion <1-5> --expert-motion-evidence "<observable>" --expert-motion-report <path>] [--expert-ux <1-5> --expert-ux-evidence "<observable>" --expert-ux-report <path>]  (no-grade round: grade is "gate green, vision not available" when --gate pass, "gate red, no grade" when --gate fail; expert scores allowed, each with its expert artifact; no judge artifact may be cited)
   node run-log.mjs --project <dir> feedback --from "<human words>" --change "<token diff>" --round N [--score-after <t,l,c,s> --grader <label> --basis "<why independent>" --judge-report <design/judge/round-N-regrade.md> [--page <built.html>]] [--fix-class "<class>"]
-  node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"]
+  node run-log.mjs --project <dir> lock --tokens <path> --refs "<locked direction>" [--version N] [--approved-by "<approval basis>"] [--purpose "<purpose from PLAN.md>"] [--notes "..."] [--allow-dropped-tokens "<name,name>"]
   node run-log.mjs --project <dir> replan --action <re-plan|re-pick> --purpose "<revised purpose from PLAN.md>" [--notes "..."]
   node run-log.mjs --project <dir> crosscheck --slice <id> [--round N] --severe N --warning N [--waived N] --report <path> --checker <security-expert|crosscheck-subagent|crosscheck-team> --basis "<why independent>"
   node run-log.mjs --project <dir> land --slice <id> [--round N] --gate pass [--gate-leg1 <path> --gate-leg2 <path>] [--page <built.html>] [--notes "..."]
@@ -549,6 +576,14 @@ function parseArgs(argv) {
       const key = a.slice(2);
       // Boolean flags take no value (currently only --allow-missing on
       // `brief`); every other --flag consumes the next token.
+      // --allow-dropped-tokens is a VALUE flag, not a boolean: its value
+      // is a comma-separated list of token names, and token names start
+      // with `--`, so the value path below consumes the next token
+      // unconditionally — which is what makes
+      // `--allow-dropped-tokens --color-accent,...` work. Do NOT add it
+      // to the boolean branch: a boolean reading would swallow the
+      // value into the positional list and the flag would silently
+      // carry nothing.
       if (key === 'allow-missing') { out[key] = true; continue; }
       // Value flags consume the next token unconditionally: a value may
       // legitimately start with '--' (e.g. a token diff "--color-accent: ...").
@@ -1112,6 +1147,268 @@ function verifyLockLine(project, r) {
   return judgeReportMod
     ? judgeReportMod.verifyLockLine(project, r)
     : { ok: false, reasons: ['the judge-report parser (judge-report.mjs, next to run-log.mjs) is unavailable — a stored taste lock cannot be verified without it'] };
+}
+
+// MIE-5 (D36, 2026-11-13) — lock-time template-integrity check.
+//
+// The defect: `lock` recorded whatever design/ files happened to be on
+// disk — a stub TASTE.md, a demo.html edited by hand, a tokens.css with
+// a renamed token — and the run log then stood as the lock of record
+// for files the kit's own templates no longer describe. The check
+// compares the project's six design files against the installed kit
+// templates (resolved relative to this file, ../templates/design/ —
+// the baseline is the CURRENT installed template, never a hardcoded
+// sha256, per the verify.sh §2f precedent; a project copied at an
+// older template version refuses, and the fix is to re-copy the
+// templates before locking).
+//
+// Classes (council-reconciled):
+//   Class A (byte-equality): design/demo.html must be byte-equal to the
+//     template demo.html. Normalisation: CRLF -> LF, then exactly one
+//     trailing newline — a 1-byte CONTENT difference still refuses.
+//     Byte-equality on primitives.css would forbid the rebrand the file
+//     exists for, so primitives.css is name-set + single-definition
+//     only, values free, and only when the split layout is chosen
+//     (XOR with the tokens.css Layer 1 block; absent primitives.css —
+//     the default inline layout — skips the check, never refuses).
+//   Class B (anchor-preservation): the four design docs keep their
+//     required headings (bodies free), and design/tokens.css keeps the
+//     template's UNIQUE token-name set (values free). Measured on the
+//     2026-11-13 template: 83 definition occurrences, 70 DISTINCT names
+//     — the board's "83" counts occurrences, not names (Expert A: 70
+//     was right; Expert C: 73 was wrong). Method, reproducible:
+//       grep -cE '^[[:space:]]*--[a-zA-Z0-9-]+:' tokens.css  # 83
+//       awk 'match($0, /^[[:space:]]*--[a-zA-Z0-9-]+:/) { n=substr($0, RSTART, RLENGTH); gsub(/[[:space:]:]/, "", n); print n }' tokens.css | sort -u | wc -l  # 70
+//     The trailing colon in both is load-bearing: without it the prose
+//     mention `--scroll-grow update` in the reduced-motion comment
+//     counts as a 71st name. 13 names are defined twice (10 colour roles
+//     in the [data-theme="dark"] block, 3 motion tokens in the
+//     prefers-reduced-motion block); re-definitions count once per name.
+//     Additions are free; a rename is drop-old + add-new and needs the
+//     flag.
+//   Stub (three-signal rule): refuse if ANY of (a) a template
+//     placeholder bracket remains in a design doc, (b) the doc is
+//     smaller than 1 KB (the §2f threshold), (c) a required heading is
+//     missing. (a) applies to the four Markdown docs only — tokens.css
+//     legitimately contains `[data-theme="dark"]` and `[data-ui]`.
+//     Markdown links `[text](url)` are exempt from (a); any other
+//     bracket is an unfilled slot by the kit's bracket-means-slot
+//     convention (the templates use brackets only for fill-in slots,
+//     once HTML comments are stripped).
+//   --allow-dropped-tokens "<name,name>": the listed set must EXACTLY
+//     equal the actually-missing set. Each dropped name must appear in
+//     PLAN.md § Amendments (verified here, never written — this script
+//     never edits PLAN.md); the flag refuses when PLAN.md is absent
+//     (subsumed by the six-file presence check below, which refuses on
+//     a missing PLAN.md before the Amendments check runs).
+//   --refs stays free text, never stat'ed (out of scope).
+//   Containment: the D13 discipline applies to all six design files
+//     (lstat-reject symlinks, realpath must resolve inside
+//     <project>/design/).
+// The validator READS ONLY: it writes nothing before rejecting (no
+// PLAN.md write, no dir creation). Both failure modes exit 2 / nothing
+// written, via reject(). Returns the parsed --allow-dropped-tokens list
+// (verbatim token names) so `lock` can record it in the lock entry's
+// notes field.
+const TEMPLATE_DESIGN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'design');
+const TEMPLATE_HEADINGS = {
+  'TASTE.md': ['Lock summary', 'Intent', 'Likes', 'Dislikes', 'Hard rules', 'Reference direction'],
+  'PLAN.md': ['Decisions', 'Assumptions', 'Design Read', 'Purpose + primary user task', 'Section inventory', 'Acceptance criteria (EARS)', 'Screen × state matrix', 'Design system (pointer', 'Amendments', 'Approval record'],
+  'DESIGN-READ.md': ['Design Read', 'The five dials', 'What the dials decide'],
+  'DESIGN-SYSTEM.md': ['Reference mapping', "Do / don't rules", 'Rationale', 'Drift rule'],
+};
+const STUB_MIN_BYTES = 1024; // §2f threshold: a design doc under 1 KB is a stub.
+
+function stripHtmlComments(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function stripCssComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+// Defined token names of a CSS file: name -> definition count. A
+// definition is a line whose first token is `--name:` — the colon is
+// load-bearing (see the D36 header above). Comments are stripped
+// first, so a name mentioned in prose never counts as defined.
+function definedTokenNames(cssText) {
+  const names = new Map();
+  for (const line of stripCssComments(cssText).split('\n')) {
+    const m = /^[ \t]*(--[A-Za-z0-9-]+):/.exec(line);
+    if (m) names.set(m[1], (names.get(m[1]) || 0) + 1);
+  }
+  return names;
+}
+
+function templateHeadingPresent(text, title) {
+  const want = `## ${title}`;
+  for (const raw of stripHtmlComments(text).split('\n')) {
+    const line = raw.trim();
+    // A heading line is the bare title, or the title followed by a
+    // parenthetical description — the template's own shapes
+    // ("## Lock summary (5 lines — …)", "## Design system (pointer — …)").
+    // Arbitrary trailing prose does not count as the heading.
+    if (line === want || line.startsWith(`${want} (`) || line.startsWith(`${want} —`)) return true;
+  }
+  return false;
+}
+
+function hasPlaceholderBracket(text) {
+  return /\[[^\]\n]{1,200}\](?!\()/.test(stripHtmlComments(text));
+}
+
+function normaliseDemo(text) {
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '') + '\n';
+}
+
+function amendmentsSection(planText) {
+  const lines = stripHtmlComments(planText).split('\n');
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === '## Amendments' || line.startsWith('## Amendments (')) { start = i; break; }
+  }
+  if (start < 0) return null;
+  const out = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s/.test(lines[i].trim())) break;
+    out.push(lines[i]);
+  }
+  return out.join('\n');
+}
+
+function validateTemplateIntegrity(project, args) {
+  // Baseline: the installed template, resolved relative to this file.
+  // A missing template dir (or template file) fails closed — the lock
+  // cannot be checked against a baseline that is not there.
+  let templateDirReal;
+  try { templateDirReal = fs.realpathSync(TEMPLATE_DESIGN_DIR); } catch {
+    reject(`the kit template directory is missing (${TEMPLATE_DESIGN_DIR}) — the lock cannot be checked against its baseline. Re-run ./install.sh.`);
+  }
+  const readTemplate = (name) => {
+    const p = path.join(templateDirReal, name);
+    try { return fs.readFileSync(p, 'utf8'); } catch {
+      reject(`the kit template file ${name} is missing from ${templateDirReal} — the lock cannot be checked against its baseline. Re-run ./install.sh.`);
+    }
+  };
+  const templateTokens = readTemplate('tokens.css');
+  const templateDemo = readTemplate('demo.html');
+  const templateNames = definedTokenNames(templateTokens);
+  const templatePrimitiveNames = new Set([...templateNames.keys()].filter((n) => n.startsWith('--primitive-')));
+
+  // The flag: exact comma-separated token names, no wildcard/blanket.
+  // A malformed value is a usage error (exit 1); a well-formed value
+  // that does not exactly equal the missing set is a rejection below.
+  let allowed = [];
+  if (args['allow-dropped-tokens'] !== undefined) {
+    const raw = String(args['allow-dropped-tokens']);
+    const parts = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    if (raw.trim().length > 0 && parts.length === 0) usage('--allow-dropped-tokens must be a comma-separated list of token names, e.g. "--color-accent,--space-9"');
+    for (const name of parts) {
+      if (!/^--[A-Za-z0-9-]+$/.test(name)) usage(`--allow-dropped-tokens names a token that is not a token name: "${name}" (expected comma-separated --names, no wildcard)`);
+    }
+    allowed = [...new Set(parts)];
+  }
+
+  // Project + design/ containment (D13 discipline).
+  const projectReal = (() => { try { return fs.realpathSync(project); } catch { return path.resolve(project); } })();
+  const designDir = path.resolve(project, 'design');
+  let designReal;
+  try { designReal = fs.realpathSync(designDir); } catch { designReal = path.join(projectReal, 'design'); }
+  const inside = (p, d) => p === d || p.startsWith(d + path.sep);
+  if (!inside(designReal, projectReal)) reject(`<project>/design/ resolves outside the project (real path ${designReal}) — a design/ directory outside the project cannot hold the locked files.`);
+
+  // One design file: lstat-reject symlinks, realpath must resolve
+  // inside <project>/design/. Required files refuse when missing;
+  // the optional primitives.css returns null when absent.
+  const readDesignFile = (name, required) => {
+    const resolved = path.resolve(designDir, name);
+    let lstat;
+    try { lstat = fs.lstatSync(resolved); } catch {
+      if (!required) return null;
+      reject(`design/${name} is missing — copy the kit templates into design/ and fill them in before locking.`);
+    }
+    if (lstat.isSymbolicLink()) reject(`design/${name} is a symlink — design files must be real files inside <project>/design/, not links to files elsewhere.`);
+    if (!lstat.isFile()) reject(`design/${name} is not a regular file.`);
+    let real;
+    try { real = fs.realpathSync(resolved); } catch { reject(`design/${name} cannot be resolved.`); }
+    if (!inside(real, designReal)) reject(`design/${name} resolves outside <project>/design/ (real path ${real}) — a link or mount escaping design/ is rejected.`);
+    return fs.readFileSync(resolved, 'utf8');
+  };
+  const files = {};
+  for (const name of ['TASTE.md', 'PLAN.md', 'DESIGN-READ.md', 'DESIGN-SYSTEM.md', 'tokens.css', 'demo.html']) {
+    files[name] = readDesignFile(name, true);
+  }
+  const primitivesText = readDesignFile('primitives.css', false);
+
+  // Class A: demo.html byte-equal to the template (after normalisation).
+  const projectDemoBuf = Buffer.from(normaliseDemo(files['demo.html']), 'utf8');
+  const baselineDemoBuf = Buffer.from(normaliseDemo(templateDemo), 'utf8');
+  if (!projectDemoBuf.equals(baselineDemoBuf)) {
+    let at = 0;
+    while (at < projectDemoBuf.length && at < baselineDemoBuf.length && projectDemoBuf[at] === baselineDemoBuf[at]) at++;
+    reject(`design/demo.html differs from the kit template demo.html (first difference at byte ${at}) — demo.html must be byte-equal to the template (CRLF line endings and trailing newlines are normalised; any other byte difference refuses). Re-copy templates/design/demo.html before locking.`);
+  }
+
+  // Class B (anchor-preservation) + the three-signal stub rule, for the
+  // four design docs. Checked in the brief's signal order: (a) a
+  // template placeholder bracket remains, (b) size under 1 KB,
+  // (c) a required heading is missing.
+  for (const [name, headings] of Object.entries(TEMPLATE_HEADINGS)) {
+    const text = files[name];
+    if (hasPlaceholderBracket(text)) reject(`design/${name} still contains a template placeholder bracket ([...]) — fill every template slot before locking.`);
+    const bytes = Buffer.byteLength(text, 'utf8');
+    if (bytes < STUB_MIN_BYTES) reject(`design/${name} is a stub (${bytes} bytes, under the 1 KB threshold) — fill the template in before locking.`);
+    const missingHeadings = headings.filter((h) => !templateHeadingPresent(text, h));
+    if (missingHeadings.length) reject(`design/${name} is missing required heading(s): ${missingHeadings.map((h) => `## ${h}`).join(', ')} — heading bodies may change, heading lines may not disappear.`);
+  }
+
+  // Class B: the token-name set (values free, additions free).
+  const projectNames = definedTokenNames(files['tokens.css']);
+  let primitiveNames = new Map();
+  const split = primitivesText !== null;
+  if (split) {
+    // Split layout: the Layer 1 block lives in primitives.css, and
+    // tokens.css must not define it too — exactly ONE definition per
+    // primitive per project, never both. Values free, one definition
+    // per name inside primitives.css.
+    primitiveNames = definedTokenNames(primitivesText);
+    for (const [n, count] of primitiveNames) {
+      if (count > 1) reject(`design/primitives.css defines ${n} ${count} times — exactly one definition per primitive per project.`);
+    }
+    const inTokens = [...projectNames.keys()].filter((n) => n.startsWith('--primitive-'));
+    if (inTokens.length) reject(`design/tokens.css still defines Layer 1 primitive(s) (${inTokens.join(', ')}) while design/primitives.css exists — the split layout holds primitives in primitives.css only, never both. Delete the Layer 1 block from tokens.css.`);
+  }
+  const expectedTokens = new Set([...templateNames.keys()].filter((n) => !(split && templatePrimitiveNames.has(n))));
+  const missingTokens = [...expectedTokens].filter((n) => !projectNames.has(n));
+  const missingPrims = split ? [...templatePrimitiveNames].filter((n) => !primitiveNames.has(n)) : [];
+  const missing = [...new Set([...missingTokens, ...missingPrims])].sort();
+  const allowedSet = new Set(allowed);
+  const unlisted = missing.filter((n) => !allowedSet.has(n));
+  const extra = allowed.filter((n) => !missing.includes(n));
+  if (unlisted.length || extra.length) {
+    const bits = [];
+    if (unlisted.length) {
+      const inTokens = unlisted.filter((n) => missingTokens.includes(n));
+      const inPrims = unlisted.filter((n) => missingPrims.includes(n));
+      if (inTokens.length) bits.push(`design/tokens.css dropped without the flag: ${inTokens.join(', ')}`);
+      if (inPrims.length) bits.push(`design/primitives.css dropped without the flag: ${inPrims.join(', ')}`);
+    }
+    if (extra.length) bits.push(`listed but not actually missing: ${extra.join(', ')}`);
+    reject(`the project is missing token name(s) from the template (${bits.join('; ')}) — token names may not disappear; add them back, or lock with --allow-dropped-tokens "<the exact missing names>" and record each in PLAN.md § Amendments.`);
+  }
+
+  // The flag's paper trail: each dropped name must appear in PLAN.md
+  // § Amendments (verified, never written). PLAN.md is one of the six
+  // required files above, so a missing PLAN.md is already refused —
+  // the flag's refuse-without-PLAN.md is subsumed by that check.
+  if (missing.length) {
+    const section = amendmentsSection(files['PLAN.md']);
+    if (section === null) reject('design/PLAN.md has no ## Amendments section — dropped token names must be recorded there before locking with --allow-dropped-tokens.');
+    const absent = missing.filter((n) => !section.includes(n));
+    if (absent.length) reject(`dropped token name(s) ${absent.join(', ')} do not appear in PLAN.md § Amendments — record each dropped name there before locking (the lock verifies, never writes).`);
+  }
+  return allowed;
 }
 
 // Validate one cited judge artifact. `expect`:
@@ -1869,6 +2166,19 @@ if (cmd === 'record') {
   } else {
     lockVersion = existingLocks.length + 1;
   }
+  // MIE-5 (D36): template-integrity check, after the version-occupation
+  // check and immediately before appendLog. Rejects (exit 2, nothing
+  // written) on stub or drifted design files; returns the parsed
+  // --allow-dropped-tokens list for the notes field below.
+  const dropped = validateTemplateIntegrity(args.project, args);
+  // The dropped names are recorded verbatim in the lock entry's notes
+  // field — composed here from the flag as given (appended to --notes
+  // when both are present).
+  let lockNotes = args.notes || null;
+  if (dropped.length) {
+    const dropNote = `dropped tokens: ${args['allow-dropped-tokens']}`;
+    lockNotes = lockNotes ? `${lockNotes}; ${dropNote}` : dropNote;
+  }
   const rec = {
     kind: 'taste-lock', lockVersion,
     tokens: args.tokens,
@@ -1876,7 +2186,7 @@ if (cmd === 'record') {
     references: args.refs,
     purpose: args.purpose || null,
     approvedBy: args['approved-by'] || null,
-    notes: args.notes || null,
+    notes: lockNotes,
     at: new Date().toISOString(),
   };
   appendLog(args.project, rec);
