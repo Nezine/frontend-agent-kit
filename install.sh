@@ -971,7 +971,7 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
   esac
   return 0
 }
-playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and place it
+playwright_curl_one() { # <url> — fetch one failed artifact with curl --fail -C - and place it
   local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name
   # F-RT1 fix pass: validate the shape before the mapping — both the
   # mapping and the cross-check below must see the same string, and a
@@ -1069,9 +1069,16 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
   dir_name="${name//-/_}-$rev"
   mkdir -p "$state_dir/playwright-downloads"
   zip_path="$state_dir/playwright-downloads/$fname"
-  printf 'curl fallback: fetching %s with curl -C - (resume; partial file kept at %s)...\n' "$url" "$zip_path"
-  if ! curl -C - -L -o "$zip_path" "$url"; then
-    printf 'curl fallback: curl failed for %s (partial file kept at %s — re-run the installer to resume).\n' "$url" "$zip_path"
+  printf 'curl fallback: fetching %s with curl --fail -C - (resume; a partial download, if any, is kept at %s)...\n' "$url" "$zip_path"
+  # W3-RT5 fix pass 3 (2026-11-13): --fail, so an HTTP error (404)
+  # fails fast with NO error body written. Before, curl without --fail
+  # exited 0 on a 404 and wrote the 215-byte error body as the "zip";
+  # a later clean fetch of the same filename resumed from byte 215 and
+  # failed extraction — one poisoned log line permanently blocked that
+  # filename until the partial file was deleted by hand. Verified live:
+  # --fail on the poisoned URL exits 22 and leaves no file behind.
+  if ! curl --fail -C - -L -o "$zip_path" "$url"; then
+    printf 'curl fallback: curl failed for %s (a partial download, if any, is kept at %s — re-run the installer to resume).\n' "$url" "$zip_path"
     return 1
   fi
   [[ -s "$zip_path" ]] || { printf 'curl fallback: empty file for %s.\n' "$url"; return 1; }
@@ -1102,7 +1109,13 @@ for info in z.infolist():
     if mode:
         os.chmod(os.path.join(sys.argv[2], info.filename), mode)
 ' "$zip_path" "$dest"; then
-    printf 'curl fallback: extraction failed for %s.\n' "$zip_path"; return 1
+    # W3-RT5 fix pass 3 (2026-11-13): a file that fails extraction is
+    # corrupt, not merely truncated — resuming from it can never
+    # succeed, so drop it; the next run re-downloads from scratch
+    # instead of being permanently blocked on this filename.
+    printf 'curl fallback: extraction failed for %s — removing the corrupt file so the next run re-downloads it.\n' "$zip_path"
+    rm -f -- "$zip_path"
+    return 1
   fi
   if [[ -n "$exe_rel" ]]; then
     [[ -f "$dest/$exe_rel" ]] || { printf 'curl fallback: expected executable %s not in the archive.\n' "$dest/$exe_rel"; return 1; }
@@ -1902,7 +1915,7 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
       if ! TMPDIR="$browser_tmp" run_best_effort "playwright-cli install-browser chrome-for-testing" 600 playwright-cli install-browser chrome-for-testing; then
         # CLI download failed — curl resume fallback (F2): the CLI's Node
         # downloader has no resume and dies at ~90% on this network.
-        printf 'Playwright CLI download failed; trying the curl -C - resume fallback (install.sh playwright_curl_fallback).\n'
+        printf 'Playwright CLI download failed; trying the curl --fail -C - resume fallback (install.sh playwright_curl_fallback).\n'
         if playwright_curl_fallback; then
           printf 'curl fallback placed the browser(s); re-running the CLI install once to finish the remaining artifacts...\n'
           if TMPDIR="$browser_tmp" run_best_effort "playwright-cli install-browser chrome-for-testing (after curl fallback)" 600 playwright-cli install-browser chrome-for-testing; then
@@ -1926,7 +1939,7 @@ if [[ "$skip_eyes" == 0 && "$have_node" == 1 && "$have_npx" == 1 && "$node_ok" =
         else
           _with_deps=""
           if [[ "$is_darwin" == 0 ]]; then _with_deps=" (on Linux, add --with-deps for system libs — needs sudo)"; fi
-          note_pending "Chrome-for-Testing browser not installed for Playwright CLI. Run: playwright-cli install-browser chrome-for-testing${_with_deps}. The CLI's Node downloader fails on this network (server closed connection at ~90%); if it fails again, fetch the URL it prints with: curl -C - -L -o <file.zip> <url>, then extract it under $pw_cache_dir/ (see install.sh playwright_curl_fallback for the layout)."
+          note_pending "Chrome-for-Testing browser not installed for Playwright CLI. Run: playwright-cli install-browser chrome-for-testing${_with_deps}. The CLI's Node downloader fails on this network (server closed connection at ~90%); if it fails again, fetch the URL it prints with: curl --fail -C - -L -o <file.zip> <url>, then extract it under $pw_cache_dir/ (see install.sh playwright_curl_fallback for the layout)."
         fi
       fi
     fi
