@@ -182,7 +182,7 @@ Install (by the kit): Playwright CLI pinned + vendored gate scripts
   against the LOCKED `tokens.css`. **Pass criterion:** the demo renders
   every listed token visibly AND passes the step-3 gate when gated on its
   own (`gate.sh --target design/demo.html`: `detect` 0 findings, static
-  checks pass). The every-listed-token half is scripted, not asserted:
+  checks pass). Link tokens.css by location: a page at the project root links `design/tokens.css`; only a file inside `design/` links bare `tokens.css`. The every-listed-token half is scripted, not asserted:
   `gate.sh` §1b reads the demo header's EXPECTED TOKENS block and fails
   the gate when any listed token is undefined in `tokens.css` or
   unreferenced in the demo body. A demo that fails the gate proves the tokens are wrong:

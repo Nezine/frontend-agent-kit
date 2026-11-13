@@ -168,15 +168,30 @@ while [[ "$target" == */ && "$target" != "/" ]]; do target="${target%/}"; done
 if [[ "$self_test" == 1 ]]; then
   work="$(mktemp -d)"
   mkdir -p "$work/design"
-  printf '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title><link rel="stylesheet" href="tokens.css"><style>body{background:var(--bg)}</style></head><body><main><h1>t</h1></main></body></html>\n' > "$work/index.html"
-  printf ':root { --bg: #fff; }\n' > "$work/tokens.css"
+  printf '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title><link rel="stylesheet" href="design/tokens.css"><style>body{background:var(--bg)}</style></head><body><main><h1>t</h1></main></body></html>\n' > "$work/index.html"
   # The self-test fixture is a real project by the gate's own rule: the
   # taste lock lives in design/tokens.css (F6 — no tokens, no pass).
+  # (MIE-6 / D37: no root tokens.css copy — the root page links
+  # design/tokens.css by location, as a real root page must.)
   printf ':root { --bg: #fff; }\n' > "$work/design/tokens.css"
   target="$work"
 fi
 [[ -n "$target" ]] || { printf 'gate.sh: --target is required\n' >&2; exit 1; }
 [[ -e "$target" ]] || { printf 'gate.sh: target does not exist: %s\n' "$target" >&2; exit 1; }
+
+# MIE-6 (D37): canonicalise $target to an absolute path (logical pwd).
+# A bare-relative target (design/demo.html, design/v0.html) left
+# project_dir relative, so the strip arms below — which require a "/"
+# before design — never matched, and the taste-lock check looked for
+# design/design/tokens.css. Logical pwd ONLY (no -P, no realpath,
+# no readlink -f, no python3): a symlinked project_dir must stay a
+# symlink for the §6 -L check below. A cd failure fails loudly (exit 1),
+# never falls through with an empty $target under set -u.
+if [[ -d "$target" ]]; then
+  target="$(cd -- "$target" && pwd)" || { printf 'gate.sh: cannot resolve target directory: %s\n' "$target" >&2; exit 1; }
+else
+  target="$(cd -- "$(dirname -- "$target")" && pwd)/$(basename -- "$target")" || { printf 'gate.sh: cannot resolve target directory: %s\n' "$target" >&2; exit 1; }
+fi
 
 # Detect output goes to a fresh mktemp file under $HOME (never a fixed
 # /tmp path: concurrent runs would clobber each other, and a scratch
@@ -207,6 +222,12 @@ if [[ -d "$target" ]]; then project_dir="$target"; else project_dir="$(dirname -
 case "$project_dir" in
   */design/variants) project_dir="${project_dir%/design/variants}" ;;
   */design) project_dir="${project_dir%/design}" ;;
+  # Defence in depth (MIE-6 / D37): normally unreachable after the
+  # canonicalisation above (a bare-relative target is absolute by now),
+  # but a bare project_dir must still strip so the taste-lock check can
+  # never again point at design/design/tokens.css.
+  design/variants) project_dir="." ;;
+  design) project_dir="." ;;
 esac
 
 # --- nested kit-clone exclusion (D14, GAP-12) -------------------------------
@@ -402,7 +423,18 @@ for ((_fi=0; _fi<${#html_files[@]}; _fi++)); do f="${html_files[$_fi]}"
     # scheme not in that list, e.g. a typo'd scheme) must resolve to a
     # file. The exemption is case-insensitive (MAILTO: is a scheme too).
     ref="${ref%%\?*}"; ref="${ref%%\#*}"
-    [[ -e "$dir/$ref" ]] || fail "$f:$lineno: referenced file missing: $ref"
+    if [[ ! -e "$dir/$ref" ]]; then
+      fail "$f:$lineno: referenced file missing: $ref"
+      # MIE-6 (D37): $ref tokens.css and ./tokens.css name the same file.
+      # A root page linking either bare almost always means the author
+      # meant the taste lock at design/tokens.css — say so, but only
+      # when the lock actually exists there. design/tokens.css as $ref
+      # never triggers this (it resolves), and files inside design/
+      # linking bare tokens.css keep passing (their $dir IS design/).
+      if [[ "$ref" == "tokens.css" || "$ref" == "./tokens.css" ]] && [[ -f "$project_dir/design/tokens.css" ]]; then
+        note "hint: this page links bare tokens.css, but the taste lock lives at design/tokens.css — link design/tokens.css from a root page (only files inside design/ link bare tokens.css)"
+      fi
+    fi
   done < <(grep -ionE "(src|href)=('[^']*'|\"[^\"]*\"|[^'\"[:space:]>]+)" "$f" 2>/dev/null | sed -E -e 's/^([0-9]+):[a-zA-Z]+=/\1:/' -e "s/^([0-9]+):['\"]/\1:/" -e "s/['\"]$//" | grep -viE '^[0-9]+:(https?:|data:|mailto:|tel:|javascript:|#)' || true)
 done
 

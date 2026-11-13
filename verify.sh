@@ -902,7 +902,7 @@ cat > "$work/index.html" <<'EOF'
 <meta name="theme-color" content="#ffffff">
 <meta name="site-kind" content="software">
 <meta name="page-type" content="software">
-<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="design/tokens.css">
 <script>document.documentElement.classList.add('m-enter');setTimeout(()=>document.documentElement.classList.add('m-enter-done'),700)</script>
 <style>
 * { box-sizing: border-box; }
@@ -1003,14 +1003,16 @@ section, footer.closing { min-height: 100svh; padding: 96px 0; }
 </div></footer>
 </body></html>
 EOF
-cat > "$work/tokens.css" <<'EOF'
+# The fixture is a real project by the gate's own rule (F6): the taste lock
+# lives in design/tokens.css — without it gate.sh fails the fixture.
+# (MIE-6 / D37: the tokens heredoc is written straight to design/ — the
+# old root copy at $work/tokens.css is gone, and the root page links
+# design/tokens.css by location.)
+mkdir -p "$work/design"
+cat > "$work/design/tokens.css" <<'EOF'
 :root { --bg: #ffffff; --ink: #0a0f1e; --surface: #f6f6f4; --mute: #454f5e; --line: #d8d8d2; --accent: #2456e6; --space: 16px; --max-width: 1200px; }
 body { background: var(--bg); color: var(--ink); margin: 0; font-family: system-ui, sans-serif; }
 EOF
-# The fixture is a real project by the gate's own rule (F6): the taste lock
-# lives in design/tokens.css — without it gate.sh fails the fixture.
-mkdir -p "$work/design"
-cp "$work/tokens.css" "$work/design/tokens.css"
 # D13 (GAP-11): the fixture gains a minimal design/PLAN.md so the
 # converge check actually executes on the §5 gate runs (B §5e, C §4.3 —
 # a PLAN-less fixture lets a missing converge-check pass silently via
@@ -1132,13 +1134,16 @@ fi
 # if its log contains "missing from the kit install" (gate.sh degrades
 # missing §3c/§5 helpers to notes, not failures — a gate that silently
 # skipped its helpers is not a green gate).
-run_gate_leg1() { # <path-to-gate.sh> <log-file> <label>
-  local gate_sh="$1" gate_log="$2" label="$3"
+run_gate_leg1() { # <path-to-gate.sh> <log-file> <label> [target] [cwd]
+  local gate_sh="$1" gate_log="$2" label="$3" gate_target="${4:-$work}" gate_cwd="${5:-$PWD}"
   if [[ ! -x "$gate_sh" ]]; then
     fail "gate script missing: $gate_sh ($label)"
     return
   fi
-  if "$gate_sh" --target "$work" ${launcher:+--launcher "$launcher"} >"$gate_log" 2>&1; then
+  # MIE-6 (D37): the optional target/cwd let the §5a path-fixture runs
+  # reuse this helper (bare-relative target, cwd = the fixture dir).
+  # Defaults preserve the §5 calls above exactly (--target "$work", cwd).
+  if (cd "$gate_cwd" && "$gate_sh" --target "$gate_target" ${launcher:+--launcher "$launcher"} >"$gate_log" 2>&1); then
     # A passing gate whose detect step was SKIPPED proves only the static
     # checks — the loop's detect leg is unproven (F3). That is UNVERIFIED,
     # not an OK.
@@ -1221,6 +1226,117 @@ else
   fi
 fi
 
+# --- 5a. bare-relative target regression (MIE-6 / D37) ----------------------
+# Council-confirmed bug: gate.sh derived project_dir from a possibly-
+# relative $target, and the strip arms required a "/" before design, so
+# bare `design`, `design/variants` and `design/demo.html` never matched
+# and the taste-lock check looked for design/design/tokens.css — the
+# docs' own prescribed invocations triggered it (SKILL.md step 1,
+# workflow.md §1). Fixture is a SEPARATE temp dir ($pf), not the §5
+# $work fixture: it has NO PLAN.md (otherwise the §5 converge-check runs
+# on the v0.html single-file target and fails a skeleton) and NO root
+# tokens.css anywhere — the lock lives only at design/tokens.css.
+# Tokens: the template tokens.css (all 21 demo EXPECTED TOKENS) plus
+# --bg, which the minimal v0/variant/index pages reference (the template
+# tokens define no --bg of their own). v0.html is a NEW inline minimal
+# file — no v0.html template exists in the repo — same shape as the
+# --self-test index.html, but inside design/ so it links bare tokens.css.
+pf="$work/path-fixture"
+mkdir -p "$pf/design/variants"
+pf_reset() { # restore the two files the negative/hint cases mutate
+  cp "$root/skills/frontend-kit/templates/design/tokens.css" "$pf/design/tokens.css"
+  printf ':root { --bg: #fff; }\n' >> "$pf/design/tokens.css"
+  cat > "$pf/index.html" <<'EOF'
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title><link rel="stylesheet" href="design/tokens.css"><style>body{background:var(--bg)}</style></head><body><main><h1>t</h1></main></body></html>
+EOF
+}
+pf_reset
+cp "$root/skills/frontend-kit/templates/design/demo.html" "$pf/design/demo.html"
+cat > "$pf/design/v0.html" <<'EOF'
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>v0</title><link rel="stylesheet" href="tokens.css"><style>body{background:var(--bg)}</style></head><body><main><h1>v0</h1></main></body></html>
+EOF
+cat > "$pf/design/variants/v1.html" <<'EOF'
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>v1</title><link rel="stylesheet" href="../tokens.css"><style>body{background:var(--bg)}</style></head><body><main><h1>v1</h1></main></body></html>
+EOF
+# Log-content assertions for the path fixture. The regression is a
+# wrong-path line in the LOG, so these hold on any machine — including
+# an engine-less one, where run_gate_leg1 reports the exit-0/PASS half
+# as UNVERIFIED instead of failing it. "GATE FAIL: design/tokens.css"
+# (broad prefix) covers every taste-lock shape — the wrong-path
+# "missing under" line, the empty/no-tokens/no-use lines alike.
+pf_has() { if grep -qF -- "$2" "$1"; then ok "path-fixture: $3"; else fail "path-fixture: $3 — '$2' not in $1"; fi; }
+pf_lacks() { if grep -qF -- "$2" "$1"; then fail "path-fixture: $3 — '$2' found in $1"; else ok "path-fixture: $3"; fi; }
+pf_gate_seq() { # <gate-sh> <tag> — demo + v0 via run_gate_leg1, variants direct, negative control, hint cases
+  local gate_sh="$1" tag="$2" log code
+  # demo: bare-relative target, cwd=$pf. Expected on a full machine:
+  # exit 0, GATE RESULT: PASS, demo-pass-criterion note present.
+  log="$work/path-demo-$tag.log"
+  run_gate_leg1 "$gate_sh" "$log" "path-fixture demo ($tag)" "design/demo.html" "$pf"
+  pf_lacks "$log" "GATE FAIL: design/tokens.css" "demo ($tag): no taste-lock FAIL (no wrong-path line)"
+  pf_has "$log" "demo pass criterion: all" "demo ($tag): demo-pass-criterion note present"
+  pf_lacks "$log" "referenced file missing: tokens.css" "demo ($tag): no missing tokens.css reference"
+  # v0: same bare-relative shape. Expected on a full machine: exit 0, PASS.
+  log="$work/path-v0-$tag.log"
+  run_gate_leg1 "$gate_sh" "$log" "path-fixture v0 ($tag)" "design/v0.html" "$pf"
+  pf_lacks "$log" "GATE FAIL: design/tokens.css" "v0 ($tag): no taste-lock FAIL"
+  pf_lacks "$log" "referenced file missing: tokens.css" "v0 ($tag): no missing tokens.css reference"
+  # variants: assert ONLY the two log lines — no full PASS, the minimal
+  # variant file is not made fully gate-clean. Run direct (not via
+  # run_gate_leg1) so a non-green variant exit cannot fail this case.
+  log="$work/path-variants-$tag.log"
+  (cd "$pf" && "$gate_sh" --target design/variants ${launcher:+--launcher "$launcher"} >"$log" 2>&1) || true
+  pf_lacks "$log" "GATE FAIL: design/tokens.css is missing under" "variants ($tag): no wrong-path taste-lock line"
+  pf_lacks "$log" "no .html files under design/variants" "variants ($tag): variant html found"
+  # NEGATIVE CONTROL (required — a passing log alone cannot name the file
+  # §1 read): delete the lock, re-run the demo target, expect exit 2
+  # with the missing line naming the ABSOLUTE project dir. The §1 message
+  # prints $project_dir, which for the demo target is the fixture ROOT
+  # ($pf — dirname is $pf/design, and the */design strip reduces it) —
+  # NOT $pf/design. Pre-fix this line read "missing under design"
+  # (relative); post-fix it names the absolute $pf. That is the whole
+  # point of the control: §1 read the lock at the right absolute path.
+  rm -f "$pf/design/tokens.css"
+  log="$work/path-neg-$tag.log"
+  code=0
+  (cd "$pf" && "$gate_sh" --target design/demo.html ${launcher:+--launcher "$launcher"} >"$log" 2>&1) || code=$?
+  if [[ "$code" == 2 ]] && grep -qF -- "GATE FAIL: design/tokens.css is missing under $pf" "$log"; then
+    ok "path-fixture negative control ($tag): missing lock fails exit 2 naming $pf"
+  else
+    fail "path-fixture negative control ($tag): expected exit 2 + 'GATE FAIL: design/tokens.css is missing under $pf' (got exit $code) — see $log"
+  fi
+  pf_reset
+  # §3 HINT CASE: root page links bare tokens.css (root copy still
+  # absent) — expect exit 2 with the missing line PLUS the hint; then
+  # delete the lock and re-run, expecting the same missing line WITHOUT
+  # the hint. --target . scans only index.html here (demo/v0/variants
+  # are excluded from project-dir scans).
+  printf '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title><link rel="stylesheet" href="tokens.css"><style>body{background:var(--bg)}</style></head><body><main><h1>t</h1></main></body></html>\n' > "$pf/index.html"
+  log="$work/path-hint-$tag.log"
+  code=0
+  (cd "$pf" && "$gate_sh" --target . ${launcher:+--launcher "$launcher"} >"$log" 2>&1) || code=$?
+  if [[ "$code" == 2 ]] && grep -qF -- "referenced file missing: tokens.css" "$log" && grep -qF -- "hint: this page links bare tokens.css" "$log"; then
+    ok "path-fixture §3 hint ($tag): bare tokens.css from a root page fails exit 2 with the hint"
+  else
+    fail "path-fixture §3 hint ($tag): expected exit 2 + missing line + hint (got exit $code) — see $log"
+  fi
+  rm -f "$pf/design/tokens.css"
+  log="$work/path-hint-nolock-$tag.log"
+  code=0
+  (cd "$pf" && "$gate_sh" --target . ${launcher:+--launcher "$launcher"} >"$log" 2>&1) || code=$?
+  if [[ "$code" == 2 ]] && grep -qF -- "referenced file missing: tokens.css" "$log" && ! grep -qF -- "hint: this page links bare tokens.css" "$log"; then
+    ok "path-fixture §3 hint ($tag): without the lock the missing line stays and the hint is gone"
+  else
+    fail "path-fixture §3 hint ($tag): expected exit 2 + missing line WITHOUT the hint (got exit $code) — see $log"
+  fi
+  pf_reset
+}
+pf_gate_seq "$root/skills/frontend-kit/scripts/gate/gate.sh" "clone"
+if [[ -n "$installed_gate_sh" ]]; then
+  pf_gate_seq "$installed_gate_sh" "installed"
+else
+  unverified "path-fixture: installed gate not present — installed half of the §5a regression skipped (the §5 installed run above already fails on a missing installed gate)"
+fi
+
 # --- 5b. run-log gate-artifact refusal (D13, GAP-11) ------------------------
 # A --gate pass with no artifacts (or with an artifact missing its PASS
 # marker) must be REFUSED (exit 2, nothing written) on both `record`
@@ -1229,7 +1345,7 @@ fi
 # exists, else the repo copy (the code under test is the same file).
 rl_proj="$work/runlog-proj"
 mkdir -p "$rl_proj/design"
-cp "$work/tokens.css" "$rl_proj/design/tokens.css"
+cp "$work/design/tokens.css" "$rl_proj/design/tokens.css"
 # D15 adjudication: the setup cross-checks below cite design/cc.md as
 # their report, and the D15 crosscheck --report rule requires the cited
 # report to exist (a real, non-empty file inside design/) before the
@@ -2958,7 +3074,7 @@ fi
 # §5c uses real report files throughout.
 jr_proj="$work/judge-proj"
 mkdir -p "$jr_proj/design/screenshots" "$jr_proj/design/screenshots-prev" "$jr_proj/design/judge" "$jr_proj/design/crosscheck"
-cp "$work/tokens.css" "$jr_proj/design/tokens.css"
+cp "$work/design/tokens.css" "$jr_proj/design/tokens.css"
 cp "$jr_proj/design/tokens.css" "$work/tokens-d15-orig.css"
 printf '<html><body><main id="main"><h1>Learn</h1></main></body></html>\n' > "$jr_proj/design/page.html"
 cp "$jr_proj/design/page.html" "$work/page-d15-orig.html"
@@ -3504,7 +3620,7 @@ fi
 # there. (A lexical inside-design/judge check alone passes this.)
 esc_proj="$work/judge-escape-proj"
 mkdir -p "$esc_proj/design/screenshots" "$esc_proj/design/crosscheck" "$work/judge-outside"
-cp "$work/tokens.css" "$esc_proj/design/tokens.css"
+cp "$work/design/tokens.css" "$esc_proj/design/tokens.css"
 cp "$work/page-d15-orig.html" "$esc_proj/design/page.html"
 for v in 1440 768 390; do printf 'PNG-%s-A' "$v" > "$esc_proj/design/screenshots/$v.png"; done
 printf 'GATE RESULT: PASS\n' > "$esc_proj/design/gate-leg1.log"
@@ -3552,7 +3668,7 @@ fi
 # targets for the appended-line cases).
 rp_proj="$work/readpath-proj"
 mkdir -p "$rp_proj/design/screenshots" "$rp_proj/design/screenshots-prev" "$rp_proj/design/judge" "$rp_proj/design/crosscheck"
-cp "$work/tokens.css" "$rp_proj/design/tokens.css"
+cp "$work/design/tokens.css" "$rp_proj/design/tokens.css"
 cp "$work/page-d15-orig.html" "$rp_proj/design/page.html"
 cp "$jr_proj/design/page2.html" "$rp_proj/design/page2.html"
 for v in 1440 768 390; do
@@ -3763,7 +3879,7 @@ r3_legs="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --pag
 r3_mkproj() { # dir — tokens/page/page2/shots/legs + cross-checks rounds 1..3 (slice r3)
   local P="$1" r
   mkdir -p "$P/design/screenshots" "$P/design/screenshots-prev" "$P/design/judge" "$P/design/crosscheck"
-  cp "$work/tokens.css" "$P/design/tokens.css"
+  cp "$work/design/tokens.css" "$P/design/tokens.css"
   cp "$work/page-d15-orig.html" "$P/design/page.html"
   printf '<html><body><main id="main"><h1>Other page</h1></main></body></html>\n' > "$P/design/page2.html"
   for v in 1440 768 390; do
@@ -4860,7 +4976,7 @@ fi
 r7_mkproj() {
   local p="$1"
   mkdir -p "$p/design/screenshots" "$p/design/judge"
-  cp "$work/tokens.css" "$p/design/tokens.css"
+  cp "$work/design/tokens.css" "$p/design/tokens.css"
   printf '<!doctype html><html><head><title>R7</title></head><body><main id="main"><h1>Verify fixture</h1></main></body></html>\n' > "$p/design/page.html"
   printf 'PNGDATA' > "$p/design/screenshots/round-1-1440.png"
   printf 'GATE RESULT: PASS\n' > "$p/design/gate-leg1.log"
