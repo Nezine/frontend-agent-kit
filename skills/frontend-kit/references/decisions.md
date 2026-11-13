@@ -961,3 +961,28 @@ BSD sed `invalid command code` twice, and the run aborting before any
 summary line on `grader_args[@]: unbound variable` (bash 3.2 + `set -u`,
 verify.sh:2959 on the 907aeaa base tree — 2997 on the 30ba029 HEAD; 3002 on the current HEAD,
 after the +38-line §2g shift and the +5-line §2g comment) — so the MacBook FAILs are the known macOS verify.sh
+defects (MIE-2 territory), not D15 evidence either way. The
+coordinator-relayed count discrepancy from Expert A's run (summary "21
+failures" vs 7 `^FAIL:` lines) was reproduced by NEITHER of the
+implementer's runs (VM: summary 3 failures, 3 `^FAIL:` lines —
+consistent; MacBook: 113 `^FAIL:` lines, no summary line — aborted
+mid-run). The MIE-5/6/7 implementers' `./verify.sh` runs will confirm or
+clear the D15 question. (3) The browser leg of leg 2 was never live-run
+(no Chrome on this VM; the VM run records it UNVERIFIED); the
+moments/effects verdict consequence above is a code trace, not a live
+observation — say so, and do not present it as observed gate output.
+
+**Sequencing.** MIE-8's fix (none) lands before MIE-10, as the board
+requires. The §2g verify.sh addition is small and additive; merge order
+is the coordinator's call (MIE-6 first, then MIE-5, MIE-7, MIE-9 last;
+MIE-8's §2g can land with the MIE-9 batch or separately).
+
+**Operative form.** `skills/frontend-kit/references/decisions.md` (this
+entry) + `verify.sh` (§2g) + `coord/mie.md` (milestone entry + GAP-16
+candidate proposal). No change to `install.sh`, no change to any gate
+script, no change to `coord/BOARD.md` (coordinator-owned). **Landing
+note:** D39 follows D15 in this file; D39 is MIE-8's board-awarded
+number (BOARD.md: "Mie's next decisions: D22, D36–D41", MIE-8 row D39) —
+decisions.md on main holds D1–D15 only, so D39 is free. Do NOT renumber
+D1–D15, and do NOT assume D40/D41 are free (D40 = MIE-9, D41 = MIE-10,
+both awarded).
