@@ -78,6 +78,29 @@ check "GCS headless-shell mac-x64 accepts" 0 \
   "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.18/mac-x64/chrome-headless-shell-mac-x64.zip" \
   chromium-headless-shell 1254
 
+# D35 (GAP-14) — bare-CDN shapes: the CDN branch parses builds/<kind>/<seg>
+# independent of any host prefix, so bare URLs get the same cross-check.
+check "D35 bare CDN CFT linux chrome accepts" 0 \
+  "https://cdn.playwright.dev/builds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "D35 bare CDN CFT linux headless-shell accepts" 0 \
+  "https://cdn.playwright.dev/builds/cft/158.0.8127.18/linux64/chrome-headless-shell-linux64.zip" \
+  chromium-headless-shell 1254
+check "D35 bare CDN ffmpeg linux accepts (revision 1013)" 0 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "D35 bare CDN ffmpeg mac-arm64 accepts (revision 1013)" 0 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/ffmpeg-mac-arm64.zip" \
+  ffmpeg 1013
+# D35 — prss.microsoft.com (mirror #2, ffmpeg only): previously fell
+# through to `return 0` unchecked (fail-open); now cross-checked.
+check "D35 prss ffmpeg linux accepts (revision 1013)" 0 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/1013/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "D35 prss ffmpeg linux-arm64 accepts (revision 1013)" 0 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/1013/ffmpeg-linux-arm64.zip" \
+  ffmpeg 1013
+
 # Refuse cases — a mismatched build must still be refused, not placed.
 check "CDN CFT wrong version refuses" 1 \
   "https://cdn.playwright.dev/dbazure/download/playwright/builds/cft/1.2.3.4/mac-arm64/chrome-mac-arm64.zip" \
@@ -88,6 +111,18 @@ check "CDN ffmpeg wrong revision refuses" 1 \
 check "GCS wrong version refuses" 1 \
   "https://storage.googleapis.com/chrome-for-testing-public/1.2.3.4/mac-arm64/chrome-mac-arm64.zip" \
   chromium 1254
+check "D35 bare CDN CFT wrong version refuses" 1 \
+  "https://cdn.playwright.dev/builds/cft/1.2.3.4/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "D35 bare CDN ffmpeg wrong revision refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/9999/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "D35 prss ffmpeg wrong revision refuses (was fail-open, rc=0)" 1 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/9999/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "D35 prss ffmpeg mac wrong revision refuses" 1 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/9999/ffmpeg-mac.zip" \
+  ffmpeg 1013
 
 printf 'cross-check test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]

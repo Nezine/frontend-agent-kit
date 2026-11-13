@@ -824,7 +824,10 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
         return 1
       fi
       ;;
-    https://cdn.playwright.dev/*)
+    https://cdn.playwright.dev/*|https://playwright.download.prss.microsoft.com/*)
+      # D35: prss is mirror #2 in PLAYWRIGHT_CDN_MIRRORS (ffmpeg only);
+      # it previously fell through to `return 0` unchecked (fail-open).
+      # The `builds/<kind>/<seg>` parsing below is host-agnostic.
       _url_kind="$(printf '%s' "$url" | sed -E 's#.*/builds/([^/]+)/.*#\1#')"
       _url_seg="$(printf '%s' "$url" | sed -E 's#.*/builds/(cft|ffmpeg)/([^/]+)/.*#\2#')"
       if [[ "$_url_kind" == "cft" ]]; then
@@ -857,6 +860,19 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
     # 131,998,580 B; Playwright CDN for older CLI builds + ffmpeg, whose
     # URL was read from the CLI's own download log:
     # cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1013/).
+    # GAP-14/D35: the CDN mirror prefix is GENERALISED, not enumerated —
+    # `cdn.playwright.dev/*builds/...` (`*` matches empty or any
+    # intermediate prefix). The CLI 0.1.24 bundle's own registry proves
+    # both shapes are emitted: chromium/headless-shell use cftUrl() whose
+    # ONLY mirror is the bare `https://cdn.playwright.dev`, while ffmpeg
+    # uses PLAYWRIGHT_CDN_MIRRORS (dbazure prefix, prss.microsoft.com,
+    # bare). The literal `/` after `cdn.playwright.dev` is the host
+    # anchor — do NOT rewrite as `dev**/builds`: `**` is just `*` twice
+    # in a case pattern and would match `dev.evil.com`. A third host is
+    # accepted for ffmpeg ONLY: playwright.download.prss.microsoft.com
+    # (mirror #2 in PLAYWRIGHT_CDN_MIRRORS); chromium/headless-shell
+    # never use prss, so no prss CFT arms exist. linux-arm64 arms
+    # (D35) cover the platform the mapping missed on every host shape.
     # Darwin arms (macOS phase, D12): same hosts, mac-arm64/mac-x64
     # shapes, VERIFIED 2026-11-11 from the CLI 0.1.24 bundle's own
     # lib/coreBundle.js (DOWNLOAD_PATHS + EXECUTABLE_PATHS) and live HEAD
@@ -870,11 +886,21 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
       name="chromium"; exe_rel="chrome-linux64/chrome" ;;
     https://storage.googleapis.com/chrome-for-testing-public/*/linux64/chrome-headless-shell-linux64.zip)
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux64/chrome-headless-shell" ;;
-    https://cdn.playwright.dev/*/builds/cft/*/linux64/chrome-linux64.zip)
+    https://storage.googleapis.com/chrome-for-testing-public/*/linux-arm64/chrome-linux-arm64.zip)
+      name="chromium"; exe_rel="chrome-linux-arm64/chrome" ;;
+    https://storage.googleapis.com/chrome-for-testing-public/*/linux-arm64/chrome-headless-shell-linux-arm64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux-arm64/chrome-headless-shell" ;;
+    https://cdn.playwright.dev/*builds/cft/*/linux64/chrome-linux64.zip)
       name="chromium"; exe_rel="chrome-linux64/chrome" ;;
-    https://cdn.playwright.dev/*/builds/cft/*/linux64/chrome-headless-shell-linux64.zip)
+    https://cdn.playwright.dev/*builds/cft/*/linux64/chrome-headless-shell-linux64.zip)
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux64/chrome-headless-shell" ;;
-    https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-linux.zip)
+    https://cdn.playwright.dev/*builds/ffmpeg/*/ffmpeg-linux.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-linux" ;;
+    https://cdn.playwright.dev/*builds/cft/*/linux-arm64/chrome-linux-arm64.zip)
+      name="chromium"; exe_rel="chrome-linux-arm64/chrome" ;;
+    https://cdn.playwright.dev/*builds/cft/*/linux-arm64/chrome-headless-shell-linux-arm64.zip)
+      name="chromium-headless-shell"; exe_rel="chrome-headless-shell-linux-arm64/chrome-headless-shell" ;;
+    https://cdn.playwright.dev/*builds/ffmpeg/*/ffmpeg-linux-arm64.zip)
       name="ffmpeg"; exe_rel="ffmpeg-linux" ;;
     https://storage.googleapis.com/chrome-for-testing-public/*/mac-arm64/chrome-mac-arm64.zip)
       name="chromium"; exe_rel="chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
@@ -884,17 +910,25 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and
       name="chromium"; exe_rel="chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
     https://storage.googleapis.com/chrome-for-testing-public/*/mac-x64/chrome-headless-shell-mac-x64.zip)
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-x64/chrome-headless-shell" ;;
-    https://cdn.playwright.dev/*/builds/cft/*/mac-arm64/chrome-mac-arm64.zip)
+    https://cdn.playwright.dev/*builds/cft/*/mac-arm64/chrome-mac-arm64.zip)
       name="chromium"; exe_rel="chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
-    https://cdn.playwright.dev/*/builds/cft/*/mac-arm64/chrome-headless-shell-mac-arm64.zip)
+    https://cdn.playwright.dev/*builds/cft/*/mac-arm64/chrome-headless-shell-mac-arm64.zip)
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-arm64/chrome-headless-shell" ;;
-    https://cdn.playwright.dev/*/builds/cft/*/mac-x64/chrome-mac-x64.zip)
+    https://cdn.playwright.dev/*builds/cft/*/mac-x64/chrome-mac-x64.zip)
       name="chromium"; exe_rel="chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" ;;
-    https://cdn.playwright.dev/*/builds/cft/*/mac-x64/chrome-headless-shell-mac-x64.zip)
+    https://cdn.playwright.dev/*builds/cft/*/mac-x64/chrome-headless-shell-mac-x64.zip)
       name="chromium-headless-shell"; exe_rel="chrome-headless-shell-mac-x64/chrome-headless-shell" ;;
-    https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-mac.zip)
+    https://cdn.playwright.dev/*builds/ffmpeg/*/ffmpeg-mac.zip)
       name="ffmpeg"; exe_rel="ffmpeg-mac" ;;
-    https://cdn.playwright.dev/*/builds/ffmpeg/*/ffmpeg-mac-arm64.zip)
+    https://cdn.playwright.dev/*builds/ffmpeg/*/ffmpeg-mac-arm64.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-mac" ;;
+    https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/*/ffmpeg-linux.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-linux" ;;
+    https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/*/ffmpeg-linux-arm64.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-linux" ;;
+    https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/*/ffmpeg-mac.zip)
+      name="ffmpeg"; exe_rel="ffmpeg-mac" ;;
+    https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/*/ffmpeg-mac-arm64.zip)
       name="ffmpeg"; exe_rel="ffmpeg-mac" ;;
     *)
       printf 'curl fallback: unknown artifact URL (no cache-layout mapping — not guessing): %s\n' "$url"
@@ -994,6 +1028,7 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
     [[ -z "$url" ]] && continue
     case "$url" in
       */linux64/chrome-linux64.zip) chrome_url="$url" ;;
+      */linux-arm64/chrome-linux-arm64.zip) chrome_url="$url" ;;
       */mac-arm64/chrome-mac-arm64.zip) chrome_url="$url" ;;
       */mac-x64/chrome-mac-x64.zip) chrome_url="$url" ;;
     esac
@@ -1015,7 +1050,12 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   # (chrome-mac-arm64.zip -> chrome-headless-shell-mac-arm64.zip,
   # chrome-mac-x64.zip -> chrome-headless-shell-mac-x64.zip — VERIFIED
   # via curl HEAD 2026-11-11: mac-arm64 headless-shell 200 OK,
-  # 104,957,869 B). So when a chrome URL
+  # 104,957,869 B). Linux ARM64 is the same shape (D35:
+  # chrome-linux-arm64.zip -> chrome-headless-shell-linux-arm64.zip —
+  # VERIFIED via curl HEAD 2026-11-13: headless-shell 200 OK,
+  # 129,936,972 B; the detection + derivation cases above used to
+  # list only linux64/mac-arm64/mac-x64, so an ARM64 run silently
+  # never attempted the headless shell). So when a chrome URL
   # was seen but no headless-shell URL was in the log, derive it by
   # filename substitution and fetch it through the same playwright_curl_one
   # (same source, same layout, same per-entry permission restore — nothing
@@ -1028,6 +1068,7 @@ playwright_curl_fallback() { # reads $state_dir/install.log for the failed URL(s
   if [[ -n "$chrome_url" ]] && ! printf '%s\n' "$urls" | grep -q 'chrome-headless-shell-.*\.zip'; then
     case "$chrome_url" in
       */linux64/chrome-linux64.zip) hs_url="${chrome_url%/chrome-linux64.zip}/chrome-headless-shell-linux64.zip" ;;
+      */linux-arm64/chrome-linux-arm64.zip) hs_url="${chrome_url%/chrome-linux-arm64.zip}/chrome-headless-shell-linux-arm64.zip" ;;
       */mac-arm64/chrome-mac-arm64.zip) hs_url="${chrome_url%/chrome-mac-arm64.zip}/chrome-headless-shell-mac-arm64.zip" ;;
       */mac-x64/chrome-mac-x64.zip) hs_url="${chrome_url%/chrome-mac-x64.zip}/chrome-headless-shell-mac-x64.zip" ;;
     esac
