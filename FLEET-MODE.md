@@ -302,11 +302,13 @@ never from the bottom):
    is the *quality* gate (it can send a PR back for top-2 fixes).
 8. **Rebase before push; on conflict, stop and flag A** — do not resolve a
    semantic conflict alone. `git pull --rebase` from `main` before pushing.
-9. **Claims, leases, polling, and the merge protocol** follow
-   `BUFFET-MODE.md` §5 exactly (claim-with-a-plan, coordinator-first-seen
+9. **Claims, leases, polling, the merge protocol, and deputy succession** follow
+   `BUFFET-MODE.md` §§5 and 1 exactly (claim-with-a-plan, coordinator-first-seen
    arbiter, 15-minute polls, 30-minute merge passes, 60-minute lease,
    trial-merge + gate on the merged tree, neutral merger with 1 attempt,
-   force-push forbidden, never rebase someone else's branch). **Build day
+   force-push forbidden, never rebase someone else's branch; 20-min coordinator
+   staleness test with progress-signal heartbeat, two-phase takeover, term
+   fencing — see BUFFET §1 and FLEET §16.7). **Build day
    uses the timed protocol** — the milestone-driven handoff rules (no timed
    polls, no leases, no deputy) do NOT apply on build day.
 
@@ -394,9 +396,9 @@ idea). One small vertical slice, end-to-end, with a phone smoke test.
       over, with the carry-over written on the board — nothing left as a
       silent open thread.
 - [ ] Deputy succession matters most on this day: if the coordinator goes
-      stale >60 min mid-day (pending work unprocessed + no coordinator
+      stale >20 min mid-day (pending work unprocessed + no coordinator
       commit), the named deputy takes over — the run does not wait for a
-      human who is away.
+      human who is away. (D78: 20-min clock, progress-signal heartbeat — see BUFFET §1.)
 - [ ] No CI-approval gate left unclicked: if the fork fallback is in force,
       the coordinator checks every merge pass for PRs stuck in "awaiting
       approval" and treats them as stalls, not queues.
@@ -691,6 +693,10 @@ section governs.
 - The guard checks security gates only. Taste stays with the taste-locked
   loop's own grader (§5). The guard does not change the shipped app's
   runtime behaviour; it is a process gate around the build loop.
+
+### 16.7 Coordinator liveness — pointer (D78)
+
+Coordinator liveness (heartbeat + Deputy takeover) is defined exactly once, in `BUFFET-MODE.md` §1 — this section is a pointer, not a second copy. The coordinator pushes a progress-signal heartbeat line every 15 min in its own `coord/<name>.md`; the Deputy polls every 15 min; staleness is pending work unprocessed for >20 min AND no coordinator push in that window; takeover follows the BUFFET §1 two-phase procedure with term fencing. A deterministic 5-min cron probe (`coord/activation-probe.sh`) enforces the check. See `coord/activation-research.md` (D78 memo + council verdict) for the evidence, the dissent resolution, and the honest limits. Do not duplicate the procedure here — if the two copies diverge, BUFFET §1 governs.
 
 ## Appendix — CONTRACT.md template
 
