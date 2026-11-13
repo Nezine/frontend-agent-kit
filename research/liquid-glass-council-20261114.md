@@ -45,3 +45,13 @@
 - No fps / frame-time numbers on the Snapdragon 680 for any path; the phone test is the only measurement.
 - No Skia or AGSL-fork build has been run under SDK 58 / RN 0.88; shader sketches are uncompiled.
 - The iPhone door is entirely unverified until a human checks the phone.
+
+## Addendum — Skia prototype exists (PR #25, 2026-11-14)
+
+Mie delivered the Skia static-showcase prototype (PR #25, draft, head `cae7f35`, branch `mie/liquid-glass-prototype-20261114`; verified via `gh`: OPEN, draft, MERGEABLE; CI ubuntu PASS 5m14s, macOS runners pending at check time). What it is: `examples/liquid-glass-prototype/` on the same Expo SDK 58 scaffold + `@shopify/react-native-skia` 2.14.0, one static screen (bundled background, 1 lens card + 1 plain tint pill for comparison), Skia RuntimeEffect displacement shader (bend 0 at centre, max 20px at the edge + chromatic aberration + dark edge + rim stroke + sheen). Labels are RN Text over the canvas, not distorted. Reduce Transparency disables displacement.
+
+What it proved (off-device only): the 1-hour time-box produced a keepable v2 (strength 20, aberration 0.40, rim 34px) that reads as a glass lens, not a blur — verified by re-implementing the shader formula in numpy and viewing a 390×844 render. Her MacBook checks all green (tsc 0, eslint 0, `expo export web` 0, `expo export android` 0, `expo-doctor` 20/20). So the "no Skia build under SDK 58" limit above is now partly closed: an SDK 58 export builds. The AGSL fork is still unbuilt and the shader sketches in the implementation report are still uncompiled.
+
+What it did NOT prove: real-phone rendering. It has NOT run on a real phone or a dev build — the off-device render is not a phone render. The prototype must be checked visually on the real demo phone before demo day, and must not be merged before that step. Skia's APK weight is still unmeasured.
+
+**Decision unchanged.** The blur fake is still the default ship; the Skia static showcase stays a stretch — now prototype-backed off-device, still gated on the real-phone check. Route A still needs the iPhone iOS 26 check (human-side).
