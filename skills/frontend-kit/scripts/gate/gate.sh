@@ -188,9 +188,9 @@ fi
 # symlink for the §6 -L check below. A cd failure fails loudly (exit 1),
 # never falls through with an empty $target under set -u.
 if [[ -d "$target" ]]; then
-  target="$(cd -- "$target" && pwd)" || { printf 'gate.sh: cannot resolve target directory: %s\n' "$target" >&2; exit 1; }
+  target="$(CDPATH= cd -- "$target" && pwd)" || { printf 'gate.sh: cannot resolve target directory: %s\n' "$target" >&2; exit 1; }
 else
-  target="$(cd -- "$(dirname -- "$target")" && pwd)/$(basename -- "$target")" || { printf 'gate.sh: cannot resolve target directory: %s\n' "$target" >&2; exit 1; }
+  target="$(CDPATH= cd -- "$(dirname -- "$target")" && pwd)/$(basename -- "$target")" || { printf 'gate.sh: cannot resolve target directory: %s\n' "$target" >&2; exit 1; }
 fi
 
 # Detect output goes to a fresh mktemp file under $HOME (never a fixed
