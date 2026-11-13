@@ -864,9 +864,18 @@ sec_11_text_assign_unq=""
 # kit repo. Coupling: if the fixture literal ever changes in verify.sh,
 # the exemption silently stops matching and the false positive returns
 # in the fail-closed direction (gate FAILs); the §6 D34 case catches it.
+# MIG-3 fix pass (W1): the exemption is WHOLE-TOKEN, case-sensitive.
+# The first version removed every occurrence of the literal from the
+# line, so a longer key with the fixture as a prefix, the fixture
+# embedded in a longer api_key value, and a lowercase fixture were all
+# exempted too — but the D34 record promises only the literal fixture
+# string itself is exempted. Only an occurrence delimited on both sides
+# by a non-secret character (or a line edge) is removed, and only in
+# its exact case: a longer token, an embedded occurrence, and a
+# lowercase occurrence all still match and still fail.
 sec_11_fixture_lit="sk-proj-"ABCDEFGHIJKLMNOPQRSTUVWX
 sec_11_keep_unless_example_only() {
-  local pat="$1" line stripped _cd _under_clone
+  local pat="$1" line stripped _cd _under_clone _s
   shopt -s nocasematch
   while IFS= read -r line; do
     stripped="${line//AKIAIOSFODNN7EXAMPLE/}"
@@ -875,7 +884,19 @@ sec_11_keep_unless_example_only() {
       case "$line" in "$_cd"/*) _under_clone=1; break ;; esac
     done
     if [[ "$_under_clone" == 1 ]]; then
-      stripped="${stripped//$sec_11_fixture_lit/}"
+      # Whole-token, case-sensitive removal only. Sentinel spaces
+      # guarantee a delimiter on both sides, so no ^/$ anchors are
+      # needed (bash 3.2-safe). nocasematch is off here so a lowercase
+      # fixture does not match the literal; it is back on for the
+      # pattern re-test below, which must agree with the -i grep.
+      shopt -u nocasematch
+      _s=" $stripped "
+      while [[ "$_s" =~ (.*)([^A-Za-z0-9_-])"$sec_11_fixture_lit"([^A-Za-z0-9_-])(.*) ]]; do
+        _s="${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+      done
+      stripped="${_s# }"
+      stripped="${stripped% }"
+      shopt -s nocasematch
     fi
     if [[ "$stripped" =~ $pat ]]; then printf '%s\n' "$line"; fi
   done
