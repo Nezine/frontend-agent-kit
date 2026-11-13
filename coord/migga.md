@@ -614,6 +614,17 @@ progress note) and that push renews the lease.
 - Confidence: 2/5. (Fallback rung only — never primary; survives only if the Friday A60 spike proves usable Vietnamese answers in <30s.)
 - Strongest reason it could fail: If the Friday spike shows garbled Vietnamese or >30s per answer, the fallback rung is dead weight — a ~300MB download that buys nothing — and the offline story rests on OCR alone. Second: it shares the same EAS preview-APK build as the OCR leg, so one native-build failure kills both.
 
+### FLEET-2 debate — Migga challenge (19:23 ICT, Fri 2026-11-13)
+
+Target: Milo's Backend proposal as posted in the Optimus group 17:48 (pgvector shadow index) — no repo proposal from Milo/Mie existed by 19:20, so the attack is on the group-posted proposal, per Tuan's 19:20 order to push the opening attack now. (Also posted in the group 19:20.)
+
+- Attack line 1 (double-embedding cost): The pgvector "switch, not reload" is pre-paid with a second full embedding pass — File Search embeds the corpus internally for free, but the shadow needs its own embedContent calls over every chunk against the same unpublished embedding quota you call the biggest risk, and per query the pgvector path pays an embedContent call while File Search query-time embeddings are free (ai.google.dev/gemini-api/docs/file-search#pricing).
+- Attack line 2 (disk math is wrong): Supabase Free gives 500 MB database per project (read-only above it) and 1 GB disk — not 2 GB — so the shadow index must fit in 500 MB, 4x smaller than claimed, and the read-only trigger is the 500 MB cap, not "95%" (supabase.com/pricing).
+
+Defenses for Migga's own ideas (on record if attacked):
+- ML Kit OCR: Bundled-vs-unbundled is the known hole and Friday's test checks it first: install on the OPPO A60, airplane mode, photograph 5 printed Vietnamese documents. If unbundled, the model downloads once on Wi-Fi and then works offline — the fallback is pre-downloading before the demo, not dropping the idea; handwriting was never in scope.
+- Gemma 270M: 270M is a fallback rung only, never the primary — IFEval 51.2 vs 80.2 for 1B is already conceded, and the rung fires only when Gemini and Groq both fail, where a slow local answer still beats a stub. Speed on the SD680 is unverified — Friday's test measures it; if too slow the rung is cut and the fallback becomes the seeded result.
+
 ## Migga handoff — overnight summary (06:00 ICT, Fri 2026-11-14 — final leg ended ~05:00 ICT)
 
 **What got done tonight (all three coordinators, 23:25–~05:00 ICT):**
