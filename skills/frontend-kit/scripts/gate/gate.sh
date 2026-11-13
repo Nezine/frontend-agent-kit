@@ -904,10 +904,10 @@ sec_11_keep_unless_example_only() {
       # One awk pass now walks the line left-to-right: index() finds the next
       # occurrence, the scanned prefix is never re-scanned, and each piece is
       # printed once as it is decided, so no accumulated string is re-copied.
-      # Measured end-to-end through this function, repeated runs: 19-27 ms
-      # for a 100 KB clean line, 20-25 ms with one fixture, 148-185 ms for a
-      # 1 MB clean line, 147-190 ms with the fixture at the end; 2000 fixtures:
-      # 12-18 ms on a 66 KB line, 169-245 ms on a 1 MB line. The ${var%%...}
+      # Measured end-to-end through this function, repeated runs (author's
+      # machine; ranges vary with load): 100 KB: 15-40 ms clean, 15-130 ms with
+      # one fixture; 1 MB: 140-450 ms clean, 120-300 ms with the fixture at the
+      # end; 2000 fixtures: 10-60 ms on a 66 KB line, 170-450 ms on a 1 MB line. The ${var%%...}
       # / ${var#...} split was measured quadratic (6.9 s for a 1 MB line) and
       # is not used. An occurrence is removed only when delimited on both sides
       # by a non-secret character (or a line edge — an empty neighbour counts
