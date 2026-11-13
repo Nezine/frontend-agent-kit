@@ -19,7 +19,19 @@ verify_sh="$root/verify.sh"
 [[ -f "$verify_sh" ]] || { printf 'FAIL: verify.sh not found at %s\n' "$verify_sh"; exit 1; }
 
 # Patterns, verbatim from gate.sh (sourced, not retyped).
-source <(grep -E '^sec_11_(pat|assign_pat|assign_unquoted_pat)=' "$gate_sh")
+# NOTE (D34/W1 macOS fix): do NOT use `source <(grep ...)` here.
+# On macOS bash 3.2 the process-substitution fd is closed before the
+# `source` builtin reads it, so grep dies with "Broken pipe" and no
+# pattern is set (fails on macos-15/26, passes on GNU bash 5.2).
+# Materialise the grep output in a temp file first: grep completes
+# before source runs, and sourcing a regular file is synchronous.
+_pat_tmp="$(mktemp "${TMPDIR:-/tmp}/sec11-pat.XXXXXX")"
+[[ -n "$_pat_tmp" ]] || { printf 'FAIL: mktemp failed\n'; exit 1; }
+trap 'rm -f "$_pat_tmp"' EXIT
+grep -E '^sec_11_(pat|assign_pat|assign_unquoted_pat)=' "$gate_sh" > "$_pat_tmp"
+[[ -s "$_pat_tmp" ]] || { printf 'FAIL: no sec_11 patterns found in %s\n' "$gate_sh"; exit 1; }
+source "$_pat_tmp"
+[[ -n "${sec_11_pat:-}" && -n "${sec_11_assign_pat:-}" && -n "${sec_11_assign_unquoted_pat:-}" ]] || { printf 'FAIL: sec_11 patterns did not load from %s (empty source)\n' "$gate_sh"; exit 1; }
 
 # Filter definition + function, verbatim from gate.sh: from the
 # sec_11_fixture_lit definition line through the function's closing brace.
