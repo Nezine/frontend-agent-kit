@@ -19,6 +19,7 @@ Các thư mục `vendor/` là bản sao cố định của nguồn công khai, k
 | Taste 2.5.1, full tree | [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) | tag `v2.5.1`, commit `f6b76575f949707b4e3c37cd86cb44b0b98643e8` | MIT; `vendor/taste/LICENSE` |
 | `threeui` skill | Skill hướng dẫn do bộ này viết; tham chiếu [MengTo/threeui](https://github.com/MengTo/threeui) | Package `@designcodeio/threeui@1.2.0` (npm), repo HEAD `68802d5428071ada5c20db8094b1649e6bb770ed` lúc kiểm chứng | MIT của repo này (package theo MIT của upstream) |
 | Hai skill tra cứu, script cài và tài liệu | Viết cho bộ này | Bản trong repo | MIT của repo này |
+| 6 skill hackathon (backend-kit, mobile-58-kit, hackathon-security, networking-fetch, demo-rehearsal, networking-offline) | Viết cho bộ này (team skill-integration, 2026-11-13; install.sh-only) | Bản trong repo | MIT của repo này |
 
 ## garden-skills — cited, not vendored (P1, 2026-11-10)
 
