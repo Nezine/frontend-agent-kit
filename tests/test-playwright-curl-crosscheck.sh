@@ -205,5 +205,18 @@ check "W2-RT3 null byte %00 segment refuses" 1 \
   "https://cdn.playwright.dev/builds/ffmpeg/1013/%00/ffmpeg-linux.zip" \
   ffmpeg 1013
 
+# W3-RT3 fix pass 3 — unknown hosts must refuse in the check itself
+# (before, check_url fell through to `return 0` for any other host,
+# so it accepted an evil-host URL, traversal shape included).
+check "W3-RT3 unknown host traversal refuses" 1 \
+  "https://evil.com/builds/cft/158.0.8127.18/..;/140.0.7339.186/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "W3-RT3 unknown host ffmpeg traversal refuses" 1 \
+  "https://evil.com/builds/ffmpeg/1013/../../ffmpeg/1005/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "W3-RT3 unknown host clean URL refuses" 1 \
+  "https://evil.com/builds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+
 printf 'cross-check test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]
