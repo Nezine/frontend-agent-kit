@@ -41,6 +41,10 @@ The human grades these blind (see `research/judge-calibration.md`).
 > or Anthropic. It's for busy working people who want to learn English. I don't know
 > much about design, just make it look good. One page is fine.
 
+D22 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts, run it to its printed PASS or FAIL in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn to wait for a different result; fix, then re-run the gate from the top.
+
+Carve-out: the loop's own yields — step-1.7 plan approval, step-2a variant pick, the v0 nod, and the step-6 human gate — and the between-turn buffet polling cadence are not this rule.
+
 ## Brief 2 — Dashboard
 
 > I need a dashboard for a small shop owner to see how the shop is doing. Sales,

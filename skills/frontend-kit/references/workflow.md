@@ -417,6 +417,12 @@ every brief:**
 `taste-reference` stays the default taste lens on every build; what is
 scoped here is the GATE checks, not the lens.
 
+D22 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts, run it to its printed PASS or FAIL in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn to wait for a different result; fix, then re-run the gate from the top.
+
+Carve-out: the loop's own yields — step-1.7 plan approval, step-2a variant pick, the v0 nod, and the step-6 human gate — and the between-turn buffet polling cadence are not this rule.
+
+Definitions: a "yield" is ending the turn, handing back to the human, or waiting for an outside event before the gate's printed result; a "turn" is one agent run, from its start until it hands back. In-turn polling conflates three things — sleep/retry loops, spawned-subagent status checks, and buffet polling (D5, carved out above) — and is forbidden. Legitimate waits are NOT forbidden: human gates, the step-3a SEVERE input-required handoff, the degraded rung, and escalate.
+
 ## 3b. Builder self-check (post-gate, 1 pass, visual-P0-only, report-only) [P3 split, D7]
 
 After the gate is green and the cross-check is clear, before the step-4

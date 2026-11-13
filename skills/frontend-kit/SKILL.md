@@ -871,6 +871,12 @@ scoped here is the GATE checks, not the lens.
 FAIL blocks the round. Fix, then re-run the gate from the top. Do not proceed
 to step 4 with a red gate.
 
+D22 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts, run it to its printed PASS or FAIL in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn to wait for a different result; fix, then re-run the gate from the top.
+
+Carve-out: the loop's own yields — step-1.7 plan approval, step-2a variant pick, the v0 nod, and the step-6 human gate — and the between-turn buffet polling cadence are not this rule.
+
+Definitions: a "yield" is ending the turn, handing back to the human, or waiting for an outside event before the gate's printed result; a "turn" is one agent run, from its start until it hands back. In-turn polling conflates three things — sleep/retry loops, spawned-subagent status checks, and buffet polling (D5, carved out above) — and is forbidden. Legitimate waits are NOT forbidden: human gates, the step-3a SEVERE input-required handoff, the degraded rung, and escalate.
+
 ## Step 3a — Security/compliance cross-check (after the gate, before any vision grade)
 
 The cross-check is a MANDATORY stage on the same level as the deterministic
