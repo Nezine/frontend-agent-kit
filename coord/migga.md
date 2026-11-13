@@ -604,6 +604,16 @@ progress note) and that push renews the lease.
 - Confidence: 3/5. (3/5, not 4/5: the Mobile research council's verdict is that the ML Kit direction is on probation, NOT locked — the wrapper is unverified on SDK 58. Keep the honest number.)
 - Strongest reason it could fail: If the bundled-model check fails AND the demo runs on a fresh install with no Wi-Fi, the offline reading step silently produces nothing and the pitch's core claim collapses. Second: it needs a preview APK (native module, NOT Expo Go), so any EAS build-queue delay on Saturday morning kills it.
 
+### FLEET-2 debate — Migga proposal 2 (write-first, 19:00 ICT, Fri 2026-11-13)
+
+- Problem: When Gemini/Groq are unreachable — airplane mode, quota hit, or a 429 mid-demo — the app has no AI at all: the answer step dies and the demo shows a stub.
+- User: Same students and older people photographing a document — they need the 3 steps (or a short answer) even when the network is gone.
+- AI role: Gemma 3 270M runs fully on-device as the FALLBACK rung behind Gemini/Groq: ML Kit OCR text in, short structured answer out, zero network, zero cost.
+- Evidence: Google's official Gemma 3 model card: 270M IT, 140+ languages incl. Vietnamese, 32K context; $0.00, no key, no billing; model file ~236–304MB (Q4_K_M GGUF ~236MB via llama.rn, int8 .task ~304MB via LiteRT-LM).
+- Biggest risk: 270M is weak — IFEval 51.2 (vs 80.2 for the 1B) means it may garble Vietnamese instructions; SD680 speed unverified (could exceed 30s/answer); gated download needs a human to accept HF/Kaggle terms once on Wi-Fi.
+- Confidence: 2/5. (Fallback rung only — never primary; survives only if the Friday A60 spike proves usable Vietnamese answers in <30s.)
+- Strongest reason it could fail: If the Friday spike shows garbled Vietnamese or >30s per answer, the fallback rung is dead weight — a ~300MB download that buys nothing — and the offline story rests on OCR alone. Second: it shares the same EAS preview-APK build as the OCR leg, so one native-build failure kills both.
+
 ## Migga handoff — overnight summary (06:00 ICT, Fri 2026-11-14 — final leg ended ~05:00 ICT)
 
 **What got done tonight (all three coordinators, 23:25–~05:00 ICT):**
