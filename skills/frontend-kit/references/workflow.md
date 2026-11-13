@@ -417,7 +417,7 @@ every brief:**
 `taste-reference` stays the default taste lens on every build; what is
 scoped here is the GATE checks, not the lens.
 
-D22 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts — invoking leg 1, gate.sh — run it to its printed result (leg 1 PASS/FAIL, leg 2 GREEN/FAIL) in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn without an intervening fix to wait for a different result; fix, then re-run the gate from the top. After 3 failed re-runs in one turn, end the turn with the FAIL and its findings.
+D72 — Do not yield mid-gate, and do not poll in-turn: once the step-3 gate starts — invoking leg 1, gate.sh — run it to its printed result (leg 1 PASS/FAIL, leg 2 GREEN/FAIL) in the same turn — never end the turn, hand back to the human, or wait for an outside event before that result — and never re-run or re-check the same gate leg, status, or file repeatedly inside that turn without an intervening fix to wait for a different result; fix, then re-run the gate from the top. After 3 failed re-runs in one turn, end the turn with the FAIL and its findings.
 
 Carve-out: the loop's own yields — step-1.7 plan approval, step-2a variant pick, the v0 nod, and the step-6 human gate — and the between-turn buffet polling cadence are not forbidden by this rule.
 
