@@ -191,7 +191,14 @@ taste lock → build → deterministic gate FIRST → screenshots at 1440/768/39
 + independent grade 1–5 on Type / Layout / Colour / Space with one
 evidence line per score → fix the top 2 as token diffs, best version kept
 → stop at ≥4 on every axis AND gate green, or after 3 rounds. Taste
-target: 8/10. Acceptance bar: 60% slop-free. The backend/demo layer uses
+target: 8/10. Acceptance bar: 60% slop-free.
+
+Loop hardening (§16) governs how the loop above runs: checkpoint after
+every stage (§16.1), literal verdict token + stop formula (§16.2),
+gate-first ordering (§16.3), sprint contract (§16.4), 25-minute round cap
+(§16.5), and the guard gate (§16.6).
+
+The backend/demo layer uses
 the same shape with different evidence:
 
 | Layer | Deterministic gate (must pass before any grading) | Independent grade (fresh context, never the builder) | Fix rule |
@@ -202,11 +209,13 @@ the same shape with different evidence:
 
 - **The deterministic gate goes first, always.** It is free, fast, and
   ungameable — a build that does not compile cannot be argued into a pass.
+  (§16.3: a red gate means a fix round with no grader call.)
 - **The grader gets a fresh context** containing only the spec/intent, the
   deployed URL or diff, and fresh build/test output — never the builder's
   conversation, completion report, or commit-message rationale. Grade one
   artefact against a fixed rubric, with evidence attached (file/line,
-  screenshot, or phone-run timestamp) per verdict.
+  screenshot, or phone-run timestamp) per verdict. The verdict is a
+  literal token first, prose second (§16.2).
 - **The builder may not rebut a grade into a pass.** If the builder
   disagrees, A decides, or the item goes on the cut list.
 - **The only grade that counts for the demo flow is a real run on a real
@@ -557,6 +566,131 @@ below conflicts with an earlier section, this section governs.
 - Before EVERY landing: fetch origin and fast-forward to origin/main first,
   check the diff shows ONLY the intended change, push, then verify with
   `git ls-remote`.
+
+## 16. Loop hardening — learned from multi-agent research (governs where it conflicts with earlier sections)
+
+These rules harden the loop inside a slice (§5) against the failure modes
+observed running multi-agent loops: an agent dying mid-loop and taking the
+loop's state with it, a grade that is prose instead of a checkable verdict,
+a red gate that still spends a grader call, a taste lock that lives only in
+chat, a round that runs forever, and a handoff that carries a secret or a
+banned action. Where a rule below conflicts with an earlier section, this
+section governs.
+
+### 16.1 Checkpoint after every stage — files are the state
+
+- After each stage (taste lock, build, gate, screenshots, grade, fix) the
+  agent writes a JSON checkpoint file in the slice's working directory:
+  `checkpoint.json`, overwritten after each stage, with
+  `{stage, status, artifacts[], verdict, round, next_stage}`. `status` is
+  one of `done`, `blocked`, `failed`. `artifacts` lists the files the stage
+  produced, with paths. `next_stage` names the stage that runs next.
+- Every stage also ends with two lines — `STATE:` (what is true now) and
+  `NEXT:` (what runs next) — in the agent's own status file; the
+  coordinator transcribes them into the run log at merge. A stage that
+  exits without a `NEXT` line is treated as a crash, not as a completion.
+- A replacement agent's brief starts: "Read the latest checkpoint; do NOT
+  redo completed stages; start at `next_stage`." A loop is resumed from
+  the last checkpoint, never restarted from scratch. A dead agent must not
+  take the loop's state with it — the state lives in files, not in the
+  agent's context.
+- The checkpoint is written BEFORE the agent reports the stage done. A
+  stage with no checkpoint file is not done, whatever the agent's message
+  says.
+
+### 16.2 Literal verdict token + termination formula
+
+- The grader's verdict is a machine-checkable token first, prose second.
+  The first line of every verdict is exactly one of:
+  `VERDICT: PASS` / `VERDICT: FAIL` / `GATES_GREEN`.
+  `GATES_GREEN` is the token the grader emits exactly when the §5 stop
+  conditions hold (≥4 on every axis AND gate green). Prose after the token
+  explains the verdict; prose without the token is not a verdict.
+- Termination is a formula, written in the loop prompt:
+  `STOP = (grader emits GATES_GREEN) OR (round == 3) OR (coordinator kill-switch)`.
+  The round cap is 3, as in §5. The kill-switch takes effect at the next
+  stage boundary — never kill a builder mid-write.
+- Every loop exit records `stop_reason` in the run log, one of:
+  `gates_green` / `max_rounds` / `coordinator_stop` / `agent_died`.
+  An exit with no `stop_reason` is an incomplete exit, not a pass.
+- **Supersedes:** the §5 stop line ("stop at ≥4 on every axis AND gate
+  green, or after 3 rounds") is now read as the formula above: the grader
+  emits `GATES_GREEN` when those conditions hold, and the loop stops on
+  the token, the cap, or the kill-switch.
+
+### 16.3 Gate-first ordering
+
+- Per round: (1) deterministic gates on files, (2) only if green,
+  screenshots + LLM grade. A red deterministic gate = a fix round with
+  **no grader call**. Never spend a grader call on a build the gate
+  already failed.
+- The gate writes JSON, not Markdown: one record per gate (gate id,
+  pass/fail, evidence path). A failing gate's record is flipped only by a
+  fix that makes it pass — never by rewriting the gate list, and never by
+  deleting or weakening the failing check. The builder's prompt carries:
+  "never delete or weaken a failing check".
+- The gate runs before any new feature work each round, and before the
+  grade, every round. Gates are executable checks, not "looks right".
+- **Supersedes:** §5's "The deterministic gate goes first, always" — same
+  rule, now with the no-grader-call consequence made explicit.
+
+### 16.4 Sprint contract — the taste lock as a written file
+
+- The taste lock is a short written file (the sprint contract), not a chat
+  message. It lists: (a) the screens / features in the slice, (b) the exact
+  observable check per item ("button X navigates to screen Y", "list
+  renders ≥ N items from the data layer"), (c) the gate thresholds.
+- The builder proposes the contract; the grader / coordinator approves it
+  **before** build starts. The gate checks the contract, not the builder's
+  claims. Nothing outside the contract is built without a coordinator
+  decision.
+- Builder and grader use the same four criteria (design quality,
+  originality weighted higher; craft, functionality), so a grade and a
+  build are measured against the same bar.
+- The contract is frozen once approved; changing it requires the
+  coordinator's announcement, as with `CONTRACT.md` (§3). The template
+  lives in `coord/tasks/` and is added by the coordinator as a follow-up
+  to this section.
+
+### 16.5 Per-round wall-clock cap + ready / blocked / failed reporting
+
+- Every worker brief carries a per-round cap of **25 minutes** per fix
+  round. When the cap hits, the worker stops and reports: what is done,
+  what is blocked, and what was killed or skipped. It does not run past
+  the cap to "finish the last bit".
+- Workers report once per round: `ready` / `blocked` / `failed` + evidence
+  (file paths, gate output, or a phone-run timestamp). `ready` means the
+  round's exit criterion is met; `blocked` names the blocker and what is
+  needed; `failed` names what was tried and what broke.
+- No unasked-for scope expansion. The sprint contract (§16.4) is the
+  written rule; anything outside it needs a coordinator decision first.
+- Relation to §15.2: the 15-minute rule still applies to *getting stuck*
+  (report the blocker and switch tasks). The 25-minute cap is the *round
+  budget* — the round ends at the cap whether or not the work is
+  finished.
+
+### 16.6 Guard gate — the loop's security check
+
+- Every handoff between agents and every round boundary runs
+  `guard-gate.sh` (repo root) BEFORE any model call and before any side
+  effect. It is deterministic shell: no model calls, no new dependency,
+  no cost. It checks, in order: G1 scope allowlist, G2 secrets scan, G3
+  banned-action scan, G5 structured-verdict validation. The NO_VERDICT
+  rule applies throughout: no verdict within the round budget, or a
+  process ending without a structured verdict, is **BLOCK, never PASS**.
+- A BLOCK from the guard gate halts that agent at once; the finding is
+  written with evidence (file paths + lines) and reported to the
+  coordinator first, SEVERE first. The coordinator closes or re-dispatches.
+  The guard never auto-approves a SEVERE item, and no agent edits the
+  guard script, the gate script, or the CI config to clear a finding.
+- The guard is a pilot, not a graduation claim: it stops accidental and
+  opportunistic compromise deterministically and makes deliberate
+  compromise visible in the audit log. It does not claim to stop adaptive
+  attack. A PASS certifies that this round's checks passed — never that
+  the build is safe.
+- The guard checks security gates only. Taste stays with the taste-locked
+  loop's own grader (§5). The guard does not change the shipped app's
+  runtime behaviour; it is a process gate around the build loop.
 
 ## Appendix — CONTRACT.md template
 
