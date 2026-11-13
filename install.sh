@@ -803,6 +803,51 @@ playwright_browser_version() { # <browser-name> — browserVersion from the CLI 
   [[ -f "$bj" ]] || return 1
   node -e "const b=require(process.argv[1]).browsers.find((x)=>x.name===process.argv[2]); if(!b || !b.browserVersion) process.exit(1); console.log(b.browserVersion)" "$bj" "$name" 2>/dev/null
 }
+playwright_curl_validate_url() { # <url> — 0 if the URL path is safe for mapping + check, else refuse (1)
+  # F-RT1 fix pass (2026-11-13): validate the URL shape ONCE, before both
+  # the mapping (playwright_curl_one) and the version cross-check
+  # (playwright_curl_check_url), so both stages see the same string.
+  # REJECTION, not normalization, is deliberate: curl -L normalizes dot
+  # segments (RFC 3986) before fetching, so a `..` URL that passed the
+  # check would fetch a DIFFERENT revision and place it under the checked
+  # revision with INSTALLATION_COMPLETE; silently fetching a normalized
+  # URL would change fetch semantics and hide a poisoned log line. The
+  # URL in the CLI log is the identity — refuse it.
+  # Only the three hosts the mapping trusts are validated; any other host
+  # falls through to the mapping's `*)` refusal, unchanged. The query
+  # string / fragment are stripped first: validation is about the path,
+  # and a `?x=/../` must not change a clean path's verdict.
+  # Also enforces at most one `/builds/` segment (W-RT3): a second
+  # `/builds/`, or a `builds`-suffixed segment immediately before one
+  # (`evilbuilds/builds/`), must never reach the mapping — the `*` in
+  # `*builds/` would otherwise span it. A URL with no `/builds/` at all
+  # still falls through to the mapping/check refusal, unchanged.
+  local url="$1" path
+  case "$url" in
+    https://cdn.playwright.dev/*) path="${url#https://cdn.playwright.dev}" ;;
+    https://playwright.download.prss.microsoft.com/*) path="${url#https://playwright.download.prss.microsoft.com}" ;;
+    https://storage.googleapis.com/*) path="${url#https://storage.googleapis.com}" ;;
+    *) return 0 ;;
+  esac
+  path="${path%%\?*}"
+  path="${path%%\#*}"
+  case "$path" in
+    *"/../"*|*"/.."|*"/./"*|*"/."|*"//"*)
+      printf 'curl fallback: refusing to place URL with dot or empty path segment: %s\n' "$url"
+      return 1 ;;
+  esac
+  case "$path" in
+    *"%2e"*|*"%2E"*|*"%2f"*|*"%2F"*)
+      printf 'curl fallback: refusing to place URL with percent-encoded dot or slash: %s\n' "$url"
+      return 1 ;;
+  esac
+  case "$path" in
+    *"/builds/"*"/builds/"*|*"builds/builds/"*)
+      printf 'curl fallback: refusing to place URL with more than one /builds/ segment: %s\n' "$url"
+      return 1 ;;
+  esac
+  return 0
+}
 playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the CLI registry, else refuse (1) with a message
   # Cross-check (red-team H4): the cache dir name comes from
   # browsers.json, so a URL serving a different build would be placed
@@ -815,6 +860,9 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
   # (and the pre-existing Linux ones). If the registry has no version for
   # this browser (e.g. ffmpeg), the version check is skipped.
   local url="$1" name="$2" rev="$3" _url_ver _bj_ver _url_kind _url_seg
+  # F-RT1 fix pass: validate the shape first — the check's first-segment
+  # sed must never see an un-normalized URL either.
+  playwright_curl_validate_url "$url" || return 1
   case "$url" in
     https://storage.googleapis.com/chrome-for-testing-public/*)
       _url_ver="$(printf '%s' "$url" | sed -E 's#.*chrome-for-testing-public/([^/]+)/.*#\1#')"
@@ -851,6 +899,11 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
 }
 playwright_curl_one() { # <url> — fetch one failed artifact with curl -C - and place it
   local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name
+  # F-RT1 fix pass: validate the shape before the mapping — both the
+  # mapping and the cross-check below must see the same string, and a
+  # traversal URL must never reach curl. (The fallback path reaches this
+  # function too, so log-extracted URLs are covered as well.)
+  playwright_curl_validate_url "$url" || return 1
   fname="$(basename -- "${url%%\?*}")"
   case "$url" in
     # Host-anchored (red-team H4): the mapping trusts shape = identity,
