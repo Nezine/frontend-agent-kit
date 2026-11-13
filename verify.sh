@@ -89,6 +89,26 @@ esac
 ok()   { printf 'OK: %s\n' "$1"; }
 warn() { warns=$((warns+1)); printf 'WARN: %s\n' "$1"; }
 fail() { fails=$((fails+1)); printf 'FAIL: %s\n' "$1"; }
+# Portable in-place sed (D12 macOS; D21): BSD sed requires an argument to -i
+# and consumes the next argv element as the backup extension; GNU sed takes
+# -i with no argument. Dispatch once on uname, not per call.
+if [[ "$(uname -s)" == Darwin ]]; then
+  sedi() { sed -i '' "$@"; }
+else
+  sedi() { sed -i "$@"; }
+fi
+# Portable sha256 of a file's contents, first field only (D12: stock macOS
+# has no sha256sum; shasum -a 256 is the stock equivalent). With no argument
+# it hashes stdin, like sha256sum with no argument.
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    if [[ $# -gt 0 ]]; then sha256sum -- "$1" | cut -d' ' -f1; else sha256sum | cut -d' ' -f1; fi
+  else
+    if [[ $# -gt 0 ]]; then shasum -a 256 -- "$1" | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi
+  fi
+}
+zwsp=$'\xe2\x80\x8b'   # U+200B ZERO WIDTH SPACE
+cyr_a=$'\xd0\xb0'      # U+0430 CYRILLIC SMALL LETTER A
 fail_loud() { fails=$((fails+1)); printf 'FAIL (LOCKSTEP): %s\n' "$1"; }
 # UNVERIFIED is not a warning and not a hard fail: a loop step that could
 # not run, so the loop is not proven. It fails the run (exit 1) with a
@@ -798,8 +818,8 @@ else
     tree_file="$taste_assets/${allow_path#assets/}"
     if [[ ! -f "$tree_file" ]]; then
       allowlist_bad=1; printf 'FAIL: vendored-allowlist.txt lists %s but no such file exists in the vendored taste tree\n' "$allow_path"
-    elif command -v sha256sum >/dev/null 2>&1; then
-      actual_hash="$(sha256sum -- "$tree_file" 2>/dev/null | awk '{print $1}')"
+    elif command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then
+      actual_hash="$(sha256_file "$tree_file" 2>/dev/null)"
       if [[ "$actual_hash" != "$allow_hash" ]]; then
         allowlist_bad=1; printf 'FAIL: vendored-allowlist.txt hash mismatch for %s (manifest %s, tree %s)\n' "$allow_path" "$allow_hash" "$actual_hash"
       fi
@@ -2999,21 +3019,21 @@ jr_prep() { # round kind [extra prepare args...] — expert kinds are stamped by
 # jr_fill_scores <file> <t> <l> <c> <s>: fill a skeleton the way a judge
 # would — basis in, PENDING out, evidence + scores in the table.
 jr_fill_scores() {
-  sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+  sedi -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
     -e 's/— grader: \([^ ]*\) (?)/— grader: \1 (fresh context, no production history)/' \
     -e "s/| Type | ? | ? |/| Type | hero heading 64px vs ref 1 | $2 |/" \
     -e "s/| Layout | ? | ? |/| Layout | section gap 96px vs ref 1 | $3 |/" \
     -e "s/| Colour | ? | ? |/| Colour | accent button contrast 4.6 vs ref 1 | $4 |/" \
     -e "s/| Space | ? | ? |/| Space | card padding 32px vs ref 1 | $5 |/" \
-    -e 's/^Fix order: ?$/Fix order: Layout first, then Type./' "$1"
+    -e 's/^Fix order: ?$/Fix order: Layout first, then Type./' "$1" || fail "judge-artifact (D15): fill of $1 failed"
   touch -t 202611111205 "$1"
 }
 jr_fill_pairwise() { # file keep
-  sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+  sedi -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
     -e 's/pairwise call \(.\) of 2 (?)/pairwise call \1 of 2 (fresh context, no production history)/' \
     -e 's/^Defects in A: ?$/Defects in A: hero heading clips 2px at 390px/' \
     -e 's/^Defects in B: ?$/Defects in B: section gap 12px off scale/' \
-    -e "s/^Pairwise: keep ? — ?\$/Pairwise: keep $2 — hero heading fits at 390px, gap 96px on scale/" "$1"
+    -e "s/^Pairwise: keep ? — ?\$/Pairwise: keep $2 — hero heading fits at 390px, gap 96px on scale/" "$1" || fail "judge-artifact (D15): fill of $1 failed"
   touch -t 202611111205 "$1"
 }
 # (1) graded record with NO --judge-report → exit 2 (the C-memo escape:
@@ -3189,11 +3209,11 @@ jr_reject "pairwise record citing the same artifact twice" "$work/judge-t26.log"
   node "$run_log_mjs" --project "$jr_proj" record --round 5 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-5.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-reports design/judge/round-5-pairwise-1.md,design/judge/round-5-pairwise-1.md
 # (27) pairwise SPLIT: both calls keep the CURRENT page's set in their
 # own A/B terms edited to disagree after derivation → exit 2 (a tie).
-sed -i 's/^Pairwise: keep B —/Pairwise: keep A —/' "$jr_proj/design/judge/round-5-pairwise-2.md"
+sedi 's/^Pairwise: keep B —/Pairwise: keep A —/' "$jr_proj/design/judge/round-5-pairwise-2.md"
 touch -t 202611111205 "$jr_proj/design/judge/round-5-pairwise-2.md"
 jr_reject "pairwise record whose artifacts disagree after derivation" "$work/judge-t27.log" "disagree after A/B derivation" \
   node "$run_log_mjs" --project "$jr_proj" record --round 5 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-5.md --gate pass $jr_legs --pairwise keep-challenger --pairwise-reports design/judge/round-5-pairwise-1.md,design/judge/round-5-pairwise-2.md
-sed -i 's/^Pairwise: keep A —/Pairwise: keep B —/' "$jr_proj/design/judge/round-5-pairwise-2.md"
+sedi 's/^Pairwise: keep A —/Pairwise: keep B —/' "$jr_proj/design/judge/round-5-pairwise-2.md"
 touch -t 202611111205 "$jr_proj/design/judge/round-5-pairwise-2.md"
 # (28) pairwise POSITIVE: both calls derive keep-challenger; flag agrees.
 jr_before="$(jr_lines)"
@@ -3213,10 +3233,10 @@ fi
 jr_reject "expert score without an expert artifact" "$work/judge-t29.log" "expert-motion-report is required" \
   node "$run_log_mjs" --project "$jr_proj" record --round 6 --grader none --scores none --gate fail --expert-motion 4 --expert-motion-evidence "hero reveal travels 24px in 220ms"
 jr_prep 6 expert-motion
-sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+sedi -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
   -e 's/— grader: \([^ ]*\) (?)/— grader: \1 (fresh context, no production history)/' \
   -e 's/^Motion: ? (motion-expert) — ?$/Motion: 4 (motion-expert) — hero reveal travels 24px in 220ms/' \
-  "$jr_proj/design/judge/round-6-expert-motion.md"
+  "$jr_proj/design/judge/round-6-expert-motion.md" || fail "judge-artifact (D15): fill of $jr_proj/design/judge/round-6-expert-motion.md failed"
 touch -t 202611111205 "$jr_proj/design/judge/round-6-expert-motion.md"
 # (30) expert score MISMATCH: artifact says 4, flag claims 5 → exit 2.
 jr_reject "expert score differing from the expert artifact" "$work/judge-t30.log" "not the cited" \
@@ -3246,7 +3266,7 @@ jr_reject "record citing a void (refusal-carrying) judge artifact" "$work/judge-
   node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-7.md --gate pass $jr_legs
 # (34) the same refusal line with a ZERO-WIDTH SPACE inserted inside it
 # is still a refusal line (the void check strips invisibles) → exit 2.
-sed -i "s/^Not an independent judge/Not\xe2\x80\x8b an independent judge/" "$jr_proj/design/judge/round-7.md"
+sedi "s/^Not an independent judge/Not${zwsp} an independent judge/" "$jr_proj/design/judge/round-7.md"
 touch -t 202611111205 "$jr_proj/design/judge/round-7.md"
 jr_reject "record citing a judge artifact with a ZWSP-split refusal line" "$work/judge-t34.log" "refusal line" \
   node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-7.md --gate pass $jr_legs
@@ -3255,7 +3275,7 @@ jr_reject "record citing a judge artifact with a ZWSP-split refusal line" "$work
 # §5b note's leniency asymmetry, mirrored for judge artifacts).
 jr_prep 7 cheap
 jr_fill_scores "$jr_proj/design/judge/round-7-cheap.md" 4 4 4 4
-sed -i 's/— grader: judge-subagent (/— grader: judge-\xe2\x80\x8bsubagent (/' "$jr_proj/design/judge/round-7-cheap.md"
+sedi "s/— grader: judge-subagent (/— grader: judge-${zwsp}subagent (/" "$jr_proj/design/judge/round-7-cheap.md"
 touch -t 202611111205 "$jr_proj/design/judge/round-7-cheap.md"
 jr_before="$(jr_lines)"
 if node "$run_log_mjs" --project "$jr_proj" record --round 7 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-7-cheap.md --gate pass $jr_legs >"$work/judge-t35.log" 2>&1 && [[ "$(jr_lines)" == "$((jr_before + 1))" ]]; then
@@ -3298,8 +3318,8 @@ if ! node "$run_log_mjs" --project "$jr_proj" crosscheck --slice d15 --round 9 -
   cat "$work/judge-cc-9b.log" >&2 || true
 fi
 jr_fill_expert() { # file domain label score evidence — fill an expert skeleton the way the expert would.
-  sed -i -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
-    -e "s/^$2: ? ($3) — ?\$/$2: $4 ($3) — $5/" "$1"
+  sedi -e '/^PENDING/d' -e 's/^basis:$/basis: fresh context, no production history/' \
+    -e "s/^$2: ? ($3) — ?\$/$2: $4 ($3) — $5/" "$1" || fail "judge-artifact (D15): fill of $1 failed"
   touch -t 202611111205 "$1"
 }
 # (38) F1 (QC A8): an expert-motion artifact prepared against page2,
@@ -3366,7 +3386,7 @@ fi
 # its header".
 jr_prep 9 cheap
 jr_fill_scores "$jr_proj/design/judge/round-9-cheap.md" 4 4 4 4
-sed -i 's/grader: judge-subagent (/grader: judge-sub\xd0\xb0gent (/' "$jr_proj/design/judge/round-9-cheap.md"
+sedi "s/grader: judge-subagent (/grader: judge-sub${cyr_a}gent (/" "$jr_proj/design/judge/round-9-cheap.md"
 touch -t 202611111205 "$jr_proj/design/judge/round-9-cheap.md"
 jr_reject "record citing a judge artifact with a substituted look-alike in the Round-line grader token" "$work/judge-t42.log" "does not match its header" \
   node "$run_log_mjs" --project "$jr_proj" record --round 9 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-9-cheap.md --gate pass $jr_legs
@@ -3571,11 +3591,11 @@ jr_fill_scores "$rp_proj/design/judge/round-5.md" 5 5 5 5
 if [[ "$rp_setup_ok" != 1 ]]; then
   fail "judge-artifact (D15): read-path project setup failed — cases (50)–(60) will cascade; see $work/rp-*.log"
 fi
-rp_page_sha="$(sha256sum "$rp_proj/design/page.html" | cut -d' ' -f1)"
-rp_page2_sha="$(sha256sum "$rp_proj/design/page2.html" | cut -d' ' -f1)"
-rp_r1_sha="$(sha256sum "$rp_proj/design/judge/round-1.md" | cut -d' ' -f1)"
-rp_r4_sha="$(sha256sum "$rp_proj/design/judge/round-4.md" | cut -d' ' -f1)"
-rp_r5_sha="$(sha256sum "$rp_proj/design/judge/round-5.md" | cut -d' ' -f1)"
+rp_page_sha="$(sha256_file "$rp_proj/design/page.html")"
+rp_page2_sha="$(sha256_file "$rp_proj/design/page2.html")"
+rp_r1_sha="$(sha256_file "$rp_proj/design/judge/round-1.md")"
+rp_r4_sha="$(sha256_file "$rp_proj/design/judge/round-4.md")"
+rp_r5_sha="$(sha256_file "$rp_proj/design/judge/round-5.md")"
 # rp_reject <name> <logfile> <pattern> <cmd...>: like jr_reject, for
 # the read-path project's log.
 rp_reject() {
@@ -3782,7 +3802,7 @@ r3_prep "$r3p" 1 absolute
 jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log >"$work/r3-t61-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-3 B1 setup graded record failed — case (61) will cascade; see $work/r3-t61-setup.log"
-r3_page2_sha="$(sha256sum "$r3p/design/page2.html" | cut -d' ' -f1)"
+r3_page2_sha="$(sha256_file "$r3p/design/page2.html")"
 python3 - "$r3p/design/run-log.jsonl" "$r3_page2_sha" <<'EOF'
 import json,sys
 lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -3807,8 +3827,8 @@ fi
 # (true hash — the citation's hash verifies; the file is not a judge
 # report). It must anchor nothing and satisfy no land precondition.
 r3p="$work/r3-b1b"; r3_mkproj "$r3p"
-r3_leg1_sha="$(sha256sum "$r3p/design/gate-leg1.log" | cut -d' ' -f1)"
-r3_page2_sha="$(sha256sum "$r3p/design/page2.html" | cut -d' ' -f1)"
+r3_leg1_sha="$(sha256_file "$r3p/design/gate-leg1.log")"
+r3_page2_sha="$(sha256_file "$r3p/design/page2.html")"
 python3 - "$r3p/design/run-log.jsonl" "$r3_leg1_sha" "$r3_page2_sha" <<'EOF'
 import json,sys
 legsha,pagesha=sys.argv[2],sys.argv[3]
@@ -3867,8 +3887,8 @@ fi
 # no-grade half of the precondition now verifies the cited legs on
 # disk against the stored shas.
 r3p="$work/r3-b3"; r3_mkproj "$r3p"
-r3_hx="$(printf 'x' | sha256sum | cut -d' ' -f1)"
-r3_hy="$(printf 'y' | sha256sum | cut -d' ' -f1)"
+r3_hx="$(printf 'x' | sha256_file)"
+r3_hy="$(printf 'y' | sha256_file)"
 python3 - "$r3p/design/run-log.jsonl" "$r3_hx" "$r3_hy" <<'EOF'
 import json,sys
 hx,hy=sys.argv[2],sys.argv[3]
@@ -3913,7 +3933,7 @@ r3_prep "$r3p" 1 absolute
 jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r3-t66-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-3 B5 setup graded record failed — case (66) will cascade; see $work/r3-t66-setup.log"
-sed -i 's/"grader":"judge-subagent"/"grader":"muse-manager"/' "$r3p/design/run-log.jsonl"
+sedi 's/"grader":"judge-subagent"/"grader":"muse-manager"/' "$r3p/design/run-log.jsonl"
 node "$run_log_mjs" --project "$r3p" best >"$work/r3-t66a.log" 2>&1
 if grep -q "muse-manager" "$work/r3-t66a.log" || ! grep -q "no graded rounds" "$work/r3-t66a.log"; then
   fail "judge-artifact (D15): best crowned a line whose grader field was edited away from its artifact's grader (B5) — see $work/r3-t66a.log"
@@ -3935,7 +3955,7 @@ node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --
   || fail "judge-artifact (D15): round-3 B6 setup graded record failed — case (67) will cascade; see $work/r3-t67-setup.log"
 printf '<html><body><main id="main"><h1>Totally different page</h1></main></body></html>\n' > "$r3p/design/page.html"
 touch -t 202611111203 "$r3p/design/page.html"
-r3_v2_sha="$(sha256sum "$r3p/design/page.html" | cut -d' ' -f1)"
+r3_v2_sha="$(sha256_file "$r3p/design/page.html")"
 python3 - "$r3p/design/run-log.jsonl" "$r3_v2_sha" <<'EOF'
 import json,sys
 lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -3963,7 +3983,7 @@ jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r3-t68-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-3 B7 setup graded record failed — case (68) will cascade; see $work/r3-t68-setup.log"
 ln -s round-1.md "$r3p/design/judge/link.md"
-sed -i 's#"judgeReport":"design/judge/round-1.md"#"judgeReport":"design/judge/link.md"#' "$r3p/design/run-log.jsonl"
+sedi 's#"judgeReport":"design/judge/round-1.md"#"judgeReport":"design/judge/link.md"#' "$r3p/design/run-log.jsonl"
 node "$run_log_mjs" --project "$r3p" best >"$work/r3-t68a.log" 2>&1
 if ! grep -q "no graded rounds" "$work/r3-t68a.log"; then
   fail "judge-artifact (D15): best crowned a round citing its judge artifact through a symlink (B7) — see $work/r3-t68a.log"
@@ -4003,8 +4023,8 @@ r3_prep "$r3p" 1 absolute
 jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t69-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-4 F1a setup graded record failed — case (69) will cascade; see $work/r4-t69-setup.log"
-sed -i "s/fresh context, no production history/$r4_bad_basis/g" "$r3p/design/judge/round-1.md"
-r4_new_sha="$(sha256sum "$r3p/design/judge/round-1.md" | cut -d' ' -f1)"
+sedi "s/fresh context, no production history/$r4_bad_basis/g" "$r3p/design/judge/round-1.md"
+r4_new_sha="$(sha256_file "$r3p/design/judge/round-1.md")"
 python3 - "$r3p/design/run-log.jsonl" "$r4_new_sha" <<'EOF'
 import json,sys
 lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -4031,8 +4051,8 @@ r3_prep "$r3p" 1 absolute
 jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t70-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-4 F1b setup graded record failed — case (70) will cascade; see $work/r4-t70-setup.log"
-sed -i 's/^Round 1 — grader: judge-subagent /Round 1 — grader: muse-manager /' "$r3p/design/judge/round-1.md"
-r4_new_sha="$(sha256sum "$r3p/design/judge/round-1.md" | cut -d' ' -f1)"
+sedi 's/^Round 1 — grader: judge-subagent /Round 1 — grader: muse-manager /' "$r3p/design/judge/round-1.md"
+r4_new_sha="$(sha256_file "$r3p/design/judge/round-1.md")"
 python3 - "$r3p/design/run-log.jsonl" "$r4_new_sha" <<'EOF'
 import json,sys
 lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -4069,8 +4089,8 @@ node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --
 node "$run_log_mjs" --project "$r3p" best >"$work/r4-t71a.log" 2>&1
 rm "$r3p/design/judge/round-2-jury-2.md"
 ln "$r3p/design/judge/round-2-jury-1.md" "$r3p/design/judge/round-2-jury-2.md"
-r4_s1="$(sha256sum "$r3p/design/judge/round-2-jury-1.md" | cut -d' ' -f1)"
-r4_s3="$(sha256sum "$r3p/design/judge/round-2-jury-3.md" | cut -d' ' -f1)"
+r4_s1="$(sha256_file "$r3p/design/judge/round-2-jury-1.md")"
+r4_s3="$(sha256_file "$r3p/design/judge/round-2-jury-3.md")"
 python3 - "$r3p/design/run-log.jsonl" "$r4_s1" "$r4_s3" <<'EOF'
 import json,sys
 s1,s3=sys.argv[2],sys.argv[3]
@@ -4108,8 +4128,8 @@ jr_fill_scores "$r3p/design/judge/round-2-jury-2.md" 4 4 4 4
 jr_fill_scores "$r3p/design/judge/round-2-jury-3.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 2 --grader judge-subagent --basis "$jr_basis" --scores 3,3,3,3 --judge-report design/judge/round-2.md --gate pass $r3_legs --outcome stopped --jury 4,4,4,4 --jury-mode disjoint-3 --jury-votes "4,4,4,4;4,4,4,4;4,4,4,4" --judge-reports design/judge/round-2-jury-1.md,design/judge/round-2-jury-2.md,design/judge/round-2-jury-3.md >"$work/r4-t72-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-4 F3 setup jury record failed — case (72) will cascade; see $work/r4-t72-setup.log"
-sed -i "s/fresh context, no production history/$r4_bad_basis/g" "$r3p/design/judge/round-2-jury-1.md"
-r4_ns="$(sha256sum "$r3p/design/judge/round-2-jury-1.md" | cut -d' ' -f1)"
+sedi "s/fresh context, no production history/$r4_bad_basis/g" "$r3p/design/judge/round-2-jury-1.md"
+r4_ns="$(sha256_file "$r3p/design/judge/round-2-jury-1.md")"
 python3 - "$r3p/design/run-log.jsonl" "$r4_ns" <<'EOF'
 import json,sys
 lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -4194,7 +4214,7 @@ r3_prep "$r3p" 1 absolute
 jr_fill_scores "$r3p/design/judge/round-1.md" 4 4 4 4
 node "$run_log_mjs" --project "$r3p" record --round 1 --grader judge-subagent --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass $r3_legs >"$work/r4-t75-setup.log" 2>&1 \
   || fail "judge-artifact (D15): round-4 F5b setup graded record failed — case (75) will cascade; see $work/r4-t75-setup.log"
-r4_p2_sha="$(sha256sum "$r3p/design/page2.html" | cut -d' ' -f1)"
+r4_p2_sha="$(sha256_file "$r3p/design/page2.html")"
 python3 - "$r3p/design/run-log.jsonl" "$r4_p2_sha" <<'EOF'
 import json,sys
 lines=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]
@@ -4851,7 +4871,7 @@ r7_mkproj() {
   node "$run_log_mjs" --project "$p" record --round 1 --grader muse-manager --basis "$jr_basis" --scores 4,4,4,4 --judge-report design/judge/round-1.md --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html --gate-findings "no findings" >/dev/null 2>&1 || return 1
   node "$run_log_mjs" --project "$p" land --slice r7 --round 1 --gate pass --gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --page design/page.html >/dev/null 2>&1 || return 1
 }
-r7_tokhash() { sha256sum "$1" | cut -d' ' -f1; }
+r7_tokhash() { sha256_file "$1"; }
 
 # (93) Genuine positives: the brief builds on the genuine lock and
 # shows it; a genuine v2 lock records; a duplicate genuine version
