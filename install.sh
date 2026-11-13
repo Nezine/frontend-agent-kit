@@ -972,7 +972,7 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
   return 0
 }
 playwright_curl_one() { # <url> — fetch one failed artifact with curl --fail -C - and place it
-  local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name
+  local url="$1" fname name exe_rel rev dir_name zip_path dest core_dir links_dir link_name _url_hash
   # F-RT1 fix pass: validate the shape before the mapping — both the
   # mapping and the cross-check below must see the same string, and a
   # traversal URL must never reach curl. (The fallback path reaches this
@@ -1068,7 +1068,37 @@ playwright_curl_one() { # <url> — fetch one failed artifact with curl --fail -
   playwright_curl_check_url "$url" "$name" "$rev" || return 1
   dir_name="${name//-/_}-$rev"
   mkdir -p "$state_dir/playwright-downloads"
-  zip_path="$state_dir/playwright-downloads/$fname"
+  # F4-RT1 fix pass 4 (2026-11-13): key the cache by the FULL URL, not the
+  # bare filename. The downloads dir is persistent and a kill during the
+  # seconds-long extraction leaves a complete zip; a later CLI re-pin
+  # reuses the same filename for a different build, and real curl treats
+  # the HTTP 416 on a resume as success (exit 0, file untouched), so the
+  # stale complete file was extracted and placed as the new revision
+  # with no content check. Hashing the full URL gives each distinct
+  # artifact its own cache slot, so a stale file for another version is
+  # never consulted; the legitimate complete-correct re-run still
+  # 416-resumes into its own slot (P9). Full URL, not URL+version: every
+  # matched arm already embeds the version/revision in the URL path
+  # (CFT version segment, ffmpeg revision segment, GCS version segment),
+  # so the URL alone already discriminates versions, and a host/mirror
+  # change gets its own slot too (at most a redundant download). sha1,
+  # not sha256: it matches the red team's suggested form and the .links
+  # entry in this same function; the hash is a cache key, not an
+  # integrity check — a sha1 collision alone places nothing, the URL
+  # still passes validate_url + mapping + check_url first. sha1sum with
+  # the python3 fallback is the same pattern as the .links entry below
+  # (stock macOS has no sha1sum); failing to hash refuses rather than
+  # falling back to the bare filename — a bare-filename slot is exactly
+  # the collision this closes. Stale bare-filename files from earlier
+  # runs are LEFT in place: they are never consulted under the keyed
+  # name, and silently deleting cache files is out of scope — remove
+  # them by hand if disk space matters.
+  _url_hash="$(printf '%s' "$url" | sha1sum 2>/dev/null | awk '{print $1}' || true)"
+  if [[ -z "$_url_hash" ]] && command -v python3 >/dev/null 2>&1; then
+    _url_hash="$(printf '%s' "$url" | python3 -c 'import sys,hashlib; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())' 2>/dev/null || true)"
+  fi
+  [[ -n "$_url_hash" ]] || { printf 'curl fallback: could not hash the download URL — refusing to place it.\n'; return 1; }
+  zip_path="$state_dir/playwright-downloads/${_url_hash}-$fname"
   printf 'curl fallback: fetching %s with curl --fail -C - (resume; a partial download, if any, is kept at %s)...\n' "$url" "$zip_path"
   # W3-RT5 fix pass 3 (2026-11-13): --fail, so an HTTP error (404)
   # fails fast with NO error body written. Before, curl without --fail
