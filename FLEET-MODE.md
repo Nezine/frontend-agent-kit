@@ -285,7 +285,8 @@ never from the bottom):
    produce lockfile conflicts in effectively every case — the lockfile is
    sequential by nature.
 6. **Commit every ~30 minutes**, push the branch, and post the one-line
-   status. A bad agent run is revertible only if `main` was green and the
+   status — and push after every finished piece, even sooner (see §15.2).
+   A bad agent run is revertible only if `main` was green and the
    branch was pushed recently.
 7. **Deterministic gate is the merge gate.** No PR merges unless build +
    lint + typecheck + smoke test pass on the branch. D's independent grade
@@ -316,9 +317,11 @@ never from the bottom):
   direction is read at the repo instruction it points to (a PR comment or
   a board row) and acted on from there. Non-urgent traffic stays repo-only.
   Human-facing milestones are posted by the coordinator (Muse) only.
-- **No agent-to-agent coordination chatter in the group chat, ever.** No
-  assigning work, debating a decision, reporting an error, or asking another
-  agent a question there — that goes in `coord/`.
+- **No agent-to-agent coordination chatter in the group chat** — except the
+  short status reports, @mentions, and review requests defined in §15.1,
+  which supersedes this line. No assigning work, debating a decision,
+  reporting an error, or asking another agent a question there — that goes
+  in `coord/`.
 - **Graders grade a named commit + deployed URL, never "latest".** Context
   drift is a failure mode: B builds against an API shape C already changed,
   D grades a build that no longer exists on `main`.
@@ -431,21 +434,24 @@ idea). One small vertical slice, end-to-end, with a phone smoke test.
   a source cannot be read, mark it CHƯA ĐỌC and say so.
 - Never copy secrets, tokens, or personal config from another machine.
   Never run `curl | bash` or an unpinned `@latest` installer.
-- No agent-to-agent coordination chatter in the team group chat. The repo is
-  the coordination channel.
+- No agent-to-agent coordination chatter in the team group chat — except the
+  short status reports, @mentions, and review requests defined in §15.1,
+  which supersedes this line. The repo is the coordination channel.
 - Force-push is forbidden for all agents including the coordinator. Never
   rebase someone else's branch. Never rebase commits already on origin.
 - **Repo hygiene:** repo docs must NEVER contain a "Bài học" section and
   must NEVER expose personal info — no real names, no event name, no venue,
   no date, no emails, no school or team details. Agent codenames and roles
   only. The run is "build day" / "the 5-hour run".
-- **Decisions:** D1–D15 stand (D15 is the judge-artifact mechanism);
-  D16–D19 are reserved; D20 is shared — whoever reaches a decision first
-  takes D20, the other takes D21 (claim the number in your own status file
-  first, check the board before writing it into `decisions.md`). Never
-  renumber D1–D14. New decisions are recorded in
-  `skills/frontend-kit/references/decisions.md` with the next free number,
-  council-decided, QC + red team + proof.
+- **Decisions:** D1–D15 stand (D15 is the judge-artifact mechanism). On main
+  now: D1–D15, D20, D22–D32. D21 is in an open PR; D16–D19 are reserved;
+  D33–D41 are assigned; D42–D71 are proposed in `coord/departments.md`.
+  Claim a number in your own status file first, then verify it is free on
+  the latest main AND the board before writing it into `decisions.md` —
+  never take a number already on main, never renumber anything already on
+  main. New decisions are recorded in
+  `skills/frontend-kit/references/decisions.md`, council-decided, QC + red
+  team + proof.
 - Free legal sources only for research. Never buy anything. Never create a
   paid account. Never spend money.
 
@@ -480,6 +486,83 @@ idea). One small vertical slice, end-to-end, with a phone smoke test.
 - Pure layer-by-layer "frontend first, then backend" — the expert consensus
   is vertical slices (§4). Building the whole frontend before any backend
   exists produces nothing working end-to-end until the very end.
+
+## 15. Workflow optimizations — learned in rehearsal (governs where it conflicts with earlier sections)
+
+These rules were learned running the fleet before build day. Where a rule
+below conflicts with an earlier section, this section governs.
+
+### 15.1 Report every finished piece — silence is invisible
+
+- **No silent work.** Every push, PR, fix, or finished piece is announced
+  immediately in one of two places: the team group chat (one line,
+  @coordinator) or the repo (a PR comment, or your own `coord/<name>.md`).
+  If nobody can see it, it did not happen.
+- **Unpushed code does not count.** Work that exists only on your machine
+  is invisible. Push after every finished piece, in small atomic commits.
+  A builder who reports "done" with nothing on the fork has delivered
+  nothing.
+- **The coordinator watches both channels.** The group thread and the repo's
+  open PRs (new heads checked every 15 minutes). A push with no chat
+  message is still caught — but reporting it yourself is faster and
+  expected.
+- **Answer when tagged.** When another agent @mentions you or asks you
+  directly in the group, answer there right away (confirm done, or answer
+  the question). Never act silently and leave the question visibly
+  unanswered.
+- **Call the coordinator, not the humans.** Agents @ the coordinator for
+  direction, blockers, and reviews — never @ the human owners. The
+  coordinator routes; the humans are busy.
+- **Supersedes:** §8 and §13 ("no agent-to-agent coordination chatter in
+  the group chat, ever"). The corrected rule: short status reports,
+  @mentions for blockers and decisions, and review requests ARE the group's
+  job. What stays repo-only: debate, work assignment, and error discussion.
+
+### 15.2 Never sit idle — the 15-minute rule
+
+- Stuck for more than 15 minutes: report the blocker in the group and
+  switch to another task from your pile. Never wait silently.
+- When you finish a task, start the next one immediately. The pile is
+  ordered; there is always a next item. Work continues until the
+  coordinator says stop.
+- §7's "commit every ~30 minutes" is a floor, not the rhythm. Push after
+  every finished piece — a finished slice, a fixed defect, a reviewed doc —
+  even if that is 10 minutes after the last push.
+
+### 15.3 Review handoff — the fast lane for docs-only fixes
+
+- When a review finds docs-only issues (wrong citations, stale numbers, an
+  unsupportable banner), the reviewer posts the fix list as a PR comment
+  with file:line precision. The builder fixes exactly those lines in one
+  commit.
+- **Focused re-read:** after a docs-only fix, the coordinator re-reads ONLY
+  the corrected lines, not the whole PR, before merging. A full
+  re-verification is not required when the code is unchanged from a green
+  head.
+- **Code-unchanged proof:** if the only difference between the reviewed
+  head and the new head is docs (or a rebase onto a newer main), state that
+  explicitly with the diff evidence — it is what lets the merge proceed
+  without a fresh CI run.
+- **Merge safety:** the branch is rebased onto the current main before
+  merging. No branch commit may touch `coord/run-log.jsonl`
+  (coordinator-only — the coordinator transcribes it at merge). If a PR
+  diff shows run-log deletions, that is a stale base, not a deletion —
+  rebase and re-check before merging.
+
+### 15.4 Merge serialisation for shared files
+
+- When several agents touch the same file, merges are sequential and the
+  coordinator orders them. Never force-push. On conflict, stop and flag the
+  coordinator — do not resolve a semantic conflict alone.
+- Before EVERY landing: fetch origin and fast-forward to origin/main first,
+  check the diff shows ONLY the intended change, push, then verify with
+  `git ls-remote`.
+
+### 15.5 Address forms in the group (codenames only)
+
+- Migga is addressed as "ông ơi" (peer — never "anh"). Mie is addressed as
+  "em". The coordinator is "@muse". Codenames only, never real names, in
+  the group and the repo.
 
 ## Appendix — CONTRACT.md template
 
