@@ -230,7 +230,7 @@ pattern number.
 UX evidence is cited under the axis the defect belongs to — the
 per-defect axis. Layout-only is STRUCK: E3's own tells span Layout,
 Space, and Type-adjacent defects (vanishing nav under Layout and dead
-bands under Space in the probe judges' own reports; unreadable chart
+bands under Space in the probe judges' grades (`research/judge-calibration.md`); unreadable chart
 labels at 390 under Type), so the axis follows the defect — no UX
 evidence is cited under an axis the defect does not belong to. An
 evidence line resting on a UX defect carries both the reference

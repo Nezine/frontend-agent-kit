@@ -328,6 +328,8 @@ taste_anchors=(
   'vendor/taste/skills/taste-skill/library/palettes.json'
   'vendor/taste/skills/taste-skill/library/type.json'
   'vendor/taste/skills/taste-skill/assets/diagrams/presets.json'
+  'vendor/taste/skills/taste-skill/assets/moments/marquee-row/moment.css'
+  'vendor/taste/skills/taste-skill/assets/moments/marquee-row/moment.js'
   'vendor/taste/skills/taste-skill/references/system.md'
 )
 taste_checked=0

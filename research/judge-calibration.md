@@ -67,8 +67,7 @@ human's instrument, not the judge's).
 | 2 — Hilltop dashboard | 4 | 3 | 4 | 3 |
 | 3 — Alex Nguyen portfolio | 4 | 3 | 4 | 3 |
 
-Evidence (one line per score; full evidence lines live in the judge
-reports):
+Evidence (one line per score, transcribed below; the judges' full reports were filed only in the probe working area `.tmp-probe4-projects/`, which was not shipped and has since been wiped, so the full evidence lines are no longer available):
 
 - **Build 1.** Type 4: H1 Newsreader roman 64px/−0.03em vs ref 1's
   roman serif; H1 line 1 cut at the right edge at 390 (ink x=1→389).
