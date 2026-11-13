@@ -1,0 +1,26 @@
+# .maestro/demo-golden-path.yaml — TEMPLATE
+# Fill in every REPLACE marker from the team's demo script (written 11:00-11:20
+# on build day) before running. One flow = one user journey.
+# Source for the command set: https://docs.maestro.dev/get-started/quickstart.md
+# (accessed 2026-11-13) and https://docs.expo.dev/eas/workflows/examples/e2e-tests/
+# (accessed 2026-11-13).
+#
+# RUN ONLY against the dev/preview build installed on the real phone, by appId.
+# Under Expo Go, launchApp with an appId targets an app that is not installed
+# and the flow fails at line one. Expo Go runs are smoke checks only, via the
+# openLink dev-URL workaround (see maestro-smoke SKILL.md section 3).
+
+appId: com.example.hackathon # REPLACE with the app's real applicationId
+---
+- launchApp:
+    clearState: true
+- tapOn: "<demo input field>" # REPLACE with the exact visible label / testID text
+- inputText: "<demo input>" # REPLACE with the one demo input from the demo script
+- tapOn: "<AI action button>" # REPLACE with the exact button label
+- assertVisible: "<expected AI result text>" # REPLACE with the golden response text
+- takeScreenshot: golden-path-result
+# The scored move: kill the app fully, reopen, state must survive.
+- killApp
+- launchApp
+- assertVisible: "<saved state text>" # REPLACE: result / item that must survive kill + reopen
+- takeScreenshot: after-kill-reopen

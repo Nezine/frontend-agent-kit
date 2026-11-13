@@ -14,7 +14,7 @@ Contents: orchestrator skill `frontend-kit`, Impeccable 4.8.2 (engine 0.1.21),
 `taste-reference` (taste-skill 2.5.1 — thin wrapper; full pipeline in the
 installed taste tree), `frontend-design`
 (Anthropic's skill, vendored verbatim — see `skills/frontend-design/SOURCE.md`).
-22 skills total (15 + `mobile-kit` + 6 hackathon skills: `backend-kit`, `mobile-58-kit`, `hackathon-security`, `networking-fetch`, `demo-rehearsal`, `networking-offline`). Pins + licences: `SOURCES.md`.
+28 skills total (15 + `mobile-kit` + 12 hackathon skills: `backend-kit`, `mobile-58-kit`, `hackathon-security`, `networking-fetch`, `demo-rehearsal`, `networking-offline`, `networking-demo-preflight`, `maestro-smoke`, `evidence-capture`, `convex-official`, `supabase-official`, `expo-data-fetching`). Pins + licences: `SOURCES.md`.
 
 **Built for daily use.** The flow first: drop the repo link → the agent
 installs the kit for itself → vague brief → build → your feedback. Acceptance test:
