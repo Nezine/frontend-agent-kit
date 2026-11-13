@@ -15,6 +15,11 @@ install_sh="$root/install.sh"
 [[ -f "$install_sh" ]] || { printf 'FAIL: install.sh not found at %s\n' "$install_sh"; exit 1; }
 
 # Extract playwright_curl_check_url verbatim from install.sh and eval it.
+# The check calls playwright_curl_validate_url first (F-RT1 fix pass),
+# so extract that helper too.
+validator="$(awk '/^playwright_curl_validate_url\(\) \{/{f=1} f{print} f && /^}/{exit}' "$install_sh")"
+[[ -n "$validator" ]] || { printf 'FAIL: playwright_curl_validate_url not found in install.sh\n'; exit 1; }
+eval "$validator"
 helper="$(awk '/^playwright_curl_check_url\(\) \{/{f=1} f{print} f && /^}/{exit}' "$install_sh")"
 [[ -n "$helper" ]] || { printf 'FAIL: playwright_curl_check_url not found in install.sh\n'; exit 1; }
 eval "$helper"
@@ -123,6 +128,48 @@ check "D35 prss ffmpeg wrong revision refuses (was fail-open, rc=0)" 1 \
 check "D35 prss ffmpeg mac wrong revision refuses" 1 \
   "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/9999/ffmpeg-mac.zip" \
   ffmpeg 1013
+
+# F-RT1 fix pass — traversal / dot-segment / encoded shapes must refuse
+# in the check itself (the check's first-segment sed must never see an
+# un-normalized URL), not only at the mapping.
+check "F-RT1 traversal ffmpeg 1013 -> 1005 refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/../../ffmpeg/1005/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "F-RT1 traversal ffmpeg 1013 -> 1005, %2F-encoded refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/..%2F..%2Fffmpeg/1005/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "F-RT1 traversal CFT version-then-wrong refuses" 1 \
+  "https://cdn.playwright.dev/builds/cft/158.0.8127.18/linux64/../../cft/1.2.3.4/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F-RT1 traversal GCS chrome refuses" 1 \
+  "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.18/linux64/../../140.0.7339.186/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F-RT1 traversal prss ffmpeg refuses" 1 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/1013/../../ffmpeg/9999/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "F-RT1 double slash in path refuses" 1 \
+  "https://cdn.playwright.dev//builds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F-RT1 dot segment in path refuses" 1 \
+  "https://cdn.playwright.dev/./builds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F-RT1 double /builds/ refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/builds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F-RT1 evilbuilds/builds refuses" 1 \
+  "https://cdn.playwright.dev/evilbuilds/builds/ffmpeg/1013/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "evilbuilds single segment refuses (unknown builds kind)" 1 \
+  "https://cdn.playwright.dev/evilbuilds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+# W-RT1 fix pass — chromium/headless-shell names on the prss host must
+# refuse in the check itself, even at the correct version.
+check "W-RT1 prss CFT correct version refuses (prss is ffmpeg-only)" 1 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/158.0.8127.18/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "W-RT1 prss headless-shell correct version refuses" 1 \
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/158.0.8127.18/linux64/chrome-headless-shell-linux64.zip" \
+  chromium-headless-shell 1254
 
 printf 'cross-check test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]
