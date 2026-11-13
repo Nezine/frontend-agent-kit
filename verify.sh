@@ -6036,6 +6036,69 @@ if [[ -n "${_pw_saved_path_set:-}" ]]; then PATH="$_pw_saved_path"; hash -r; fi
 trap - EXIT
 if [[ -n "${work:-}" ]]; then rm -rf -- "$work" 2>/dev/null || printf 'WARNING: could not remove temp work dir %s (leaked).\n' "$work" >&2; fi
 
+# --- 6b. D34 (L1 narrow): the §1.1 text pass scans a nested kit clone ------
+# (gate.sh:994 drops the clone exclusion from the sec_11 find only; the
+# :618 shared find keeps it). Two halves, both against a reduced nested
+# clone (markers + every file that carries a known secret-shaped line —
+# a full-tree copy would cost ~3 min per gate run on this machine, D34):
+# (1) secrets planted ONLY inside the clone must fail 1.1 via the
+# built-in grep, naming the planted files; (2) a pristine clone must
+# produce no 1.1 grep failure and no verify.sh hit (the (c1) clone-scoped
+# exemption of the §5c case-(104) fixture literal holds). Planted values
+# are constructed at runtime so this case ships no credential-shaped
+# literal; the case itself never quotes the fixture literal. Uses its own
+# scratch dir (NOT $work: $work is removed after §6) and removes it.
+_d34_work="$(TMPDIR=/tmp mktemp -d 2>/dev/null || true)"
+if [[ -z "$_d34_work" ]]; then
+  unverified "D34 clone-secret case: could not create a scratch dir — case not run"
+else
+  _d34_gate="$root/skills/frontend-kit/scripts/gate/gate.sh"
+  _d34_proj="$_d34_work/proj"
+  mkdir -p "$_d34_proj/design" "$_d34_proj/kit-clone/skills/frontend-kit/scripts/gate" "$_d34_proj/kit-clone/skills/frontend-kit/references" "$_d34_proj/kit-clone/skills/frontend-kit/experts" "$_d34_proj/kit-clone/research"
+  printf ':root { --ink: #0a0f1e; }\n' > "$_d34_proj/design/tokens.css"
+  printf '<!doctype html><html><head><title>t</title><link rel="stylesheet" href="design/tokens.css"></head><body><p>hi</p></body></html>\n' > "$_d34_proj/page.html"
+  # Reduced clone: markers (install.sh + skills/frontend-kit/SKILL.md)
+  # plus every file that carries a known secret-shaped line.
+  cp "$root/install.sh" "$_d34_proj/kit-clone/install.sh"
+  cp "$root/skills/frontend-kit/SKILL.md" "$_d34_proj/kit-clone/skills/frontend-kit/SKILL.md"
+  cp "$root/verify.sh" "$_d34_proj/kit-clone/verify.sh"
+  cp "$root/research/security-deep-20261113.md" "$_d34_proj/kit-clone/research/security-deep-20261113.md"
+  cp "$root/skills/frontend-kit/scripts/gate/gate.sh" "$_d34_proj/kit-clone/skills/frontend-kit/scripts/gate/gate.sh"
+  cp "$root/skills/frontend-kit/scripts/gate/.gitleaks.toml" "$_d34_proj/kit-clone/skills/frontend-kit/scripts/gate/.gitleaks.toml"
+  cp "$root/skills/frontend-kit/references/decisions.md" "$_d34_proj/kit-clone/skills/frontend-kit/references/decisions.md"
+  cp "$root/skills/frontend-kit/experts/security.md" "$_d34_proj/kit-clone/skills/frontend-kit/experts/security.md"
+  # Half 1 — planted: values built at runtime (no credential-shaped
+  # literal in this file). AKIA + 16 identical chars (low-entropy shape
+  # gitleaks misses); api_key assignment with a 32-char value.
+  _d34_akia="AKIA$(printf 'A%.0s' {1..16})"
+  _d34_apival="$(printf 'Ab3%.0s' {1..10})Ab"
+  _d34_bad="$_d34_work/proj-bad"
+  cp -r "$_d34_proj" "$_d34_bad"
+  printf 'aws_access_key_id = %s\n' "$_d34_akia" > "$_d34_bad/kit-clone/notes.txt"
+  printf 'api_key = "%s"\n' "$_d34_apival" > "$_d34_bad/kit-clone/config.env"
+  _d34_bad_rc=0
+  bash "$_d34_gate" --target "$_d34_bad" --security-only >"$_d34_work/gate-bad.log" 2>&1 || _d34_bad_rc=$?
+  if ! grep -q "security 1.1: secret scan: high-confidence secret pattern found (built-in grep)" "$_d34_work/gate-bad.log" || ! grep -Eq "kit-clone/notes.txt:[0-9]+:" "$_d34_work/gate-bad.log" || ! grep -Eq "kit-clone/config.env:[0-9]+:" "$_d34_work/gate-bad.log"; then
+    fail "D34 clone-secret case: a secret planted only inside a nested clone did NOT fail gate §1.1 via the built-in grep naming both planted files — see $_d34_work/gate-bad.log"
+  else
+    ok "D34: secrets planted only inside a nested kit clone fail gate §1.1 via the built-in grep, naming the planted files"
+  fi
+  # Half 2 — pristine: no grep failure, and no verify.sh hit (the (c1)
+  # exemption holds). The overall 1.1 verdict and the exit code are NOT
+  # asserted here: on a machine with no scanner 1.1 fails closed on the
+  # missing scanner even when the grep is clean (same split as the §5c
+  # case-(104) assertions), so the exit code is scanner-dependent.
+  _d34_clean_rc=0
+  bash "$_d34_gate" --target "$_d34_proj" --security-only >"$_d34_work/gate-clean.log" 2>&1 || _d34_clean_rc=$?
+  if grep -q "security 1.1: secret scan: high-confidence secret pattern found (built-in grep)" "$_d34_work/gate-clean.log" || grep -Eq "kit-clone/verify.sh:[0-9]+:" "$_d34_work/gate-clean.log"; then
+    fail "D34 clone-secret case: a pristine nested clone fails gate §1.1 via the built-in grep (the (c1) fixture exemption is broken, or a new false-positive line appeared) — see $_d34_work/gate-clean.log"
+    cat "$_d34_work/gate-clean.log" >&2 || true
+  else
+    ok "D34: a pristine nested kit clone produces no §1.1 grep failure and no verify.sh hit"
+  fi
+  rm -rf -- "$_d34_work" 2>/dev/null || true
+fi
+
 # --- 7. Pro Max search smoke (v1 behaviour kept) -----------------------------
 if [[ -f "$refs_dir/ui-ux-pro-max/scripts/search.py" ]]; then
   if python3 "$refs_dir/ui-ux-pro-max/scripts/search.py" 'editorial portfolio' --domain style --max-results 1 2>/dev/null | grep -q 'Result 1'; then

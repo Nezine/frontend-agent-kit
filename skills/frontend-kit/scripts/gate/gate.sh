@@ -224,6 +224,10 @@ esac
 # fails the §6 symlink check by design (copy the real dir in).
 # Each excluded clone is announced with note(), so the leg-1 log shows
 # what was skipped — a silent exclusion would be unauditable.
+# Exception (D34): the §6 1.1 secret text pass DOES scan a nested clone
+# (its find drops the clone exclusion — the sec_11 find only). A secret
+# in grep-only shape inside a clone must still fail 1.1; the other four
+# find sites (html, css, symlink, sec_grep) keep the exclusion.
 # Gitleaks is deliberately NOT excluded (it scans $project_dir whole):
 # it PASSED over the clone in probe 3, and a secret inside the clone
 # is a true positive about the kit tree.
@@ -258,7 +262,7 @@ while IFS= read -r -d '' _cd || [[ -n "$_cd" ]]; do
     _esc="${_esc//\[/\\[}"
     _esc="${_esc//\]/\\]}"
     clone_excludes+=(-not -path "$_esc/*")
-    note "nested kit clone excluded from gate scans: $_cd (install source, not project content — D14, GAP-12)"
+    note "nested kit clone excluded from gate scans except the §1.1 secret text pass: $_cd (install source, not project content — D14, GAP-12; D34 scans the clone for secrets)"
   fi
 done < <(find "$project_dir" -mindepth 1 -type d -print0 2>/dev/null || true)
 
@@ -847,11 +851,32 @@ sec_11_text_assign_unq=""
 # same pattern syntax the grep calls use. nocasematch is on inside this
 # function so the re-test agrees with the -i grep calls (RR3-06): an
 # uppercased secret on an example-literal line must still be kept.
+# D34 (c1) — clone-scoped exemption of the §5c case-(104) fixture literal
+# (verify.sh:5140): that line plants a synthetic project key into a
+# scratch judge report, so the gate MUST fail 1.1 on it — but the same
+# literal ships in verify.sh source, so a project with a nested kit
+# clone would fail 1.1 on the kit's own test fixture. The exemption is
+# scoped to hits whose file sits under a nested kit clone (clone_dirs):
+# the same literal planted OUTSIDE any clone (case (104)'s bad half)
+# is still kept and still fails. The literal is spelled split across
+# two adjacent string literals on purpose: written whole, this line
+# itself would match sec_11_pat and fail 1.1 when the gate scans the
+# kit repo. Coupling: if the fixture literal ever changes in verify.sh,
+# the exemption silently stops matching and the false positive returns
+# in the fail-closed direction (gate FAILs); the §6 D34 case catches it.
+sec_11_fixture_lit="sk-proj-"ABCDEFGHIJKLMNOPQRSTUVWX
 sec_11_keep_unless_example_only() {
-  local pat="$1" line stripped
+  local pat="$1" line stripped _cd _under_clone
   shopt -s nocasematch
   while IFS= read -r line; do
     stripped="${line//AKIAIOSFODNN7EXAMPLE/}"
+    _under_clone=0
+    for _cd in ${clone_dirs[@]+"${clone_dirs[@]}"}; do
+      case "$line" in "$_cd"/*) _under_clone=1; break ;; esac
+    done
+    if [[ "$_under_clone" == 1 ]]; then
+      stripped="${stripped//$sec_11_fixture_lit/}"
+    fi
     if [[ "$stripped" =~ $pat ]]; then printf '%s\n' "$line"; fi
   done
 }
@@ -991,7 +1016,7 @@ sec_11_text_grep() {
 # RR4-04 (fix round 5): NUL-delimited — a newline in a filename must not
 # split the list (find -print0, sort -z, read -d '').
 sec_11_text_files=()
-while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/gate-leg1.log' -not -path '*/design/gate-leg2.log' ${clone_excludes[@]+"${clone_excludes[@]}"} -print0 2>/dev/null | sort -z -u || true)
+while IFS= read -r -d '' _f || [[ -n "$_f" ]]; do sec_11_text_files+=("$_f"); done < <(find "$project_dir" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.taste-skill/*' -not -path '*/design/gate-leg1.log' -not -path '*/design/gate-leg2.log' -print0 2>/dev/null | sort -z -u || true)
 if [[ "${#sec_11_text_files[@]}" -gt 0 ]]; then
   sec_11_text_hits="$(sec_11_text_grep "$sec_11_pat" -i | sec_11_keep_unless_example_only "$sec_11_pat" || true)"
   sec_11_text_assign="$(sec_11_text_grep "$sec_11_assign_pat" -i | sec_11_keep_unless_example_only "$sec_11_assign_pat" || true)"

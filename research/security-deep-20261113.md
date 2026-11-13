@@ -55,7 +55,7 @@
 npx expo export --platform android && grep -R -E -i -- 'sk-(proj-)?[A-Za-z0-9]{20,}|sb_secret_|service_role|OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' dist/ || echo "CLEAN: no secret pattern found in dist/"
 ```
 Expected output: `CLEAN: no secret pattern found in dist/`. Never grep for the full real key value.
-**Red-team fix (draft SEVERE #1):** the draft's regex was `-----BEGIN (RSA |EC |OPENSSH)?PRIVATE KEY-----` — the `OPENSSH` alternative had no trailing space, so it required the literal string `OPENSSHPRIVATE` and could never match a real `-----BEGIN OPENSSH PRIVATE KEY-----` header. A bundle containing an OpenSSH private key would have printed `CLEAN`. The regex above is worker 01's correct version, with the space inside the group: `(RSA |EC |OPENSSH )?`.
+**Red-team fix (draft SEVERE #1):** the draft's regex was `-----BEGIN (RSA |EC |OPENSSH)?PRIVATE KEY-----` — the `OPENSSH` alternative had no trailing space, so it required the literal string `OPENSSHPRIVATE` and could never match a real OPENSSH private-key header. A bundle containing an OpenSSH private key would have printed `CLEAN`. The regex above is worker 01's correct version, with the space inside the group: `(RSA |EC |OPENSSH )?`.
 **Timing honesty:** `npx expo export` alone typically takes 1–3 min, so this is a **pre-build gate (~3–5 min)**, not a per-merge check. The per-merge check (§(d) #1) is the fast repo/working-tree grep only.
 
 ### If a key leaks mid-day (5-minute playbook, e.g. at 14:00)
