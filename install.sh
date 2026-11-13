@@ -955,6 +955,19 @@ playwright_curl_check_url() { # <url> <name> <rev> — 0 if the URL matches the 
         return 1
       fi
       ;;
+    *)
+      # W3-RT3 fix pass 3 (2026-11-13): fail closed on unknown hosts.
+      # Before, a URL on any other host fell through to `return 0` —
+      # the validator deliberately returns 0 for unknown hosts (it
+      # defers to the mapping's `*)` refusal), so the check on its own
+      # accepted an evil-host URL, traversal shape included. The mapping
+      # still refuses unknown hosts first in practice (curl_one calls
+      # this check only after the mapping matched), and the only other
+      # caller is the crosscheck test — neither depends on the
+      # fall-through accept — but the check must never be a standalone
+      # accept for a host it does not know.
+      printf 'curl fallback: unknown host in URL %s — refusing to place it.\n' "$url"
+      return 1 ;;
   esac
   return 0
 }
