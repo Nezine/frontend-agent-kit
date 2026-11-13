@@ -558,12 +558,6 @@ below conflicts with an earlier section, this section governs.
   check the diff shows ONLY the intended change, push, then verify with
   `git ls-remote`.
 
-### 15.5 Address forms in the group (codenames only)
-
-- Migga is addressed as "ông ơi" (peer — never "anh"). Mie is addressed as
-  "em". The coordinator is "@muse". Codenames only, never real names, in
-  the group and the repo.
-
 ## Appendix — CONTRACT.md template
 
 A writes this in the first 20 minutes. One page, no more.
