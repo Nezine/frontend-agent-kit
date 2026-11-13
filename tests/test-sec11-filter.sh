@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unit test for the §1.1 example-only filter in gate.sh
-# (sec_11_keep_unless_example_only, D34 (c1) + MIG-3 fix pass W1).
+# (sec_11_keep_unless_example_only, D34 (c1) + MIG-3 fix pass W1 + fix pass 2).
 #
 # Extracts the REAL filter from gate.sh (verbatim — no copied logic)
 # and runs it against constructed lines. Never prints a secret value:
@@ -10,7 +10,7 @@
 # Run: bash tests/test-sec11-filter.sh
 # Exit 0 = all cases pass; non-zero = at least one case failed.
 # Wired into CI (.github/workflows/ci.yml, next to the Playwright
-# unit test) and into verify.sh §6b, so a broken filter fails both.
+# unit test) and into verify.sh §6c, so a broken filter fails both.
 set -u
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 gate_sh="$root/skills/frontend-kit/scripts/gate/gate.sh"
@@ -36,6 +36,13 @@ LIT="$(printf '%s' "$_fixture_line" | sed -n 's/.*api_key = "//; s/".*//p')"
 [[ "$LIT" =~ ^sk-proj-[A-Za-z0-9_-]{20,}$ ]] || { printf 'FAIL: fixture literal has an unexpected shape\n'; exit 1; }
 LOW="$(printf '%s' "$LIT" | tr 'A-Z' 'a-z')"
 TAIL="${LIT#sk-proj-}"
+# MIG-3 fix pass 2 (W4): the public AWS example, runtime-constructed
+# from adjacent string literals (same trick as gate.sh's fixture
+# spelling) so this file ships no credential-shaped literal either.
+AKIA_EX="AKIA"IO"SFODNN7EX"AMPLE
+# Mixed-case fixture (first two letters flipped): the exemption is
+# exact-case, so this must still match and still fail.
+MIX="SK${LIT#sk}"
 
 clone_dirs=("/tmp/fakeproj/kit-clone")
 pass=0
@@ -78,10 +85,28 @@ t "V10 fixture-as-JSON-value-outside-clone PAT" 1 "/tmp/fakeproj/design/judge/ro
 t "V10b mixed-whole-plus-longer-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: $LIT and ${LIT}ABCD" "$sec_11_pat"
 # Two whole-token fixtures on one line -> both removed, exempted.
 t "V10c two-whole-fixtures-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: $LIT $LIT" "$sec_11_pat"
+# MIG-3 fix pass 2 (W-RT4): each case below FAILS against the 5578716
+# filter and PASSES against the new one. The old filter's
+# case-insensitive substring removal, case-insensitive clone test and
+# strip-before-removal order exempted all of them.
+# V11: mixed-case fixture, under a clone -> kept (exemption is exact-case)
+t "V11 mixed-case-fixture-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"$MIX\"" "$sec_11_pat"
+# V12: fixture followed by a token char (_, -, digit) -> kept
+t "V12a trailing-underscore-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"${LIT}_\"" "$sec_11_pat"
+t "V12b trailing-hyphen-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"${LIT}-\"" "$sec_11_pat"
+t "V12c trailing-digit-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"${LIT}5\"" "$sec_11_pat"
+# V13: one-sided delimiter — a secret char on one side only -> kept
+t "V13a left-secret-right-line-edge PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"x${LIT}" "$sec_11_pat"
+t "V13b left-delim-right-secret-line-edge PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"${LIT}ABCD" "$sec_11_pat"
+# V14 (W-RT1): case-variant clone dir is NOT a clone -> kept
+t "V14 case-variant-clone-dir PAT" 1 "/tmp/fakeproj/KIT-CLONE/notes.txt:1: api_key = \"$LIT\"" "$sec_11_pat"
+# V15 (W-RT2): the public example spliced into a longer key -> kept
+# (the strip must not join the parts into the fixture before removal)
+t "V15 splice-joins-into-fixture PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: api_key = \"sk-proj-ABC${AKIA_EX}DEFGHIJKLMNOPQRSTUVWX\"" "$sec_11_pat"
 # C: a different (real-shape) secret under a clone -> kept (1)
 t "C1 other-AKIA-under-clone PAT" 1 "/tmp/fakeproj/kit-clone/notes.txt:1: aws_access_key_id = AKIA$(printf 'B%.0s' {1..16})" "$sec_11_pat"
 # D: the public AWS example under a clone -> dropped (0), global exemption intact
-t "D1 example-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: AKIAIOSFODNN7EXAMPLE" "$sec_11_pat"
+t "D1 example-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/notes.txt:1: $AKIA_EX" "$sec_11_pat"
 # E: gate.sh's own definition line (not under a clone) -> dropped (0):
 # the split spelling must not match the pattern.
 t "E1 definition-line PAT" 0 "sec_11_fixture_lit=\"sk-proj-\"$TAIL" "$sec_11_pat"

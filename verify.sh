@@ -6037,7 +6037,7 @@ trap - EXIT
 if [[ -n "${work:-}" ]]; then rm -rf -- "$work" 2>/dev/null || printf 'WARNING: could not remove temp work dir %s (leaked).\n' "$work" >&2; fi
 
 # --- 6b. D34 (L1 narrow): the §1.1 text pass scans a nested kit clone ------
-# (gate.sh:1019 drops the clone exclusion from the sec_11 find only; the
+# (gate.sh:1079 drops the clone exclusion from the sec_11 find only; the
 # :622 shared find keeps it). Two halves, both against a reduced nested
 # clone (markers + every file that carries a known secret-shaped line —
 # a full-tree copy would cost ~3 min per gate run on this machine, D34).

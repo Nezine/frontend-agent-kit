@@ -875,29 +875,68 @@ sec_11_text_assign_unq=""
 # lowercase occurrence all still match and still fail.
 sec_11_fixture_lit="sk-proj-"ABCDEFGHIJKLMNOPQRSTUVWX
 sec_11_keep_unless_example_only() {
-  local pat="$1" line stripped _cd _under_clone _s
+  local pat="$1" line stripped _cd _under_clone _s _out _rest _pre _post _right_src _left_ok _right_ok
   shopt -s nocasematch
   while IFS= read -r line; do
-    stripped="${line//AKIAIOSFODNN7EXAMPLE/}"
+    # MIG-3 fix pass 2 (W-RT1): the clone test is case-SENSITIVE.
+    # Clone detection (:244) runs with nocasematch off, so a lookalike
+    # dir (KIT-CLONE) is not a clone and must not inherit the
+    # exemption. nocasematch is off for the test and the removal below
+    # and back on for the AKIA strip and the pattern re-test, which
+    # must agree with the -i grep.
+    shopt -u nocasematch
     _under_clone=0
     for _cd in ${clone_dirs[@]+"${clone_dirs[@]}"}; do
       case "$line" in "$_cd"/*) _under_clone=1; break ;; esac
     done
+    stripped="$line"
     if [[ "$_under_clone" == 1 ]]; then
-      # Whole-token, case-sensitive removal only. Sentinel spaces
-      # guarantee a delimiter on both sides, so no ^/$ anchors are
-      # needed (bash 3.2-safe). nocasematch is off here so a lowercase
-      # fixture does not match the literal; it is back on for the
-      # pattern re-test below, which must agree with the -i grep.
-      shopt -u nocasematch
-      _s=" $stripped "
-      while [[ "$_s" =~ (.*)([^A-Za-z0-9_-])"$sec_11_fixture_lit"([^A-Za-z0-9_-])(.*) ]]; do
-        _s="${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+      # MIG-3 fix pass 2 (W-RT2): whole-token fixture removal runs on
+      # the ORIGINAL line, BEFORE the AKIA strip below. Stripping first
+      # can splice the fixture into existence inside a longer key (the
+      # strip joins the parts; the removal then deletes the joined
+      # fixture) or shrink a token below the pattern threshold, so the
+      # removal must judge the line as grepped, not the stripped one.
+      # MIG-3 fix pass 2 (W-RT3): LINEAR string operations only. The
+      # previous regex led with an UNANCHORED (.*), which the engine
+      # retried at every start position (O(n^2): ~33 s for a 100 KB
+      # line). The loop below uses one regex per pass, anchored at both
+      # ends (^(.*)LIT(.*)$), so the engine tries exactly one start
+      # position and backtracks linearly to the LAST occurrence of the
+      # literal (measured: 13 ms for a 100 KB clean line, 25 ms with
+      # one fixture, 140 ms for a 1 MB clean line, 220 ms for a 1 MB
+      # line with the fixture at the end). The ${var%%...} /
+      # ${var#...} split was measured quadratic (6.9 s for a 1 MB
+      # line) and is not used. An occurrence is removed only when
+      # delimited on both sides by a non-secret character (or a line
+      # edge, via the sentinel spaces), and only in its exact case
+      # (nocasematch is off here). Occurrences are processed
+      # right-to-left: when the text after an occurrence is empty, the
+      # following character is the first character already emitted
+      # (the head of a kept literal) — never a line edge.
+      _s=" $line "
+      _out=""
+      _rest="$_s"
+      while [[ "$_rest" =~ ^(.*)"$sec_11_fixture_lit"(.*)$ ]]; do
+        _pre="${BASH_REMATCH[1]}"
+        _post="${BASH_REMATCH[2]}"
+        case "$_pre" in *[A-Za-z0-9_-]) _left_ok=0 ;; *) _left_ok=1 ;; esac
+        _right_src="$_post"
+        [[ -z "$_right_src" ]] && _right_src="$_out"
+        case "$_right_src" in [A-Za-z0-9_-]*) _right_ok=0 ;; *) _right_ok=1 ;; esac
+        if [[ "$_left_ok" == 1 && "$_right_ok" == 1 ]]; then
+          _out="$_post$_out"
+        else
+          _out="$sec_11_fixture_lit$_post$_out"
+        fi
+        _rest="$_pre"
       done
-      stripped="${_s# }"
+      _out="$_rest$_out"
+      stripped="${_out# }"
       stripped="${stripped% }"
-      shopt -s nocasematch
     fi
+    shopt -s nocasematch
+    stripped="${stripped//AKIAIOSFODNN7EXAMPLE/}"
     if [[ "$stripped" =~ $pat ]]; then printf '%s\n' "$line"; fi
   done
 }
