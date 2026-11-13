@@ -3060,6 +3060,187 @@ else
   cat "$work/runlog-t88-cc.log" >&2 || true
 fi
 
+# m5_write_filled_docs <proj>: write filled-in TASTE.md / PLAN.md /
+# DESIGN-READ.md / DESIGN-SYSTEM.md into <proj>/design — every required
+# heading present (see run-log.mjs TEMPLATE_HEADINGS), no template
+# placeholder bracket, each file over 1 KB. The text is a fixed
+# fixture direction (Linear-style dark developer tool); it stands in
+# for the filled-in state a real project reaches before locking.
+# Defined before §5c: the §5c/§5f fixtures lock their projects, and lock
+# runs validateTemplateIntegrity (D36) — so the helper must exist before §5c runs.
+# Shared by the round-7 fixtures below (a genuine lock needs a genuine
+# design dir since D36) and by the §5e cases.
+m5_write_filled_docs() {
+  local P="$1"
+  cat > "$P/design/TASTE.md" <<'EOF'
+# TASTE.md
+
+## Lock summary
+
+1. Direction: Linear-style dark developer tool, from the locked reference set.
+2. Tokens: design/tokens.css, locked at the taste lock recorded in the run log.
+3. Lock version: 1, immutable within a direction; a re-pick creates a new version.
+4. Picked variant: none yet.
+5. Stop: at least 4 on Type, Layout, Colour and Space plus a green gate, or after 3 rounds.
+
+## Intent
+
+A landing page for a small developer tool that explains itself in under a minute. It should feel like the tool itself: precise, quiet, a little severe, never like a marketing site shouting for attention. One idea per screen, generous whitespace, type doing the work that decoration usually does.
+
+## Likes
+
+- Linear: the restrained hero, one strong idea, nothing competing with the headline.
+- Stripe Press: long-form typographic rhythm, generous measure, quiet confidence.
+
+## Dislikes
+
+- Purple-blue gradient heroes with identical rounded cards on every section.
+- All-caps eyebrows above every heading, and stats with no source behind them.
+
+## Hard rules
+
+1. No gradients ever.
+2. Left-aligned throughout.
+3. Type is the design; no decorative gradient, no stock illustration.
+4. One accent, used twice per screen at most.
+5. No border or shadow on cards.
+
+## Reference direction
+
+- DESIGN.md: design/references/DESIGN.md/linear.md
+- Reference sites: linear.png, stripe.png
+- Why: the brief asks for a developer tool that reads as precise and calm, and both references earn that feeling with type and spacing rather than with colour or decoration, which is exactly what the locked tokens encode.
+EOF
+  cat > "$P/design/PLAN.md" <<'EOF'
+# PLAN.md
+
+## Decisions
+
+- Direction: Linear-style dark developer tool, see DESIGN-SYSTEM.md.
+- Brief type: landing.
+- Conviction: in five years the best developer tools will read like documents, not dashboards.
+
+## Assumptions
+
+- The audience reads English and evaluates tools on a lunch break.
+- The product has no real photography yet, so the hero uses a UI mock, not a photo.
+
+## Design Read
+
+- Visual variance: Med, one strong hero idea, restrained sections.
+- Motion intensity: Low, still, opacity-only transitions.
+- Information density: Med, standard landing rhythm.
+- Asset dependence: Med, some real imagery, mocks where the brief has none.
+- Brand fidelity: Low, direction inspired, values free.
+
+## Purpose + primary user task
+
+- Purpose: let a visitor decide in under a minute whether this tool is worth trying.
+- Primary user: a developer evaluating tools on a lunch break.
+- Primary user task: compare this tool against the one they already use and reach the signup decision.
+- Task flow: grasp what the tool does, see proof it works, check the price of trying it, start the trial.
+- Secondary tasks: find the docs link; contact support.
+- Out of scope: it does not teach the tool; it does not compare against every competitor.
+
+## Section inventory
+
+| id | section | notes |
+| --- | --- | --- |
+| hero | Hero | One idea, one CTA |
+| features | Features | Three panels, each with a visual |
+| pricing | Pricing | Two tiers, no fabricated figures |
+| footer | Footer | Closing, dark ground |
+
+## Acceptance criteria (EARS)
+
+- WHEN the viewport is 390px, THE SYSTEM SHALL show one column with no horizontal overflow and no glyph clipped at the viewport edge.
+- WHEN the page is rendered at 1440 / 768 / 390, THE SYSTEM SHALL show every section in the inventory above, each with a real visual.
+- WHEN a section is rendered, THE SYSTEM SHALL fill at least 55 percent of its box or merge with its neighbour.
+- WHEN the pricing CTA is clicked, THE SYSTEM SHALL show the trial start.
+- WHEN the hero loads, THE SYSTEM SHALL show one headline, one lede, and one call to action.
+
+## Screen × state matrix
+
+| section | default | loading | empty | error | partial |
+| --- | --- | --- | --- | --- | --- |
+| hero | hero | N/A | N/A | N/A | N/A |
+| features | features | N/A | N/A | N/A | N/A |
+| pricing | pricing | N/A | N/A | N/A | N/A |
+| footer | footer | N/A | N/A | N/A | N/A |
+
+## Design system (pointer — the declaration lives elsewhere)
+
+- Declaration: design/DESIGN-SYSTEM.md, reference mapping, do and don't rules, rationale.
+- Values: design/tokens.css, single source of truth for every value.
+- Recipe: none.
+
+## Amendments
+
+- None yet.
+
+## Approval record
+
+- Status: approved.
+- Approved by: the human, at the plan approval gate.
+- Date: 2026-11-13.
+EOF
+  cat > "$P/design/DESIGN-READ.md" <<'EOF'
+# DESIGN-READ.md
+
+## Design Read
+
+- Artifact: landing.
+- Audience: developers evaluating a tool on a lunch break.
+- Visual language: restrained editorial, type-led, quiet ground.
+- Mode: greenfield.
+- Anchor: Linear-style dark developer tool.
+- High-end bar: one strong hero idea, generous whitespace, nothing competing with the headline.
+
+## The five dials
+
+| Dial | Setting | Meaning |
+| --- | --- | --- |
+| Visual variance | Med | One strong hero idea, restrained sections. |
+| Motion intensity | Low | Still, opacity-only transitions. |
+| Information density | Med | Standard landing rhythm. |
+| Asset dependence | Med | Some real imagery, mocks where the brief has none. |
+| Brand fidelity | Low | Direction inspired, values free. |
+
+## What the dials decide
+
+- Variance: Med means the hero breaks the grid once; sections stay on it.
+- Motion: Low means no entrance choreography, 220ms opacity only.
+- Density: Med means three features per row at 1440, one at 390.
+- Asset dependence: Med means the hero needs a real product mock, not a drawn stand-in.
+- Brand fidelity: Low means the reference palette is adapted, not preserved exactly.
+EOF
+  cat > "$P/design/DESIGN-SYSTEM.md" <<'EOF'
+# DESIGN-SYSTEM.md
+
+## Reference mapping
+
+- Type roles: display serif from the locked reference editorial voice; body sans from its UI text.
+- Colour roles: canvas and ink from the reference light ground; accent from its single brand colour.
+- Space and radius: section rhythm from the reference vertical spacing; card radius from its panel language.
+- Motion: durations from the reference reveal behaviour.
+
+## Do / don't rules
+
+- Do: one accent, used twice per screen at most.
+- Do: type is the design, no decorative gradient ever.
+- Don't: no second button recipe for a special block.
+- Don't: no colour outside the token file, ever.
+
+## Rationale
+
+The brief asks for a developer tool that reads as precise and calm, and the reference earns that feeling with type and spacing rather than colour. The system keeps the palette to one accent so the hierarchy stays typographic, and keeps motion to opacity so nothing competes with the words. What was deliberately left out: gradients, shadows, and a second accent.
+
+## Drift rule
+
+If a fix round changes a value, it changes tokens.css and records the change in the round delta and in PLAN.md Amendments. It does not edit this file to match. If this file and tokens.css disagree, tokens.css governs; this file is stale until the next re-lock, when a new lock version re-quotes the mapping above.
+EOF
+}
+
 # --- 5c. run-log judge-artifact mechanism (D15, GAP-13) --------------------
 # A graded record must TRANSCRIBE a judge artifact the orchestrator
 # prepared (judge-report.mjs prepare) and an independent judge filled
@@ -3074,7 +3255,13 @@ fi
 # §5c uses real report files throughout.
 jr_proj="$work/judge-proj"
 mkdir -p "$jr_proj/design/screenshots" "$jr_proj/design/screenshots-prev" "$jr_proj/design/judge" "$jr_proj/design/crosscheck"
-cp "$work/design/tokens.css" "$jr_proj/design/tokens.css"
+# D38 (MIE-7): the §5c locks run validateTemplateIntegrity (D36), so
+# this fixture uses the template tokens.css + demo.html and filled
+# design docs — the minimal $work/design/tokens.css has 8 token names
+# and no TASTE.md/PLAN.md, which lock refuses.
+cp "$root/skills/frontend-kit/templates/design/tokens.css" "$jr_proj/design/tokens.css"
+cp "$root/skills/frontend-kit/templates/design/demo.html" "$jr_proj/design/demo.html"
+m5_write_filled_docs "$jr_proj"
 cp "$jr_proj/design/tokens.css" "$work/tokens-d15-orig.css"
 printf '<html><body><main id="main"><h1>Learn</h1></main></body></html>\n' > "$jr_proj/design/page.html"
 cp "$jr_proj/design/page.html" "$work/page-d15-orig.html"
@@ -3548,7 +3735,12 @@ jr_reject "record citing a judge artifact with a substituted look-alike in the R
 # prepares rounds 10/11).
 jr2_proj="$work/judge-proj2"
 mkdir -p "$jr2_proj/design/screenshots" "$jr2_proj/design/screenshots-prev" "$jr2_proj/design/judge" "$jr2_proj/design/crosscheck"
-cp "$work/tokens.css" "$jr2_proj/design/tokens.css"
+# D38 (MIE-7): same lockable-project setup as jr_proj above — the
+# old "$work/tokens.css" copy never existed (see the D37 note at the
+# $work/design/tokens.css heredoc), so jr2 had no tokens.css at all.
+cp "$root/skills/frontend-kit/templates/design/tokens.css" "$jr2_proj/design/tokens.css"
+cp "$root/skills/frontend-kit/templates/design/demo.html" "$jr2_proj/design/demo.html"
+m5_write_filled_docs "$jr2_proj"
 cp "$work/page-d15-orig.html" "$jr2_proj/design/page.html"
 cp "$jr_proj/design/page2.html" "$jr2_proj/design/page2.html"
 for v in 1440 768 390; do
@@ -3737,7 +3929,11 @@ fi
 # targets for the appended-line cases).
 rp_proj="$work/readpath-proj"
 mkdir -p "$rp_proj/design/screenshots" "$rp_proj/design/screenshots-prev" "$rp_proj/design/judge" "$rp_proj/design/crosscheck"
-cp "$work/design/tokens.css" "$rp_proj/design/tokens.css"
+# D38 (MIE-7): lockable-project setup — the re-pick lock below runs
+# validateTemplateIntegrity (D36), as for jr_proj above.
+cp "$root/skills/frontend-kit/templates/design/tokens.css" "$rp_proj/design/tokens.css"
+cp "$root/skills/frontend-kit/templates/design/demo.html" "$rp_proj/design/demo.html"
+m5_write_filled_docs "$rp_proj"
 cp "$work/page-d15-orig.html" "$rp_proj/design/page.html"
 cp "$jr_proj/design/page2.html" "$rp_proj/design/page2.html"
 for v in 1440 768 390; do
@@ -5042,184 +5238,6 @@ else
 fi
 
 # --- MIE-5 (D36) fixture writer: filled design docs -----------------------
-# m5_write_filled_docs <proj>: write filled-in TASTE.md / PLAN.md /
-# DESIGN-READ.md / DESIGN-SYSTEM.md into <proj>/design — every required
-# heading present (see run-log.mjs TEMPLATE_HEADINGS), no template
-# placeholder bracket, each file over 1 KB. The text is a fixed
-# fixture direction (Linear-style dark developer tool); it stands in
-# for the filled-in state a real project reaches before locking.
-# Shared by the round-7 fixtures below (a genuine lock needs a genuine
-# design dir since D36) and by the §5e cases.
-m5_write_filled_docs() {
-  local P="$1"
-  cat > "$P/design/TASTE.md" <<'EOF'
-# TASTE.md
-
-## Lock summary
-
-1. Direction: Linear-style dark developer tool, from the locked reference set.
-2. Tokens: design/tokens.css, locked at the taste lock recorded in the run log.
-3. Lock version: 1, immutable within a direction; a re-pick creates a new version.
-4. Picked variant: none yet.
-5. Stop: at least 4 on Type, Layout, Colour and Space plus a green gate, or after 3 rounds.
-
-## Intent
-
-A landing page for a small developer tool that explains itself in under a minute. It should feel like the tool itself: precise, quiet, a little severe, never like a marketing site shouting for attention. One idea per screen, generous whitespace, type doing the work that decoration usually does.
-
-## Likes
-
-- Linear: the restrained hero, one strong idea, nothing competing with the headline.
-- Stripe Press: long-form typographic rhythm, generous measure, quiet confidence.
-
-## Dislikes
-
-- Purple-blue gradient heroes with identical rounded cards on every section.
-- All-caps eyebrows above every heading, and stats with no source behind them.
-
-## Hard rules
-
-1. No gradients ever.
-2. Left-aligned throughout.
-3. Type is the design; no decorative gradient, no stock illustration.
-4. One accent, used twice per screen at most.
-5. No border or shadow on cards.
-
-## Reference direction
-
-- DESIGN.md: design/references/DESIGN.md/linear.md
-- Reference sites: linear.png, stripe.png
-- Why: the brief asks for a developer tool that reads as precise and calm, and both references earn that feeling with type and spacing rather than with colour or decoration, which is exactly what the locked tokens encode.
-EOF
-  cat > "$P/design/PLAN.md" <<'EOF'
-# PLAN.md
-
-## Decisions
-
-- Direction: Linear-style dark developer tool, see DESIGN-SYSTEM.md.
-- Brief type: landing.
-- Conviction: in five years the best developer tools will read like documents, not dashboards.
-
-## Assumptions
-
-- The audience reads English and evaluates tools on a lunch break.
-- The product has no real photography yet, so the hero uses a UI mock, not a photo.
-
-## Design Read
-
-- Visual variance: Med, one strong hero idea, restrained sections.
-- Motion intensity: Low, still, opacity-only transitions.
-- Information density: Med, standard landing rhythm.
-- Asset dependence: Med, some real imagery, mocks where the brief has none.
-- Brand fidelity: Low, direction inspired, values free.
-
-## Purpose + primary user task
-
-- Purpose: let a visitor decide in under a minute whether this tool is worth trying.
-- Primary user: a developer evaluating tools on a lunch break.
-- Primary user task: compare this tool against the one they already use and reach the signup decision.
-- Task flow: grasp what the tool does, see proof it works, check the price of trying it, start the trial.
-- Secondary tasks: find the docs link; contact support.
-- Out of scope: it does not teach the tool; it does not compare against every competitor.
-
-## Section inventory
-
-| id | section | notes |
-| --- | --- | --- |
-| hero | Hero | One idea, one CTA |
-| features | Features | Three panels, each with a visual |
-| pricing | Pricing | Two tiers, no fabricated figures |
-| footer | Footer | Closing, dark ground |
-
-## Acceptance criteria (EARS)
-
-- WHEN the viewport is 390px, THE SYSTEM SHALL show one column with no horizontal overflow and no glyph clipped at the viewport edge.
-- WHEN the page is rendered at 1440 / 768 / 390, THE SYSTEM SHALL show every section in the inventory above, each with a real visual.
-- WHEN a section is rendered, THE SYSTEM SHALL fill at least 55 percent of its box or merge with its neighbour.
-- WHEN the pricing CTA is clicked, THE SYSTEM SHALL show the trial start.
-- WHEN the hero loads, THE SYSTEM SHALL show one headline, one lede, and one call to action.
-
-## Screen × state matrix
-
-| section | default | loading | empty | error | partial |
-| --- | --- | --- | --- | --- | --- |
-| hero | hero | N/A | N/A | N/A | N/A |
-| features | features | N/A | N/A | N/A | N/A |
-| pricing | pricing | N/A | N/A | N/A | N/A |
-| footer | footer | N/A | N/A | N/A | N/A |
-
-## Design system (pointer — the declaration lives elsewhere)
-
-- Declaration: design/DESIGN-SYSTEM.md, reference mapping, do and don't rules, rationale.
-- Values: design/tokens.css, single source of truth for every value.
-- Recipe: none.
-
-## Amendments
-
-- None yet.
-
-## Approval record
-
-- Status: approved.
-- Approved by: the human, at the plan approval gate.
-- Date: 2026-11-13.
-EOF
-  cat > "$P/design/DESIGN-READ.md" <<'EOF'
-# DESIGN-READ.md
-
-## Design Read
-
-- Artifact: landing.
-- Audience: developers evaluating a tool on a lunch break.
-- Visual language: restrained editorial, type-led, quiet ground.
-- Mode: greenfield.
-- Anchor: Linear-style dark developer tool.
-- High-end bar: one strong hero idea, generous whitespace, nothing competing with the headline.
-
-## The five dials
-
-| Dial | Setting | Meaning |
-| --- | --- | --- |
-| Visual variance | Med | One strong hero idea, restrained sections. |
-| Motion intensity | Low | Still, opacity-only transitions. |
-| Information density | Med | Standard landing rhythm. |
-| Asset dependence | Med | Some real imagery, mocks where the brief has none. |
-| Brand fidelity | Low | Direction inspired, values free. |
-
-## What the dials decide
-
-- Variance: Med means the hero breaks the grid once; sections stay on it.
-- Motion: Low means no entrance choreography, 220ms opacity only.
-- Density: Med means three features per row at 1440, one at 390.
-- Asset dependence: Med means the hero needs a real product mock, not a drawn stand-in.
-- Brand fidelity: Low means the reference palette is adapted, not preserved exactly.
-EOF
-  cat > "$P/design/DESIGN-SYSTEM.md" <<'EOF'
-# DESIGN-SYSTEM.md
-
-## Reference mapping
-
-- Type roles: display serif from the locked reference editorial voice; body sans from its UI text.
-- Colour roles: canvas and ink from the reference light ground; accent from its single brand colour.
-- Space and radius: section rhythm from the reference vertical spacing; card radius from its panel language.
-- Motion: durations from the reference reveal behaviour.
-
-## Do / don't rules
-
-- Do: one accent, used twice per screen at most.
-- Do: type is the design, no decorative gradient ever.
-- Don't: no second button recipe for a special block.
-- Don't: no colour outside the token file, ever.
-
-## Rationale
-
-The brief asks for a developer tool that reads as precise and calm, and the reference earns that feeling with type and spacing rather than colour. The system keeps the palette to one accent so the hierarchy stays typographic, and keeps motion to opacity so nothing competes with the words. What was deliberately left out: gradients, shadows, and a second accent.
-
-## Drift rule
-
-If a fix round changes a value, it changes tokens.css and records the change in the round delta and in PLAN.md Amendments. It does not edit this file to match. If this file and tokens.css disagree, tokens.css governs; this file is stale until the next re-lock, when a new lock version re-quotes the mapping above.
-EOF
-}
 
 # --- Round 7 (F1/F2/A7): taste-lock lines, land lines and the
 # crosscheck selection-key types verify on read. Before round 7 no
@@ -5914,7 +5932,11 @@ r7_legs="--gate-leg1 design/gate-leg1.log --gate-leg2 design/gate-leg2.log --pag
 r7_mkproj() { # dir — tokens/page/shots/legs + cross-checks rounds 1..4 (slice r7)
   local P="$1" r
   mkdir -p "$P/design/screenshots" "$P/design/screenshots-prev" "$P/design/judge" "$P/design/crosscheck"
-  cp "$work/design/tokens.css" "$P/design/tokens.css"
+  # D38 (MIE-7): lockable-project setup — the §5f locks run
+  # validateTemplateIntegrity (D36), as for jr_proj in §5c above.
+  cp "$root/skills/frontend-kit/templates/design/tokens.css" "$P/design/tokens.css"
+  cp "$root/skills/frontend-kit/templates/design/demo.html" "$P/design/demo.html"
+  m5_write_filled_docs "$P"
   cp "$work/page-d15-orig.html" "$P/design/page.html"
   for v in 1440 768 390; do
     printf 'PNG-%s-A' "$v" > "$P/design/screenshots/$v.png"
