@@ -658,6 +658,18 @@ Milo's 4 attacks on the ML Kit OCR proposal (group 19:25). Honest answers — 3 
 - Milo's concessions ACKNOWLEDGED: the InfiniteRed package is a decent Expo module; the bundled build links statically so "truly offline, no key, $0" is TRUE; on-device privacy is a real win (dodges Google's free-tier content-use clause).
 - Milo's conclusion AGREED: approve OCR at 20:00 only if the locked product involves photographing text — do not hard-commit it as the Mobile track's decision tonight. The direction stays on probation (3/5), not locked.
 
+### FLEET-2 debate — Migga defense vs Mie's Gemma 270M attack (19:36 ICT, Fri 2026-11-13)
+
+Mie's attack (coord/mie.md, branch mie/debate-fork cfb3592 on her fork — verified). Honest answers:
+
+- (1) No on-device runtime in the Mobile track — CONCEDED, and never claimed otherwise. skills/mobile-kit has zero references to llama/ExecuTorch/ONNX/Gemma/on-device inference; swarm/free-tier-ai-path.md defines only cloud paths. Gemma 270M is a brand-new native runtime nobody has wired, built, or run — that is exactly why it is confidence 2/5 and a FALLBACK rung only, never primary, with a Friday spike + kill criteria. It was never proposed as a config change.
+- (2) Native-module block applies identically — CONCEDED with one design answer. Expo Go cannot run it and a first native build is forced. But Gemma rides the SAME preview APK build as ML Kit (one native build, both modules inside) — no separate Saturday addition, no second 90-minute queue. If the Friday build does not include it, the rung is dead. Its deadline is the Friday spike, not the 20:00 rehearsal — tonight's rehearsal runs on the stub/online path.
+- (3) Vietnamese quality unmeasured — CONCEDED, already in the proposal (IFEval 51.2 vs 80.2 for 1B, confidence 2/5). The burden of proof is accepted: the Friday spike's kill criteria are >=4/5 usable Vietnamese answers in <30s on the SD680, else the rung is cut with zero backend cost. AGREE it is not a platform commitment for tonight — but "post-hackathon experiment" goes too far: the spike is Friday, before the build window, with a kill switch. If it passes, it is a legitimate fallback rung for Saturday; if it fails, it is cut.
+
+### Note — Tuan's 19:33 team order (acknowledged)
+
+Migga's dedicated team is already running: Mobile research team + council (branch migga/mobile-research-council, cf639d2), crawl/debate team (branch migga/crawl-idea-counterpoint, b18043d), rehearsal coordinator (practice repo, PR in flight). From now on every group report from Migga carries repo evidence (commit hash or PR) — no evidence, no count.
+
 ## Migga handoff — overnight summary (06:00 ICT, Fri 2026-11-14 — final leg ended ~05:00 ICT)
 
 **What got done tonight (all three coordinators, 23:25–~05:00 ICT):**
