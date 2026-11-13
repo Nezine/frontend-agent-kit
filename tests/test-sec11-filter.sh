@@ -4,7 +4,7 @@
 #
 # Extracts the REAL filter from gate.sh (verbatim — no copied logic)
 # and runs it against constructed lines. Never prints a secret value:
-# the fixture literal is derived at runtime from verify.sh:5140 (the
+# the fixture literal is derived at runtime from verify.sh:5168 (the
 # §5c case-(104) fixture line) and only counts are reported.
 #
 # Run: bash tests/test-sec11-filter.sh
@@ -27,11 +27,11 @@ filter_src="$(awk '/^sec_11_fixture_lit=/{f=1} f{print} f && /^}/{exit}' "$gate_
 [[ -n "$filter_src" ]] || { printf 'FAIL: sec_11 filter not found in gate.sh\n'; exit 1; }
 eval "$filter_src"
 
-# Fixture literal, derived at runtime from verify.sh:5140 — never
+# Fixture literal, derived at runtime from verify.sh:5168 — never
 # written out here, so this file ships no credential-shaped literal.
-_fixture_line="$(sed -n '5140p' "$verify_sh")"
+_fixture_line="$(sed -n '5168p' "$verify_sh")"
 LIT="$(printf '%s' "$_fixture_line" | sed -n 's/.*api_key = "//; s/".*//p')"
-[[ -n "$LIT" ]] || { printf 'FAIL: could not extract the case-(104) fixture literal from verify.sh:5140\n'; exit 1; }
+[[ -n "$LIT" ]] || { printf 'FAIL: could not extract the case-(104) fixture literal from verify.sh:5168\n'; exit 1; }
 [[ "${#LIT}" == 32 ]] || { printf 'FAIL: fixture literal has unexpected length %s (want 32)\n' "${#LIT}"; exit 1; }
 [[ "$LIT" =~ ^sk-proj-[A-Za-z0-9_-]{20,}$ ]] || { printf 'FAIL: fixture literal has an unexpected shape\n'; exit 1; }
 LOW="$(printf '%s' "$LIT" | tr 'A-Z' 'a-z')"
@@ -60,8 +60,8 @@ t() {
 }
 
 # A: fixture under a clone -> exempted (0), PAT and ASSIGN
-t "A1 fixture-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/verify.sh:5140:  printf 'api_key = \"$LIT\" was visible'" "$sec_11_pat"
-t "A2 fixture-under-clone ASSIGN" 0 "/tmp/fakeproj/kit-clone/verify.sh:5140:  printf 'api_key = \"$LIT\" was visible'" "$sec_11_assign_pat"
+t "A1 fixture-under-clone PAT" 0 "/tmp/fakeproj/kit-clone/verify.sh:5168:  printf 'api_key = \"$LIT\" was visible'" "$sec_11_pat"
+t "A2 fixture-under-clone ASSIGN" 0 "/tmp/fakeproj/kit-clone/verify.sh:5168:  printf 'api_key = \"$LIT\" was visible'" "$sec_11_assign_pat"
 # B: same literal outside any clone (case (104) bad half) -> kept (1)
 t "B1 fixture-outside-clone PAT" 1 "/tmp/fakeproj/design/judge/round-1.md:7: Judge note: api_key = \"$LIT\" was visible" "$sec_11_pat"
 t "B2 fixture-outside-clone ASSIGN" 1 "/tmp/fakeproj/design/judge/round-1.md:7: Judge note: api_key = \"$LIT\" was visible" "$sec_11_assign_pat"
