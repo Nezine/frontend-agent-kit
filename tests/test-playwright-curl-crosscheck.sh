@@ -171,5 +171,39 @@ check "W-RT1 prss headless-shell correct version refuses" 1 \
   "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/158.0.8127.18/linux64/chrome-headless-shell-linux64.zip" \
   chromium-headless-shell 1254
 
+# F2-RT1 fix pass 2 — semicolon-param traversal (the red team's exact
+# live URLs) and the W2-RT3 exotic-encoding family must refuse in the
+# check itself, via the validator's segment-shape allowlist.
+check "F2-RT1 semicolon CDN CFT chrome landing refuses" 1 \
+  "https://cdn.playwright.dev/builds/cft/158.0.8127.18/..;/140.0.7339.186/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F2-RT1 semicolon GCS chrome landing refuses" 1 \
+  "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.18/..;/140.0.7339.186/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "F2-RT1 semicolon GCS headless-shell landing refuses" 1 \
+  "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.18/..;/140.0.7339.186/linux64/chrome-headless-shell-linux64.zip" \
+  chromium-headless-shell 1254
+check "F2-RT1 semicolon GCS mac-arm64 chrome landing refuses" 1 \
+  "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.18/..;/140.0.7339.186/mac-arm64/chrome-mac-arm64.zip" \
+  chromium 1254
+check "F2-RT1 semicolon-param ..;x=1 refuses" 1 \
+  "https://cdn.playwright.dev/builds/cft/158.0.8127.18/..;x=1/140.0.7339.186/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "W2-RT3 dot-semicolon .; refuses" 1 \
+  "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.18/.;/140.0.7339.186/linux64/chrome-linux64.zip" \
+  chromium 1254
+check "W2-RT3 double-encoded dotdot %252e refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%252e%252e/%252e%252e/ffmpeg/1005/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "W2-RT3 overlong UTF-8 %c0%ae refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%c0%ae%c0%ae/%c0%ae%c0%ae/ffmpeg/1005/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "W2-RT3 triple-dot segment refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/.../ffmpeg/1005/ffmpeg-linux.zip" \
+  ffmpeg 1013
+check "W2-RT3 null byte %00 segment refuses" 1 \
+  "https://cdn.playwright.dev/builds/ffmpeg/1013/%00/ffmpeg-linux.zip" \
+  ffmpeg 1013
+
 printf 'cross-check test: %s PASS, %s FAIL\n' "$pass" "$fail"
 [[ "$fail" == 0 ]]
