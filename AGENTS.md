@@ -185,7 +185,8 @@ extract it, and continue from the extracted directory. If neither works, stop an
 report the exact error — do not invent another download source.
 Clone OUTSIDE the project dir: the project you build must not contain the kit's
 own clone (`frontend-agent-kit/` from this step) — the gate excludes a nested
-kit clone from its scans (D14, GAP-12), so a build inside the clone's parent dir
+kit clone from its scans except the §1.1 secret text pass, which scans the clone
+(D34), so a build inside the clone's parent dir
 gates an incomplete tree. If the gate fails on files under such a clone, move the
 clone out of the project and re-run.
 
